@@ -1,0 +1,19 @@
+.reader {
+  max-width: 850px;
+  margin: auto;
+  padding: 25px;
+  color: white;
+}
+
+.reader h1 {
+  margin-bottom: 10px;
+}
+
+.reader h2 {
+  color: #60a5fa;
+}
+
+.reader p {
+  line-height: 1.9;
+  font-size: 18px;
+}

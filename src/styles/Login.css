@@ -1,0 +1,20 @@
+.login {
+  max-width: 400px;
+  margin: 80px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.login input {
+  padding: 14px;
+  border-radius: var(--radius);
+  border: none;
+}
+
+.login button {
+  padding: 14px;
+  border-radius: var(--radius);
+  border: none;
+  cursor: pointer;
+}

@@ -1,0 +1,17 @@
+.admin {
+  max-width: 1100px;
+  margin: auto;
+  padding: 30px;
+  color: white;
+}
+
+.admin h1 {
+  margin-bottom: 30px;
+}
+
+.admin button {
+  padding: 14px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}

@@ -1,0 +1,84 @@
+.novel-card{
+    display:flex;
+    gap:20px;
+    background:#1e293b;
+    border-radius:18px;
+    padding:18px;
+    transition:.25s;
+    color:white;
+}
+
+.novel-card:hover{
+    transform:translateY(-4px);
+    background:#273549;
+}
+
+.novel-cover{
+    width:130px;
+    height:185px;
+    object-fit:cover;
+    border-radius:12px;
+}
+
+.novel-info{
+    flex:1;
+}
+
+.novel-info h2{
+    margin:0;
+    margin-bottom:10px;
+}
+
+.author,
+.rating,
+.chapters{
+    color:#cbd5e1;
+    margin:6px 0;
+}
+
+.description{
+    margin-top:12px;
+    color:#94a3b8;
+    line-height:1.5;
+}
+
+.buttons{
+    display:flex;
+    gap:10px;
+    margin-top:18px;
+}
+
+.read-btn{
+    flex:1;
+    background:#3b82f6;
+    color:white;
+    border:none;
+    border-radius:10px;
+    padding:12px;
+    cursor:pointer;
+}
+
+.read-btn:hover{
+    background:#2563eb;
+}
+
+.fav-btn{
+    width:52px;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+    font-size:18px;
+}
+
+@media(max-width:700px){
+
+.novel-card{
+    flex-direction:column;
+}
+
+.novel-cover{
+    width:100%;
+    height:320px;
+}
+
+}

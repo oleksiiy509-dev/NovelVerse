@@ -1,0 +1,27 @@
+.home {
+  max-width: 1200px;
+  margin: auto;
+  padding: 20px;
+}
+
+.home h1 {
+  color: var(--text);
+  margin-bottom: 20px;
+}
+
+.search {
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: white;
+  font-size: 16px;
+  margin-bottom: 25px;
+}
+
+.section-title {
+  color: white;
+  font-size: 22px;
+  margin: 25px 0 15px;
+}
