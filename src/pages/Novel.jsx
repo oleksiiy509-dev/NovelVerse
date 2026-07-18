@@ -211,14 +211,14 @@ async function deleteComment(commentId) {
 
   if (!ok) return;
 
-  const { error } = await supabase
+  const { error: deleteError } = await supabase
     .from("comments")
     .delete()
     .eq("id", commentId)
     .eq("user_id", user.id);
 
-  if (error) {
-    alert(error.message);
+  if (deleteError) {
+    alert(deleteError.message);
     return;
   }
 
@@ -238,7 +238,7 @@ async function sendComment() {
 
   setSending(true);
 
-  const { error } = await supabase
+  const { error: insertError } = await supabase
     .from("comments")
     .insert({
       novel_id: id,
@@ -250,8 +250,8 @@ async function sendComment() {
 
   setSending(false);
 
-  if (error) {
-    alert(error.message);
+  if (insertError) {
+    alert(insertError.message);
     return;
   }
 
@@ -265,7 +265,7 @@ async function sendComment() {
 
   setSending(true);
 
-  const { error } = await supabase
+  const { error: secondInsertError } = await supabase
     .from("comments")
    .insert({
   novel_id: id,
@@ -276,8 +276,8 @@ async function sendComment() {
 
   setSending(false);
 
-  if (error) {
-    alert(error.message);
+  if (secondInsertError) {
+    alert(secondInsertError.message);
     return;
   }
 
