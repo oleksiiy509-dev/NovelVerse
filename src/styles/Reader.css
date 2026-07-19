@@ -88,3 +88,4 @@
 .reader__narration-player--mini .reader__player-settings, .reader__narration-player--mini .reader__speed-row { display: none; }
 .reader__player-collapse { min-width: 36px; min-height: 36px; padding: 0; border-radius: 999px; }
 .reader__player-settings input { accent-color: #d4af37; padding: 0; }
+.reader__offline-badge{display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;background:rgba(216,168,79,.18);color:#f4c76b;font-size:12px;vertical-align:middle}

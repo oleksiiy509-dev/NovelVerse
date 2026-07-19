@@ -4,6 +4,7 @@ import Home from "./pages/Home.jsx";
 import Library from "./pages/Library.jsx";
 import Catalog from "./pages/Catalog.jsx";
 import Profile from "./pages/Profile.jsx";
+import Downloads from "./pages/Downloads.jsx";
 import Reader from "./pages/Reader.jsx";
 import Login from "./pages/Login.jsx";
 import Admin from "./pages/Admin.jsx";
@@ -16,6 +17,7 @@ import AdminTaxonomy from "./pages/AdminTaxonomy.jsx";
 import ProtectedAdminRoute from "./components/ProtectedAdminRoute.jsx";
 
 import BottomNav from "./components/BottomNav.jsx";
+import NetworkBanner from "./components/NetworkBanner.jsx";
 import EditChapter from "./pages/EditChapter";
 import Novel from "./pages/Novel";
 import { useTelegramBackButton } from "./hooks/useTelegram";
@@ -28,6 +30,7 @@ function AppRoutes() {
   <Route path="/library" element={<Library />} />
   <Route path="/catalog" element={<Catalog />} />
   <Route path="/profile" element={<Profile />} />
+  <Route path="/downloads" element={<Downloads />} />
   <Route path="/reader/:id" element={<Reader />} />
   <Route path="/login" element={<Login />} />
   <Route element={<ProtectedAdminRoute />}>
@@ -49,6 +52,7 @@ function App() {
   return (
     <BrowserRouter>
       <AppRoutes />
+      <NetworkBanner />
       <BottomNav />
     </BrowserRouter>
   );

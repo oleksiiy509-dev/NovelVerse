@@ -92,3 +92,4 @@
 .thread-toggle, .load-more-comments { justify-self: start; min-height: 34px; padding: 7px 12px; }
 .load-more-comments { margin-top: 14px; width: 100%; }
 @media (max-width: 560px) { .rating-dashboard { grid-template-columns: 1fr; } .comment-card header { align-items: flex-start; flex-direction: column; } }
+.novel-download-box{margin-top:12px;padding:12px;border:1px solid rgba(232,194,111,.25);border-radius:16px;background:rgba(7,18,36,.55);display:grid;gap:8px;max-width:420px}.novel-download-box strong{color:#f4c76b}.novel-download-box span,.novel-download-box p{color:#b8c4d8;margin:0}.novel-download-box button{justify-self:start;border:0;border-radius:10px;padding:8px 12px;background:#223653;color:#ffd98c}

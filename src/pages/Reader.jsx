@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapter, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
+import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
+import { deleteDownloadedChapter, getDownloadedChapter, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
@@ -74,6 +75,8 @@ function Reader() {
   const [user, setUser] = useState(null);
   const [bookmarked, setBookmarked] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [downloadState, setDownloadState] = useState("idle");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [settings, setSettings] = useState(getReaderSettings);
@@ -189,29 +192,30 @@ function Reader() {
     const currentUser = await getCurrentUser(supabase);
     setUser(currentUser);
     const { data, error } = await supabase.from("chapters").select("*").eq("id", id).single();
-    const cached = getOfflineChapter(id);
+    const cached = await getDownloadedChapter(id).catch(() => null);
 
     if (error && !cached) {
-      console.error(error);
-      setErrorMessage(error.message || "Глава недоступна. Спробуйте пізніше або перевірте офлайн-кеш.");
+      setErrorMessage("Ця глава недоступна офлайн.");
       setLoading(false);
       return;
     }
 
-    const activeChapter = data || cached;
+    const activeChapter = data || { ...cached, id: cached.chapter_id, number: cached.chapter_number, title: cached.chapter_title };
+    setOfflineMode(!data && !!cached);
     const audioKey = userKey(currentUser?.id, "audioProgress");
     const savedAudio = (await readCloudBackedList(audioKey, telegramCloudGetItem)).find((item) => item.chapter_id === activeChapter.id);
     setCurrentParagraphIndex(Math.min(Math.max(Number(savedAudio?.audio_paragraph_index ?? getSavedNarrationPosition(activeChapter.id)) || 0, 0), Math.max(splitChapterIntoParagraphs(activeChapter.content).length - 1, 0)));
     setChapter(activeChapter);
     await loadAdjacentChapters(activeChapter);
     setOfflineReady(!!cached);
+    setDownloadState(cached ? "downloaded" : "idle");
     const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
     if (cloudSettings) {
       try { setSettings((current) => ({ ...current, ...JSON.parse(cloudSettings) })); } catch { /* keep local settings */ }
     }
     const bookmarks = await readCloudBackedList(userKey(currentUser?.id, "bookmarks"), telegramCloudGetItem);
     setBookmarked(bookmarks.some((item) => item.chapter_id === activeChapter.id));
-    if (data) saveOfflineChapter(data);
+
     localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
 
     const readKey = `readChapters_${activeChapter.novel_id}`;
@@ -223,12 +227,14 @@ function Reader() {
   }
 
   async function loadAdjacentChapters(activeChapter) {
-    const base = supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id);
-    const [{ data: previous }, { data: next }] = await Promise.all([
-      base.lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
+    const [{ data: previous, error: prevError }, { data: next, error: nextError }] = await Promise.all([
+      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
     ]);
-    setAdjacentChapters({ previous, next });
+    if (!prevError && !nextError) { setAdjacentChapters({ previous, next }); return; }
+    const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
+    const index = offline.findIndex((item) => item.chapter_id === activeChapter.id);
+    setAdjacentChapters({ previous: index > 0 ? { id: offline[index - 1].chapter_id } : null, next: index >= 0 && index < offline.length - 1 ? { id: offline[index + 1].chapter_id } : null });
   }
 
   async function goToAdjacentChapter(direction) {
@@ -259,10 +265,24 @@ function Reader() {
     if (user) await supabase.from("bookmarks").insert({ ...entry, user_id: user.id });
   }
 
-  function cacheCurrentChapter() {
-    saveOfflineChapter(chapter);
-    setOfflineReady(true);
-    alert("Главу збережено для офлайн-читання.");
+  async function toggleDownloadChapter() {
+    if (!chapter || downloadState === "loading") return;
+    if (offlineReady) {
+      if (!window.confirm("Видалити завантажену главу?")) return;
+      await deleteDownloadedChapter(chapter.id);
+      setOfflineReady(false);
+      setDownloadState("idle");
+      return;
+    }
+    setDownloadState("loading");
+    try {
+      await saveDownloadedChapter(chapter, chapter.novel || { id: chapter.novel_id });
+      setOfflineReady(true);
+      setDownloadState("downloaded");
+    } catch (error) {
+      alert(error.message || "Не вдалося зберегти главу.");
+      setDownloadState("error");
+    }
   }
 
   function shareChapter() {
@@ -385,7 +405,7 @@ function Reader() {
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
           <button className="reader__back reader__back--compact" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>← Глави</button>
           <header className="reader__header">
-            <span>Глава {chapter.number}</span>
+            <span>Глава {chapter.number} {offlineMode && <b className="reader__offline-badge">Офлайн-режим</b>}</span>
             <h1>{chapter.title}</h1>
           </header>
         </div>
@@ -421,7 +441,7 @@ function Reader() {
         </select>
         <button onClick={toggleBookmark}>{bookmarked ? "🔖 Додано" : "🔖 Закладка"}</button>
         <button onClick={shareChapter}>📤 Поділитися в Telegram</button>
-        <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
+        <button onClick={toggleDownloadChapter}>{downloadState === "loading" ? "Завантаження…" : downloadState === "downloaded" ? "Завантажено · видалити" : downloadState === "error" ? "Помилка — повторити" : "Завантажити главу"}</button>
       </section>
       <section id="reader-narration-panel" className={`reader__narration-player ${narrationOpen ? "reader__narration-player--open" : ""} ${playerExpanded ? "reader__narration-player--expanded" : "reader__narration-player--mini"}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
         <button className="reader__player-grip" onClick={() => setPlayerExpanded((expanded) => !expanded)} aria-label={playerExpanded ? "Згорнути аудіоплеєр" : "Розгорнути аудіоплеєр"} />
