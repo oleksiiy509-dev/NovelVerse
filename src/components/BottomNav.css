@@ -1,4 +1,62 @@
-.bottom-nav { position: fixed; z-index: 50; left: 50%; bottom: 0; transform: translateX(-50%); width: min(720px, calc(100% - 18px)); padding: 8px 10px calc(8px + var(--safe-bottom)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: rgba(8,17,31,.88); border: 1px solid var(--border); border-bottom: 0; border-radius: 22px 22px 0 0; backdrop-filter: blur(18px); box-shadow: 0 -18px 40px rgba(2,6,23,.38); }
-.bottom-nav a { color: var(--text-secondary); text-decoration: none; font-size: .78rem; font-weight: 800; text-align: center; border-radius: 16px; padding: 8px 4px; min-height: 50px; }
-.bottom-nav a:hover { background: var(--primary-soft); color: #fff; }
-@media (min-width: 900px) { .bottom-nav { bottom: 14px; border: 1px solid var(--border); border-radius: 24px; padding-bottom: 8px; } }
+.bottom-nav {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 18px));
+  padding: 8px 10px calc(8px + var(--safe-bottom));
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  background: rgba(8,17,31,.88);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 -18px 44px rgba(2,6,23,.42);
+}
+
+.bottom-nav a {
+  position: relative;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: .78rem;
+  font-weight: 850;
+  text-align: center;
+  border-radius: 17px;
+  padding: 8px 4px;
+  min-height: 50px;
+  overflow: hidden;
+  transition: transform .22s cubic-bezier(.2,.8,.2,1), color .22s ease, background .22s ease;
+}
+
+.bottom-nav a::before {
+  content: "";
+  position: absolute;
+  inset: 7px 10px;
+  z-index: -1;
+  border-radius: 15px;
+  background: linear-gradient(135deg, var(--primary-soft), rgba(192,132,252,.16));
+  opacity: 0;
+  transform: scale(.86) translateY(8px);
+  transition: opacity .22s ease, transform .22s cubic-bezier(.2,.8,.2,1);
+}
+
+.bottom-nav a:hover,
+.bottom-nav a.active {
+  color: #fff;
+  transform: translateY(-3px);
+}
+
+.bottom-nav a:hover::before,
+.bottom-nav a.active::before {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.bottom-nav a:active { transform: translateY(0) scale(.96); }
+
+@media (min-width: 900px) {
+  .bottom-nav { bottom: 14px; border: 1px solid var(--border); border-radius: 24px; padding-bottom: 8px; }
+}

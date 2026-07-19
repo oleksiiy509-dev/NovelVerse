@@ -5,15 +5,15 @@
   min-height: 224px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  border-radius: 26px;
+  box-shadow: var(--shadow-card);
   color: var(--text);
   overflow: hidden;
   padding: 16px;
-  transition: transform .25s ease, border-color .25s ease, background .25s ease;
+  transition: transform .25s ease, border-color .25s ease, background .25s ease, box-shadow .25s ease;
 }
-.novel-card:hover { transform: translateY(-4px); background: var(--card-hover); border-color: rgba(96,165,250,.45); }
-.novel-cover { width: 132px; height: 198px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--radius-md); background: var(--surface-2); box-shadow: 0 12px 24px rgba(0,0,0,.25); }
+.novel-card:hover { transform: translateY(-4px); background: var(--card-hover); border-color: rgba(96,165,250,.45); box-shadow: var(--shadow-elevated); }
+.novel-cover { width: 132px; height: 198px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 18px; background: var(--surface-2); box-shadow: 0 12px 24px rgba(0,0,0,.25); }
 .novel-info { min-width: 0; display: flex; flex-direction: column; }
 .novel-info h2 { margin: 0 0 8px; font-size: clamp(1.1rem, 2vw, 1.35rem); line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .author, .rating, .chapters { color: var(--text-secondary); margin: 3px 0; font-size: .95rem; }
@@ -22,7 +22,7 @@
 .read-btn { flex: 1; }
 .fav-btn { flex: 0 0 50px; background: var(--surface-2); }
 @media (max-width: 520px) {
-  .novel-card { grid-template-columns: 108px minmax(0, 1fr); gap: 12px; padding: 12px; border-radius: 18px; }
+  .novel-card { grid-template-columns: 108px minmax(0, 1fr); gap: 12px; padding: 12px; border-radius: 22px; }
   .novel-cover { width: 108px; height: 162px; }
   .description { -webkit-line-clamp: 2; }
   .buttons { gap: 8px; }

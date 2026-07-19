@@ -18,8 +18,10 @@
   --radius-sm: 12px;
   --radius-md: 16px;
   --radius: 16px;
-  --radius-lg: 24px;
+  --radius-lg: 26px;
   --shadow: 0 18px 45px rgba(2, 6, 23, 0.28);
+  --shadow-card: 0 16px 34px rgba(2, 6, 23, 0.32), inset 0 1px 0 rgba(255,255,255,.035);
+  --shadow-elevated: 0 22px 50px rgba(2, 6, 23, 0.42);
   --shadow-glow: 0 12px 30px rgba(37, 99, 235, 0.28);
   --safe-top: max(env(safe-area-inset-top), var(--tg-safe-area-inset-top, 0px));
   --safe-right: max(env(safe-area-inset-right), var(--tg-safe-area-inset-right, 0px));
