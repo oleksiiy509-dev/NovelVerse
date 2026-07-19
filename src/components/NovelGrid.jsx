@@ -38,6 +38,8 @@ function NovelGrid({ novels, loading = false, error = "", emptyTitle = "Нове
           views={novel.views}
           description={novel.description}
           image={novel.image}
+          status={novel.status}
+          genres={novel.genres}
         />
       ))}
     </div>

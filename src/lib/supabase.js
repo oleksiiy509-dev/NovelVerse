@@ -76,6 +76,16 @@ class QueryBuilder {
     return this;
   }
 
+  gte(column, value) {
+    this.params.append(column, `gte.${value}`);
+    return this;
+  }
+
+  range(from, to) {
+    this.options.range = { from, to };
+    return this;
+  }
+
   limit(count) {
     this.params.set("limit", count);
     return this;
@@ -119,6 +129,7 @@ class QueryBuilder {
           Prefer: this.options.count === "exact"
             ? "count=exact"
             : `return=representation${this.options.resolution ? `,resolution=${this.options.resolution}` : ""}`,
+          ...(this.options.range ? { Range: `${this.options.range.from}-${this.options.range.to}` } : {}),
         },
         body: this.payload ? JSON.stringify(this.payload) : undefined,
       });

@@ -44,3 +44,7 @@
   .read-btn, .fav-btn { min-height: 38px; padding: .5rem .65rem; }
   .fav-btn { flex-basis: 42px; }
 }
+.novel-status { color: #f8e7ad !important; border-color: rgba(212,175,55,.28) !important; }
+.novel-genres { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px; }
+.novel-genres span { background: rgba(212,175,55,.1); border: 1px solid rgba(212,175,55,.22); border-radius: 999px; color: #f8e7ad; font-size: .72rem; font-weight: 900; padding: 5px 8px; }
+@media (max-width: 520px) { .novel-genres { gap: 4px; margin-bottom: 7px; } .novel-genres span { font-size: .66rem; padding: 4px 6px; } }

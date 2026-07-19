@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Home from "./pages/Home.jsx";
 import Library from "./pages/Library.jsx";
+import Catalog from "./pages/Catalog.jsx";
 import Profile from "./pages/Profile.jsx";
 import Reader from "./pages/Reader.jsx";
 import Login from "./pages/Login.jsx";
@@ -25,6 +26,7 @@ function AppRoutes() {
       <Routes>
   <Route path="/" element={<Home />} />
   <Route path="/library" element={<Library />} />
+  <Route path="/catalog" element={<Catalog />} />
   <Route path="/profile" element={<Profile />} />
   <Route path="/reader/:id" element={<Reader />} />
   <Route path="/login" element={<Login />} />
