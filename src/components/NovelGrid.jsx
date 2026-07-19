@@ -1,12 +1,27 @@
 import NovelCard from "./NovelCard";
 import "./NovelGrid.css";
 
-function NovelGrid({ novels }) {
+function NovelGrid({ novels, loading = false, error = "" }) {
+  if (loading) {
+    return (
+      <div className="novel-grid novel-grid--loading" aria-label="Завантаження новел">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="skeleton novel-card-skeleton" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="error-state">Не вдалося завантажити новели. {error}</div>;
+  }
+
   if (!novels.length) {
     return (
-      <p style={{ color: "white", textAlign: "center" }}>
-        Новел не знайдено.
-      </p>
+      <div className="empty-state">
+        <h3>Новел не знайдено</h3>
+        <p>Спробуйте змінити пошук, категорію або сортування.</p>
+      </div>
     );
   }
 

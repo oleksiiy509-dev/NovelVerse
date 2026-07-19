@@ -1,16 +1,4 @@
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  background: #1f2937;
-  display: flex;
-  justify-content: space-around;
-  padding: 15px 0;
-}
-
-.bottom-nav a {
-  color: white;
-  text-decoration: none;
-  font-weight: bold;
-}
+.bottom-nav { position: fixed; z-index: 50; left: 50%; bottom: 0; transform: translateX(-50%); width: min(720px, calc(100% - 18px)); padding: 8px 10px calc(8px + var(--safe-bottom)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: rgba(8,17,31,.88); border: 1px solid var(--border); border-bottom: 0; border-radius: 22px 22px 0 0; backdrop-filter: blur(18px); box-shadow: 0 -18px 40px rgba(2,6,23,.38); }
+.bottom-nav a { color: var(--text-secondary); text-decoration: none; font-size: .78rem; font-weight: 800; text-align: center; border-radius: 16px; padding: 8px 4px; min-height: 50px; }
+.bottom-nav a:hover { background: var(--primary-soft); color: #fff; }
+@media (min-width: 900px) { .bottom-nav { bottom: 14px; border: 1px solid var(--border); border-radius: 24px; padding-bottom: 8px; } }

@@ -22,6 +22,8 @@ function Home() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Усі");
   const [sort, setSort] = useState("default");
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     loadNovels();
@@ -31,6 +33,9 @@ function Home() {
   }, []);
 
   async function loadNovels() {
+    setLoading(true);
+    setErrorMessage("");
+
     const { data, error } = await supabase
       .from("novels")
       .select("*")
@@ -38,10 +43,13 @@ function Home() {
 
     if (error) {
       console.log(error);
+      setErrorMessage(error.message || "Перевірте підключення.");
+      setLoading(false);
       return;
     }
 
     setNovels(data || []);
+    setLoading(false);
   }
 
   const categories = useMemo(() => {
@@ -94,7 +102,7 @@ function Home() {
   }, [novels, search, category, sort]);
 
   return (
-    <div className="home">
+    <div className="home page-shell">
       <div className="home__hero">
         <div>
           <p className="home__eyebrow">Production novel platform</p>
@@ -120,7 +128,7 @@ function Home() {
         <button onClick={() => setSort("new")}>🆕 Новинки</button>
       </div>
 
-      <NovelGrid novels={filteredNovels} />
+      <NovelGrid novels={filteredNovels} loading={loading} error={errorMessage} />
     </div>
   );
 }

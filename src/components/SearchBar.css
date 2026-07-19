@@ -1,19 +1,2 @@
-.search-bar {
-  width: 100%;
-  padding: 14px 18px;
-  border: none;
-  border-radius: 14px;
-  background: #1f2937;
-  color: white;
-  font-size: 16px;
-  outline: none;
-  margin-bottom: 20px;
-}
-
-.search-bar::placeholder {
-  color: #94a3b8;
-}
-
-.search-bar:focus {
-  border: 2px solid #3b82f6;
-}
+.search-bar { min-height: 52px; margin-bottom: 18px; padding-left: 1.15rem; background: rgba(15,27,45,.9); border: 1px solid var(--border); border-radius: 18px; color: var(--text); font-size: 1rem; }
+.search-bar::placeholder { color: var(--muted); }
