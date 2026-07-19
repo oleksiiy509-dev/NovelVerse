@@ -54,8 +54,12 @@ function Profile() {
       alert(error.message);
       return;
     }
-    const nextUser = { ...user, user_metadata: { ...user.user_metadata, ...profile } };
-    localStorage.setItem("supabase_user", JSON.stringify(nextUser));
+    const { data: authData, error: authError } = await supabase.auth.updateUser({ data: profile });
+    if (authError) {
+      alert(authError.message);
+      return;
+    }
+    const nextUser = authData.user || { ...user, user_metadata: { ...user.user_metadata, ...profile } };
     setUser(nextUser);
     alert("Профіль збережено.");
   }
