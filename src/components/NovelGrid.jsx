@@ -1,7 +1,7 @@
 import NovelCard from "./NovelCard";
 import "./NovelGrid.css";
 
-function NovelGrid({ novels, loading = false, error = "", emptyTitle = "Новел не знайдено", emptyText = "Спробуйте змінити пошук, категорію або сортування." }) {
+function NovelGrid({ novels, loading = false, error = "", onRetry, emptyTitle = "Новел не знайдено", emptyText = "Спробуйте змінити пошук, категорію або сортування." }) {
   if (loading) {
     return (
       <div className="novel-grid novel-grid--loading" aria-label="Завантаження новел">
@@ -13,7 +13,7 @@ function NovelGrid({ novels, loading = false, error = "", emptyTitle = "Нове
   }
 
   if (error) {
-    return <div className="error-state">Не вдалося завантажити новели. {error}</div>;
+    return <div className="error-state">Не вдалося завантажити новели. {error}{onRetry && <><br /><button type="button" onClick={onRetry}>Retry</button></>}</div>;
   }
 
   if (!novels.length) {
