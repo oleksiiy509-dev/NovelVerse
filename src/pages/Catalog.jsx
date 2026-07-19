@@ -47,7 +47,6 @@ function Catalog() {
     }, { rootMargin: "280px" });
     observer.observe(node);
     return () => observer.disconnect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, loading, loadingMore, page, search, filters, sort]);
 
   async function loadFacets() {
@@ -73,7 +72,6 @@ function Catalog() {
     return builder;
   }, [search, filters]);
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const loadNovels = useCallback(async (nextPage = 0, replace = false) => {
     replace ? setLoading(true) : setLoadingMore(true);
     setError("");
