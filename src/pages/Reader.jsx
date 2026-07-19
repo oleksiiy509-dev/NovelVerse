@@ -354,7 +354,7 @@ function Reader() {
       <div className="reader__reading-progress" aria-label={`Прогрес читання ${readingProgress}%`}><span style={{ width: `${readingProgress}%` }} /></div>
       <div className="reader__controls reader__controls--top" aria-hidden={!controlsVisible}>
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
-          <button className="reader__back reader__back--compact" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>⬅ Глави</button>
+          <button className="reader__back reader__back--compact" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>← Глави</button>
           <header className="reader__header">
             <span>Глава {chapter.number}</span>
             <h1>{chapter.title}</h1>
@@ -375,7 +375,7 @@ function Reader() {
       </div>
       <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-label="Chapter navigation">
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
-          <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous}>⬅ Попередня</button><button className="reader__next-chapter" onClick={nextChapter} disabled={navigatingChapter || !adjacentChapters.next}>{navigatingChapter ? "Переходимо..." : "Наступна глава ➡"}</button>
+          <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous}>{adjacentChapters.previous ? "← Назад" : "Перша глава"}</button><button className="reader__next-chapter" onClick={nextChapter} disabled={navigatingChapter || !adjacentChapters.next}>{navigatingChapter ? "Завантаження…" : adjacentChapters.next ? "Далі →" : "Остання глава"}</button>
         </div>
       </nav>
       {settingsOpen && <div className="reader__settings-scrim" onClick={() => setSettingsOpen(false)} />}
