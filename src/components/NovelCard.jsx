@@ -13,6 +13,8 @@ function NovelCard({
   views = 0,
   description,
   image,
+  status,
+  genres,
 }) {
   const navigate = useNavigate();
 
@@ -95,6 +97,7 @@ await supabase
   }
 
   const coverSrc = image?.trim ? image.trim() : image;
+  const genreList = (genres || "").split(",").map((genre) => genre.trim()).filter(Boolean).slice(0, 4);
 
   return (
     <div className="novel-card">
@@ -117,7 +120,10 @@ await supabase
           <span>⭐ {rating || "—"}</span>
           <span>👁 {Number(views || 0).toLocaleString("uk-UA")}</span>
           <span>📖 {Number(chapters || 0).toLocaleString("uk-UA")} глав</span>
+          {status && <span className="novel-status">{status}</span>}
         </div>
+
+        {genreList.length > 0 && <div className="novel-genres" aria-label="Жанри новели">{genreList.map((genre) => <span key={genre}>{genre}</span>)}</div>}
 
         <p className="description">
           {description}
