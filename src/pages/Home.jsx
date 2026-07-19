@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { initTelegramMiniApp } from "../lib/userFeatures";
+import { useTelegram, useTelegramMainButton } from "../hooks/useTelegram";
 
 import SearchBar from "../components/SearchBar";
 import CategoryTabs from "../components/CategoryTabs";
@@ -25,7 +25,12 @@ function Home() {
 
   const [novels, setNovels] = useState([]);
   const [user, setUser] = useState(null);
-  const [telegramUser] = useState(() => initTelegramMiniApp()?.initDataUnsafe?.user || null);
+  const { user: telegramUser } = useTelegram();
+
+  useTelegramMainButton({
+    text: user ? "Open profile" : "Sign in",
+    onClick: () => navigate(user ? "/profile" : "/login"),
+  });
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Усі");
   const [sort, setSort] = useState("default");

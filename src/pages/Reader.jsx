@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapter, syncReadingProgress, userKey, readList, writeList } from "../lib/userFeatures";
+import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapter, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
+import { telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
+import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
 
 const defaultSettings = { fontSize: 20, lineHeight: 1.9, textWidth: 760, theme: "dark", fontFamily: "serif" };
@@ -78,6 +80,14 @@ function Reader() {
   const [tapStart, setTapStart] = useState(null);
   const utteranceRef = useRef(null);
 
+  useTelegramBackButton(true, chapter ? `/novel/${chapter.novel_id}` : "/");
+
+  useTelegramMainButton(useMemo(() => ({
+    text: bookmarked ? "Remove bookmark" : "Bookmark",
+    onClick: () => toggleBookmark(),
+    disabled: !chapter,
+  }), [bookmarked, chapter]));
+
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapter?.content), [chapter?.content]);
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window;
 
@@ -87,6 +97,7 @@ function Reader() {
     localStorage.setItem("readerSettings", JSON.stringify(settings));
     localStorage.setItem("readerFontSize", settings.fontSize);
     localStorage.setItem("readerDarkMode", settings.theme === "dark");
+    telegramCloudSetItem("novelverse:readerSettings", JSON.stringify(settings));
   }, [settings]);
 
   useEffect(() => {
@@ -114,7 +125,7 @@ function Reader() {
     function saveScroll() {
       const progress = Math.min(100, Math.round((window.scrollY / Math.max(1, document.body.scrollHeight - window.innerHeight)) * 100));
       localStorage.setItem(`scroll_${id}`, window.scrollY);
-      if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress });
+      if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress }, telegramCloudSetItem);
     }
     window.addEventListener("scroll", saveScroll, { passive: true });
     return () => window.removeEventListener("scroll", saveScroll);
@@ -164,7 +175,11 @@ function Reader() {
     setCurrentParagraphIndex(getSavedNarrationPosition(activeChapter.id));
     setChapter(activeChapter);
     setOfflineReady(!!cached);
-    const bookmarks = readList(userKey(currentUser?.id, "bookmarks"));
+    const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
+    if (cloudSettings) {
+      try { setSettings((current) => ({ ...current, ...JSON.parse(cloudSettings) })); } catch { /* keep local settings */ }
+    }
+    const bookmarks = await readCloudBackedList(userKey(currentUser?.id, "bookmarks"), telegramCloudGetItem);
     setBookmarked(bookmarks.some((item) => item.chapter_id === activeChapter.id));
     if (data) saveOfflineChapter(data);
     localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
@@ -197,13 +212,13 @@ function Reader() {
     const key = userKey(user?.id, "bookmarks");
     const bookmarks = readList(key);
     if (bookmarked) {
-      writeList(key, bookmarks.filter((item) => item.chapter_id !== chapter.id));
+      await writeCloudBackedList(key, bookmarks.filter((item) => item.chapter_id !== chapter.id), telegramCloudSetItem);
       setBookmarked(false);
       if (user) await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("chapter_id", chapter.id);
       return;
     }
     const entry = { novel_id: chapter.novel_id, chapter_id: chapter.id, chapter_title: chapter.title, scroll_y: window.scrollY, created_at: new Date().toISOString() };
-    writeList(key, [entry, ...bookmarks]);
+    await writeCloudBackedList(key, [entry, ...bookmarks], telegramCloudSetItem);
     setBookmarked(true);
     if (user) await supabase.from("bookmarks").insert({ ...entry, user_id: user.id });
   }

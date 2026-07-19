@@ -17,10 +17,11 @@ import ProtectedAdminRoute from "./components/ProtectedAdminRoute.jsx";
 import BottomNav from "./components/BottomNav.jsx";
 import EditChapter from "./pages/EditChapter";
 import Novel from "./pages/Novel";
+import { useTelegramBackButton } from "./hooks/useTelegram";
 
-function App() {
+function AppRoutes() {
+  useTelegramBackButton();
   return (
-    <BrowserRouter>
       <Routes>
   <Route path="/" element={<Home />} />
   <Route path="/library" element={<Library />} />
@@ -39,7 +40,13 @@ function App() {
   </Route>
 <Route path="/novel/:id" element={<Novel />} />
 </Routes>
+  );
+}
 
+function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
       <BottomNav />
     </BrowserRouter>
   );

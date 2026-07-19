@@ -2,6 +2,7 @@
 
 * { box-sizing: border-box; }
 html { color-scheme: dark; background: var(--bg); }
+html.telegram-theme-light { color-scheme: light; }
 body {
   margin: 0;
   min-width: 320px;
@@ -15,7 +16,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-body.telegram-webapp { min-height: var(--tg-viewport-stable-height, 100vh); }
+body.telegram-webapp { min-height: var(--tg-viewport-stable-height, 100vh); background: var(--tg-bg, var(--bg)); color: var(--tg-text, var(--text)); }
 a { color: inherit; }
 img { max-width: 100%; display: block; }
 button, input, textarea, select { font: inherit; }
@@ -42,7 +43,7 @@ input, textarea, select {
   padding: .85rem 1rem;
 }
 input:focus, textarea:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); }
-.page-shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 calc(104px + var(--safe-bottom)); }
+.page-shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: calc(28px + var(--safe-top)) var(--safe-right) calc(104px + var(--safe-bottom)) var(--safe-left); }
 .empty-state, .error-state, .loading-state {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
