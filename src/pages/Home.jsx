@@ -7,6 +7,7 @@ import SearchBar from "../components/SearchBar";
 import CategoryTabs from "../components/CategoryTabs";
 import NovelGrid from "../components/NovelGrid";
 import ContinueReading from "../components/ContinueReading";
+import defaultCover from "../assets/default-cover.svg";
 
 import "../styles/Home.css";
 
@@ -31,7 +32,7 @@ function TopCarousel({ novels, loading, onOpen }) {
   if (!novels.length) return <div className="home-empty">Топ тижня зʼявиться після перших переглядів.</div>;
   return <div className="top-carousel" aria-label="Top of the Week">{novels.map((novel) => (
     <button className="top-card" key={novel.id} onClick={() => onOpen(novel.id)}>
-      <img src={novel.image} alt="" loading="lazy" />
+      <img src={novel.image || defaultCover} alt="" loading="lazy" onError={(event) => { event.currentTarget.src = defaultCover; }} />
       <span>{novel.title}</span>
     </button>
   ))}</div>;
@@ -44,7 +45,7 @@ function LatestUpdates({ novels, loading, error, onOpen }) {
   return <div className="updates-list">{novels.map((novel, index) => (
     <button className="update-row" key={novel.id} onClick={() => onOpen(novel.id)}>
       <span className="update-row__rank">{index + 1}</span>
-      <img src={novel.image} alt="" loading="lazy" />
+      <img src={novel.image || defaultCover} alt="" loading="lazy" onError={(event) => { event.currentTarget.src = defaultCover; }} />
       <span className="update-row__body"><strong>{novel.title}</strong><span>{splitPills(novel.genres).join(" • ") || novel.status || "Novel"}</span></span>
       <time>{relativeTime(novel.updated_at || novel.created_at)}</time>
     </button>

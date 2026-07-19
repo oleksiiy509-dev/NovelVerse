@@ -73,3 +73,9 @@
 .reader__player-settings[open] { display: grid; gap: 10px; }
 .reader__narration-warning { background: rgba(127,29,29,.28); border: 1px solid rgba(248,113,113,.3); border-radius: 16px; color: #fecaca; margin: 0; padding: 12px; }
 @media (max-width: 640px) { .reader__narration-player { bottom: calc(78px + var(--safe-bottom)); width: auto; } .reader__media-controls { grid-template-columns: 1fr 64px 1fr 1fr; } }
+.reader__reading-progress { position: fixed; top: 0; left: 0; right: 0; z-index: 20; height: 4px; background: rgba(148,163,184,.14); }
+.reader__reading-progress span { display: block; height: 100%; border-radius: 0 999px 999px 0; background: linear-gradient(90deg, #60a5fa, #d4af37, #f8e7ad); box-shadow: 0 0 18px rgba(212,175,55,.45); transition: width .18s ease-out; }
+.reader__back--compact { border-radius: 999px; font-size: .82rem; min-height: 32px; margin-bottom: 8px; padding: 6px 11px; }
+.reader__next-chapter { background: linear-gradient(135deg, #d4af37, #b8860b); color: #111827; box-shadow: 0 14px 34px rgba(212,175,55,.2); }
+.reader__content { animation: reader-fade-in .4s ease both; }
+@keyframes reader-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

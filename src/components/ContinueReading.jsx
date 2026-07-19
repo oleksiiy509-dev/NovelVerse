@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser, readObject, userKey } from "../lib/userFeatures";
+import defaultCover from "../assets/default-cover.svg";
 
 function ContinueReading() {
   const navigate = useNavigate();
@@ -42,7 +43,7 @@ function ContinueReading() {
       <div className="home__section-heading"><div><p className="home__eyebrow">Pick up where you left off</p><h2 id="continue-reading-title">Продовжити читання</h2></div></div>
       {loading && <div className="continue-reading__grid">{Array.from({ length: 3 }).map((_, index) => <div className="skeleton continue-reading__skeleton" key={index} />)}</div>}
       {!loading && !visibleItems.length && <div className="empty-state"><h3>Історія читання порожня</h3><p>Відкрийте будь-яку главу — прогрес зʼявиться тут автоматично.</p></div>}
-      {!loading && !!visibleItems.length && <div className="continue-reading__grid">{visibleItems.map((item) => <article className="continue-reading__card" key={`${item.novel_id}-${item.chapter_id}`}><img src={item.novel?.image || "/favicon.svg"} alt="" /><div><h3>{item.novel?.title || `Новела ${item.novel_id}`}</h3><p>{item.chapter?.title || item.chapter_title || "Поточна глава"}</p><div className="continue-reading__progress"><span style={{ width: `${Math.max(0, Math.min(100, item.progress || 0))}%` }} /></div><button onClick={() => navigate(`/reader/${item.chapter_id}`)}>Продовжити</button></div></article>)}</div>}
+      {!loading && !!visibleItems.length && <div className="continue-reading__grid">{visibleItems.map((item) => <article className="continue-reading__card" key={`${item.novel_id}-${item.chapter_id}`}><img src={item.novel?.image || defaultCover} alt="" onError={(event) => { event.currentTarget.src = defaultCover; }} /><div><h3>{item.novel?.title || `Новела ${item.novel_id}`}</h3><p>{item.chapter?.title || item.chapter_title || "Поточна глава"}</p><div className="continue-reading__progress"><span style={{ width: `${Math.max(0, Math.min(100, item.progress || 0))}%` }} /></div><button onClick={() => navigate(`/reader/${item.chapter_id}`)}>Продовжити</button></div></article>)}</div>}
     </section>
   );
 }

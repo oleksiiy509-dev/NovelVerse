@@ -82,6 +82,7 @@ function Reader() {
   const [voices, setVoices] = useState([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(() => getSavedNarrationPosition(id));
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [readingProgress, setReadingProgress] = useState(0);
   const [tapStart, setTapStart] = useState(null);
   const utteranceRef = useRef(null);
 
@@ -130,12 +131,15 @@ function Reader() {
 
   useEffect(() => {
     function saveScroll() {
-      const progress = Math.min(100, Math.round((window.scrollY / Math.max(1, document.body.scrollHeight - window.innerHeight)) * 100));
+      const progress = Math.min(100, Math.max(0, Math.round((window.scrollY / Math.max(1, document.body.scrollHeight - window.innerHeight)) * 100)));
+      setReadingProgress(progress);
       localStorage.setItem(`scroll_${id}`, window.scrollY);
       if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress }, telegramCloudSetItem);
     }
+    saveScroll();
     window.addEventListener("scroll", saveScroll, { passive: true });
-    return () => window.removeEventListener("scroll", saveScroll);
+    window.addEventListener("resize", saveScroll);
+    return () => { window.removeEventListener("scroll", saveScroll); window.removeEventListener("resize", saveScroll); };
   }, [id, chapter, user]);
 
   useEffect(() => () => {
@@ -339,9 +343,10 @@ function Reader() {
     <main className={`reader reader--${settings.theme} ${controlsVisible ? "reader--controls-visible" : "reader--immersive"}`}>
       <button className="reader__settings-toggle" onClick={() => setSettingsOpen(true)} aria-expanded={settingsOpen} aria-controls="reader-settings-panel">⚙️<span>Налаштування</span></button>
       <button className="reader__audio-toggle" onClick={() => setNarrationOpen((open) => !open)} aria-expanded={narrationOpen} aria-controls="reader-narration-panel">🔊<span>Аудіо</span></button>
+      <div className="reader__reading-progress" aria-label={`Прогрес читання ${readingProgress}%`}><span style={{ width: `${readingProgress}%` }} /></div>
       <div className="reader__controls reader__controls--top" aria-hidden={!controlsVisible}>
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
-          <button className="reader__back" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>⬅ До списку глав</button>
+          <button className="reader__back reader__back--compact" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>⬅ Глави</button>
           <header className="reader__header">
             <span>Глава {chapter.number}</span>
             <h1>{chapter.title}</h1>
@@ -362,7 +367,7 @@ function Reader() {
       </div>
       <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-hidden={!controlsVisible}>
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
-          <button onClick={previousChapter} disabled={navigatingChapter}>⬅ Попередня</button><button onClick={nextChapter} disabled={navigatingChapter}>{navigatingChapter ? "Переходимо..." : "Наступна ➡"}</button>
+          <button onClick={previousChapter} disabled={navigatingChapter}>⬅ Попередня</button><button className="reader__next-chapter" onClick={nextChapter} disabled={navigatingChapter}>{navigatingChapter ? "Переходимо..." : "Наступна глава ➡"}</button>
         </div>
       </nav>
       {settingsOpen && <div className="reader__settings-scrim" onClick={() => setSettingsOpen(false)} />}

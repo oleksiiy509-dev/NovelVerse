@@ -35,6 +35,7 @@ function NovelGrid({ novels, loading = false, error = "", emptyTitle = "Нове
           author={novel.author}
           rating={novel.rating}
           chapters={novel.chapters}
+          views={novel.views}
           description={novel.description}
           image={novel.image}
         />

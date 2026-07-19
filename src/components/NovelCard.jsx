@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import defaultCover from "../assets/default-cover.svg";
 import "./NovelCard.css";
 
 function NovelCard({
@@ -9,6 +10,7 @@ function NovelCard({
   author,
   rating,
   chapters,
+  views = 0,
   description,
   image,
 }) {
@@ -92,28 +94,30 @@ await supabase
     }
   }
 
+  const coverSrc = image?.trim ? image.trim() : image;
+
   return (
     <div className="novel-card">
-      <img
-        className="novel-cover"
-        src={image}
-        alt={title}
-      />
+      <div className="novel-cover-wrap">
+        <img
+          className="novel-cover"
+          src={coverSrc || defaultCover}
+          alt={title}
+          loading="lazy"
+          onError={(event) => { event.currentTarget.src = defaultCover; }}
+        />
+      </div>
 
       <div className="novel-info">
         <h2>{title}</h2>
 
-        <p className="author">
-          ✍️ {author}
-        </p>
+        <p className="author">✍️ {author}</p>
 
-        <p className="rating">
-          ⭐ {rating}
-        </p>
-
-        <p className="chapters">
-          📖 {chapters} глав
-        </p>
+        <div className="novel-meta" aria-label="Статистика новели">
+          <span>⭐ {rating || "—"}</span>
+          <span>👁 {Number(views || 0).toLocaleString("uk-UA")}</span>
+          <span>📖 {Number(chapters || 0).toLocaleString("uk-UA")} глав</span>
+        </div>
 
         <p className="description">
           {description}
