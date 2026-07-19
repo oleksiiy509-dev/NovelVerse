@@ -1,70 +1,7 @@
-.home {
-  max-width: 1200px;
-  margin: auto;
-  padding: 20px;
-}
-
-.home h1 {
-  color: var(--text);
-  margin-bottom: 20px;
-}
-
-.search {
-  width: 100%;
-  padding: 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: white;
-  font-size: 16px;
-  margin-bottom: 25px;
-}
-
-.section-title {
-  color: white;
-  font-size: 22px;
-  margin: 25px 0 15px;
-}
-.home__hero {
-  align-items: center;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(168, 85, 247, 0.16));
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 28px;
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  padding: 24px;
-}
-
-.home__eyebrow {
-  color: #93c5fd;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.home__sorts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 20px 0;
-}
-
-@media (max-width: 720px) {
-  .home {
-    padding: 16px;
-  }
-
-  .home__hero {
-    align-items: stretch;
-    flex-direction: column;
-    border-radius: 20px;
-  }
-
-  .home__hero button,
-  .home__sorts button {
-    width: 100%;
-  }
-}
+.home h1 { margin: 4px 0 12px; font-size: clamp(2rem, 7vw, 4.25rem); letter-spacing: -0.05em; line-height: 1; text-align: left; }
+.home p { color: var(--text-secondary); }
+.home__hero { align-items: center; background: linear-gradient(135deg, rgba(37, 99, 235, .24), rgba(192, 132, 252, .14)); border: 1px solid var(--border); border-radius: 28px; box-shadow: var(--shadow); display: flex; gap: 20px; justify-content: space-between; margin-bottom: 22px; padding: clamp(20px, 4vw, 34px); }
+.home__eyebrow { color: #93c5fd; font-size: .78rem; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.home__sorts { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.home__sorts button { background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary); min-height: 42px; }
+@media (max-width: 720px) { .home__hero { align-items: stretch; flex-direction: column; border-radius: 22px; } .home__hero button, .home__sorts button { flex: 1 1 140px; } }

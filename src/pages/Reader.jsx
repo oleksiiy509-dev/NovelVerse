@@ -2,41 +2,45 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapter, syncReadingProgress, userKey, readList, writeList } from "../lib/userFeatures";
+import "../styles/Reader.css";
+
+const defaultSettings = { fontSize: 20, lineHeight: 1.9, textWidth: 760, theme: "dark" };
+
+function getReaderSettings() {
+  const legacyDark = localStorage.getItem("readerDarkMode");
+  const saved = JSON.parse(localStorage.getItem("readerSettings") || "null");
+  return {
+    ...defaultSettings,
+    fontSize: Number(localStorage.getItem("readerFontSize")) || saved?.fontSize || defaultSettings.fontSize,
+    lineHeight: saved?.lineHeight || defaultSettings.lineHeight,
+    textWidth: saved?.textWidth || defaultSettings.textWidth,
+    theme: saved?.theme || (legacyDark === "false" ? "light" : defaultSettings.theme),
+  };
+}
 
 function Reader() {
   const { id } = useParams();
   const navigate = useNavigate();
-
   const [chapter, setChapter] = useState(null);
   const [user, setUser] = useState(null);
   const [bookmarked, setBookmarked] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [settings, setSettings] = useState(getReaderSettings);
 
-  const [fontSize, setFontSize] = useState(() => {
-    return Number(localStorage.getItem("readerFontSize")) || 20;
-  });
-
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem("readerDarkMode") !== "false";
-  });
+  useEffect(() => { loadChapter(); }, [id]);
 
   useEffect(() => {
-    loadChapter();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    localStorage.setItem("readerSettings", JSON.stringify(settings));
+    localStorage.setItem("readerFontSize", settings.fontSize);
+    localStorage.setItem("readerDarkMode", settings.theme === "dark");
+  }, [settings]);
 
   useEffect(() => {
     if (!chapter) return;
-
     const saved = localStorage.getItem(`scroll_${id}`);
-
-    if (saved) {
-      setTimeout(() => {
-        window.scrollTo(0, Number(saved));
-      }, 100);
-    } else {
-      window.scrollTo(0, 0);
-    }
+    setTimeout(() => window.scrollTo(0, saved ? Number(saved) : 0), 100);
   }, [chapter, id]);
 
   useEffect(() => {
@@ -45,26 +49,22 @@ function Reader() {
       localStorage.setItem(`scroll_${id}`, window.scrollY);
       if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress });
     }
-
     window.addEventListener("scroll", saveScroll);
-
-    return () => {
-      window.removeEventListener("scroll", saveScroll);
-    };
+    return () => window.removeEventListener("scroll", saveScroll);
   }, [id, chapter, user]);
 
   async function loadChapter() {
+    setLoading(true);
+    setErrorMessage("");
     const currentUser = await getCurrentUser(supabase);
     setUser(currentUser);
-    const { data, error } = await supabase
-      .from("chapters")
-      .select("*")
-      .eq("id", id)
-      .single();
-
+    const { data, error } = await supabase.from("chapters").select("*").eq("id", id).single();
     const cached = getOfflineChapter(id);
+
     if (error && !cached) {
       console.error(error);
+      setErrorMessage(error.message || "Глава недоступна. Спробуйте пізніше або перевірте офлайн-кеш.");
+      setLoading(false);
       return;
     }
 
@@ -74,77 +74,27 @@ function Reader() {
     const bookmarks = readList(userKey(currentUser?.id, "bookmarks"));
     setBookmarked(bookmarks.some((item) => item.chapter_id === activeChapter.id));
     if (data) saveOfflineChapter(data);
-
-    localStorage.setItem(
-      `lastChapter_${activeChapter.novel_id}`,
-      activeChapter.id
-    );
+    localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
 
     const readKey = `readChapters_${activeChapter.novel_id}`;
+    const read = JSON.parse(localStorage.getItem(readKey) || "[]");
+    if (!read.includes(activeChapter.id)) localStorage.setItem(readKey, JSON.stringify([...read, activeChapter.id]));
 
-    const read = JSON.parse(
-      localStorage.getItem(readKey) || "[]"
-    );
-
-    if (!read.includes(activeChapter.id)) {
-      read.push(activeChapter.id);
-
-      localStorage.setItem(
-        readKey,
-        JSON.stringify(read)
-      );
-    }
-
-    await addReadingHistory(supabase, currentUser, {
-      novel_id: activeChapter.novel_id,
-      chapter_id: activeChapter.id,
-      chapter_title: activeChapter.title,
-    });
+    await addReadingHistory(supabase, currentUser, { novel_id: activeChapter.novel_id, chapter_id: activeChapter.id, chapter_title: activeChapter.title });
+    setLoading(false);
   }
 
   async function previousChapter() {
     if (!chapter) return;
-
-    const { data } = await supabase
-      .from("chapters")
-      .select("id")
-      .eq("novel_id", chapter.novel_id)
-      .lt("number", chapter.number)
-      .order("number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (data) {
-      navigate(`/reader/${data.id}`);
-    }
+    const { data } = await supabase.from("chapters").select("id").eq("novel_id", chapter.novel_id).lt("number", chapter.number).order("number", { ascending: false }).limit(1).maybeSingle();
+    if (data) navigate(`/reader/${data.id}`);
   }
 
   async function nextChapter() {
     if (!chapter) return;
-
-    const { data } = await supabase
-      .from("chapters")
-      .select("id")
-      .eq("novel_id", chapter.novel_id)
-      .gt("number", chapter.number)
-      .order("number", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (data) {
-      navigate(`/reader/${data.id}`);
-    }
+    const { data } = await supabase.from("chapters").select("id").eq("novel_id", chapter.novel_id).gt("number", chapter.number).order("number", { ascending: true }).limit(1).maybeSingle();
+    if (data) navigate(`/reader/${data.id}`);
   }
-
-  function changeFontSize(size) {
-    setFontSize(size);
-    localStorage.setItem(
-      "readerFontSize",
-      size
-    );
-  }
-
-
 
   async function toggleBookmark() {
     if (!chapter) return;
@@ -168,139 +118,31 @@ function Reader() {
     alert("Главу збережено для офлайн-читання.");
   }
 
-  function toggleDarkMode() {
-    const value = !darkMode;
-
-    setDarkMode(value);
-
-    localStorage.setItem(
-      "readerDarkMode",
-      value
-    );
-  }
-
-  if (!chapter) {
-    return (
-      <div
-        style={{
-          color: "white",
-          padding: 30,
-        }}
-      >
-        Завантаження...
-      </div>
-    );
-  }
+  if (loading) return <main className="reader reader--dark"><div className="reader__shell"><div className="skeleton reader__skeleton" /></div></main>;
+  if (errorMessage) return <main className="reader reader--dark"><div className="reader__shell"><div className="error-state">{errorMessage}</div></div></main>;
 
   return (
-    <div
-      style={{
-        maxWidth: "900px",
-        margin: "30px auto",
-        padding: "20px",
-        paddingBottom: "120px",
-        minHeight: "100vh",
-        background: darkMode
-          ? "#111827"
-          : "#ffffff",
-        color: darkMode
-          ? "#ffffff"
-          : "#111827",
-        transition: "0.3s",
-      }}
-    >      <button
-        onClick={() => navigate(`/novel/${chapter.novel_id}`)}
-        style={{
-          marginBottom: "20px",
-          padding: "10px 18px",
-          cursor: "pointer",
-        }}
-      >
-        ⬅ До списку глав
-      </button>
-
-      <h1
-        style={{
-          marginBottom: "20px",
-        }}
-      >
-        Глава {chapter.number}: {chapter.title}
-      </h1>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "10px",
-          flexWrap: "wrap",
-          marginBottom: "30px",
-        }}
-      >
-        <button onClick={() => changeFontSize(16)}>
-          A-
-        </button>
-
-        <button onClick={() => changeFontSize(20)}>
-          A
-        </button>
-
-        <button onClick={() => changeFontSize(24)}>
-          A+
-        </button>
-
-        <button onClick={() => changeFontSize(28)}>
-          A++
-        </button>
-
-        <button onClick={toggleBookmark}>{bookmarked ? "🔖 Закладку додано" : "🔖 Закладка"}</button>
-
-        <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
-
-        <button onClick={toggleDarkMode}>
-          {darkMode
-            ? "☀️ Світла тема"
-            : "🌙 Темна тема"}
-        </button>
+    <main className={`reader reader--${settings.theme}`}>
+      <div className="reader__shell" style={{ maxWidth: `${settings.textWidth}px` }}>
+        <button className="reader__back" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>⬅ До списку глав</button>
+        <header className="reader__header">
+          <span>Глава {chapter.number}</span>
+          <h1>{chapter.title}</h1>
+        </header>
+        <section className="reader__settings" aria-label="Налаштування читання">
+          <label>Розмір <input type="range" min="16" max="30" value={settings.fontSize} onChange={(e) => setSettings({ ...settings, fontSize: Number(e.target.value) })} /></label>
+          <label>Інтервал <input type="range" min="1.5" max="2.4" step="0.1" value={settings.lineHeight} onChange={(e) => setSettings({ ...settings, lineHeight: Number(e.target.value) })} /></label>
+          <label>Ширина <input type="range" min="560" max="960" step="20" value={settings.textWidth} onChange={(e) => setSettings({ ...settings, textWidth: Number(e.target.value) })} /></label>
+          <select value={settings.theme} onChange={(e) => setSettings({ ...settings, theme: e.target.value })} aria-label="Тема читання">
+            <option value="light">Світла</option><option value="dark">Темна</option><option value="sepia">Sepia</option>
+          </select>
+          <button onClick={toggleBookmark}>{bookmarked ? "🔖 Додано" : "🔖 Закладка"}</button>
+          <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
+        </section>
+        <article className="reader__content" style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }}>{chapter.content}</article>
+        <nav className="reader__chapter-nav"><button onClick={previousChapter}>⬅ Попередня</button><button onClick={nextChapter}>Наступна ➡</button></nav>
       </div>
-
-      <div
-        style={{
-          whiteSpace: "pre-wrap",
-          lineHeight: "2",
-          fontSize: `${fontSize}px`,
-          marginBottom: "40px",
-        }}
-      >
-        {chapter.content}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "20px",
-        }}
-      >
-        <button
-          onClick={previousChapter}
-          style={{
-            padding: "10px 20px",
-            cursor: "pointer",
-          }}
-        >
-          ⬅ Попередня
-        </button>
-
-        <button
-          onClick={nextChapter}
-          style={{
-            padding: "10px 20px",
-            cursor: "pointer",
-          }}
-        >
-          Наступна ➡
-        </button>
-      </div>
-    </div>
+    </main>
   );
 }
 
