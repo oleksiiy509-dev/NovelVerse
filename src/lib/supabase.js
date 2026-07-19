@@ -129,6 +129,25 @@ export const supabase = {
     async signOut() { localStorage.removeItem("supabase_user"); localStorage.removeItem("supabase_token"); return authResponse(null); },
   },
   storage: {
-    from(bucket) { return { async upload(path, file) { const response = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}/${path}`, { method: "POST", headers: { apikey: supabaseKey, Authorization: headers().Authorization }, body: file }); if (response.ok) return { data: { path }, error: null }; const error = normalizeError(await response.json().catch(() => ({ message: response.statusText })), response.status); if (error.expiredSession) clearExpiredAccessToken(); return { data: null, error }; }, getPublicUrl(path) { return { data: { publicUrl: `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}` } }; } }; },
+    from(bucket) {
+      return {
+        async upload(path, file) {
+          const response = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}/${path}`, {
+            method: "POST",
+            headers: { apikey: supabaseKey, Authorization: headers().Authorization },
+            body: file,
+          });
+
+          if (response.ok) return { data: { path }, error: null };
+
+          const error = normalizeError(await response.json().catch(() => ({ message: response.statusText })), response.status);
+          if (error.expiredSession) clearExpiredAccessToken();
+          return { data: null, error };
+        },
+        getPublicUrl(path) {
+          return { data: { publicUrl: `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}` } };
+        },
+      };
+    },
   },
 };
