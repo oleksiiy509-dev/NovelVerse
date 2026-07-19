@@ -13,3 +13,4 @@
 .library-card__actions button:last-child { background: rgba(239,68,68,.16); border: 1px solid rgba(248,113,113,.28); color: #fecaca; }
 @keyframes library-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 620px) { .library-card { grid-template-columns: 72px minmax(0, 1fr); } .library-card img { height: 108px; width: 72px; } .library-card__actions { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; min-width: 0; } }
+.library__downloads-link{margin-top:12px;border:1px solid rgba(232,194,111,.35);border-radius:14px;padding:10px 14px;background:#172741;color:#f4c76b;font-weight:800}

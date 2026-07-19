@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
+import { formatBytes, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram } from "../lib/telegram";
 import { useTelegramMainButton } from "../hooks/useTelegram";
 import defaultCover from "../assets/default-cover.svg";
@@ -132,6 +133,10 @@ function Novel() {
   const [chapterSearch, setChapterSearch] = useState("");
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(true);
+  const [downloadedCount, setDownloadedCount] = useState(0);
+  const [novelDownloading, setNovelDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+  const cancelDownloadRef = useRef(false);
 
   const continueReading = () => {
     const last = localStorage.getItem(`lastChapter_${id}`);
@@ -152,7 +157,7 @@ function Novel() {
     setReadChapters(JSON.parse(localStorage.getItem(`readChapters_${id}`) || "[]"));
     const loadedNovel = await loadNovel();
     if (currentUser) await checkLibrary(currentUser);
-    await Promise.all([loadChapters(), loadRatings(currentUser), loadComments({ page: 0, reset: true }), loadRecommendations(loadedNovel)]);
+    await Promise.all([loadChapters(), loadRatings(currentUser), loadComments({ page: 0, reset: true }), loadRecommendations(loadedNovel), refreshDownloadCount()]);
   }
 
   async function loadNovel() {
@@ -166,6 +171,11 @@ function Novel() {
     const loadedNovel = { ...data, views: newViews };
     setNovel(loadedNovel);
     return loadedNovel;
+  }
+
+  async function refreshDownloadCount() {
+    const rows = await getDownloadedNovelChapters(id).catch(() => []);
+    setDownloadedCount(rows.length);
   }
 
   async function loadChapters() {
@@ -282,6 +292,43 @@ function Novel() {
     await supabase.from("novels").update({ bookmarks }).eq("id", id);
     setNovel({ ...novel, bookmarks });
     setSaved(true);
+  }
+
+
+  async function downloadNovel() {
+    if (!chapters.length || novelDownloading) return;
+    const roughSize = chapters.reduce((sum, chapter) => sum + (chapter.content?.length || 60000), 0);
+    if (roughSize > 5 * 1024 * 1024 && !window.confirm(`Ця новела може зайняти приблизно ${formatBytes(roughSize)}. Продовжити?`)) return;
+    setNovelDownloading(true);
+    setDownloadError("");
+    cancelDownloadRef.current = false;
+    try {
+      const existing = new Set((await getDownloadedNovelChapters(id)).map((item) => item.chapter_id));
+      for (const chapter of chapters) {
+        if (cancelDownloadRef.current) break;
+        if (existing.has(chapter.id)) continue;
+        let full = chapter;
+        if (!full.content) {
+          const { data, error } = await supabase.from("chapters").select("*").eq("id", chapter.id).single();
+          if (error) throw error;
+          full = data;
+        }
+        await saveDownloadedChapter(full, novel);
+        existing.add(chapter.id);
+        setDownloadedCount(existing.size);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+    } catch (error) {
+      setDownloadError(error.message || "Не вдалося завантажити новелу.");
+    } finally {
+      setNovelDownloading(false);
+      refreshDownloadCount();
+    }
+  }
+
+  function cancelNovelDownload() {
+    cancelDownloadRef.current = true;
+    setNovelDownloading(false);
   }
 
   function shareNovel() {
@@ -428,7 +475,9 @@ function Novel() {
             <button onClick={addToLibrary} disabled={saved} className={saved ? "novel-save novel-save--saved" : "novel-save"}>{saved ? "💖 Bookmarked" : "❤️ Bookmark"}</button>
             <button onClick={() => commentsRef.current?.scrollIntoView({ behavior: "smooth" })} className="novel-rate">⭐ Rate</button>
             <button onClick={shareNovel} className="novel-share">🔗 Share</button>
+            <button onClick={downloadNovel} disabled={!chapters.length || novelDownloading}>⬇️ Завантажити новелу</button>
           </div>
+          <div className="novel-download-box"><strong>{downloadedCount}/{chapters.length} глав</strong><span>{chapters.length ? Math.round((downloadedCount / chapters.length) * 100) : 0}% завантажено</span><div className="novel-progress"><span style={{ width: `${chapters.length ? Math.round((downloadedCount / chapters.length) * 100) : 0}%` }} /></div>{novelDownloading && <button onClick={cancelNovelDownload}>Скасувати</button>}{downloadError && <p>{downloadError}</p>}</div>
         </div>
       </section>
 

@@ -72,6 +72,7 @@ function Library() {
       <header className="library__header">
         <h1>📚 Моя бібліотека</h1>
         <p>Збережені новели з швидким доступом до читання.</p>
+        <button className="library__downloads-link" onClick={() => navigate("/downloads")}>⬇️ Завантаження</button>
       </header>
 
       {novels.length === 0 ? (
