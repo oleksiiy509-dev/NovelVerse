@@ -65,13 +65,7 @@ export function splitIntoChapters(text = "", fallbackTitle = "Chapter") {
 
 export function buildNovelMetadata(form) {
   const title = form.title || "Untitled Novel";
-  const tags = [form.genres, form.tags].filter(Boolean).join(", ");
-  const description = form.description?.trim() || `${title} by ${form.author || "Unknown author"}. ${tags ? `Themes: ${tags}.` : "Add a synopsis before publishing."}`;
-  return {
-    slug: slugify(title),
-    description,
-    meta_title: `${title}${form.author ? ` by ${form.author}` : ""}`,
-    meta_description: description.slice(0, 155),
-    keywords: tags || title,
-  };
+  const genres = form.genres?.trim();
+  const description = form.description?.trim() || `${title} by ${form.author || "Unknown author"}. ${genres ? `Genres: ${genres}.` : "Add a synopsis before publishing."}`;
+  return { description };
 }
