@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
@@ -7,516 +7,297 @@ import { useTelegramMainButton } from "../hooks/useTelegram";
 import defaultCover from "../assets/default-cover.svg";
 import "../styles/Novel.css";
 
-
 function splitPills(value = "") {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+function formatNumber(value = 0) {
+  return new Intl.NumberFormat("uk-UA", { notation: value > 9999 ? "compact" : "standard" }).format(value || 0);
+}
+
+function getChapterNumber(chapter, index) {
+  return Number(chapter.number || index + 1);
+}
+
 function chapterRanges(chapters) {
   const groups = [];
-  for (let i = 0; i < chapters.length; i += 10) {
-    const chunk = chapters.slice(i, i + 10);
-    groups.push({ label: `${chunk[0].number}–${chunk[chunk.length - 1].number}`, chapters: chunk });
+  if (!chapters.length) return groups;
+  const maxNumber = Math.max(...chapters.map((chapter, index) => getChapterNumber(chapter, index)));
+  for (let start = 1; start <= maxNumber; start += 50) {
+    const end = start + 49;
+    const groupChapters = chapters.filter((chapter, index) => {
+      const number = getChapterNumber(chapter, index);
+      return number >= start && number <= end;
+    });
+    if (groupChapters.length) groups.push({ label: `${start}–${end}`, chapters: groupChapters });
   }
   return groups;
+}
+
+function NovelSkeleton() {
+  return (
+    <div className="novel-page page-shell">
+      <div className="skeleton novel-back-skeleton" />
+      <section className="novel-hero-card novel-hero-card--loading">
+        <div>
+          <div className="skeleton novel-line novel-line--short" />
+          <div className="skeleton novel-line novel-line--title" />
+          <div className="skeleton novel-line" />
+          <div className="skeleton novel-line" />
+          <div className="novel-skeleton-pills"><span className="skeleton" /><span className="skeleton" /><span className="skeleton" /></div>
+        </div>
+        <div className="skeleton novel-cover" />
+      </section>
+      <div className="skeleton novel-loading" />
+    </div>
+  );
 }
 
 function Novel() {
   const { id } = useParams();
   const navigate = useNavigate();
-
+  const commentsRef = useRef(null);
   const [user, setUser] = useState(null);
-
   const [novel, setNovel] = useState(null);
-
   const [chapters, setChapters] = useState([]);
-
   const [readChapters, setReadChapters] = useState([]);
-
   const [saved, setSaved] = useState(false);
-
   const [comments, setComments] = useState([]);
-
   const [comment, setComment] = useState("");
-
   const [sending, setSending] = useState(false);
-
   const [rating, setRating] = useState(5);
-
   const [averageRating, setAverageRating] = useState(0);
-
   const [ratingCount, setRatingCount] = useState(0);
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [commentSort, setCommentSort] = useState("newest");
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editMessage, setEditMessage] = useState("");
+  const [editRating, setEditRating] = useState(5);
+  const [chapterSearch, setChapterSearch] = useState("");
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(true);
 
-  useTelegramMainButton(novel ? {
-    text: "Read novel",
-    onClick: () => {
-      const last = localStorage.getItem(`lastChapter_${id}`);
-      if (last) navigate(`/reader/${last}`);
-      else if (chapters.length > 0) navigate(`/reader/${chapters[0].id}`);
-    },
-    disabled: !chapters.length,
-  } : null);
+  const continueReading = () => {
+    const last = localStorage.getItem(`lastChapter_${id}`);
+    if (last) navigate(`/reader/${last}`);
+    else if (chapters.length > 0) navigate(`/reader/${chapters[0].id}`);
+  };
+
+  useTelegramMainButton(novel ? { text: "Continue reading", onClick: continueReading, disabled: !chapters.length } : null);
 
   useEffect(() => {
     init();
   }, [id]);
 
   async function init() {
-    const user = await getCurrentUser(supabase);
+    setRecommendationsLoading(true);
+    const currentUser = await getCurrentUser(supabase);
+    setUser(currentUser);
+    setReadChapters(JSON.parse(localStorage.getItem(`readChapters_${id}`) || "[]"));
+    const loadedNovel = await loadNovel();
+    if (currentUser) await checkLibrary(currentUser);
+    await Promise.all([loadChapters(), loadComments(), loadRecommendations(loadedNovel)]);
+  }
 
-    setUser(user);
-
-    const read = JSON.parse(
-      localStorage.getItem(`readChapters_${id}`) || "[]"
-    );
-
-    setReadChapters(read);
-
-    await loadNovel();
-
-    if (user) {
-      await checkLibrary(user);
+  async function loadNovel() {
+    const { data, error } = await supabase.from("novels").select("*").eq("id", id).single();
+    if (error) {
+      console.error(error);
+      return null;
     }
-
-    await loadChapters();
-
-    await loadComments();
+    const newViews = (data.views || 0) + 1;
+    await supabase.from("novels").update({ views: newViews }).eq("id", id);
+    const loadedNovel = { ...data, views: newViews };
+    setNovel(loadedNovel);
+    return loadedNovel;
   }
 
- async function loadNovel() {
-  const { data, error } = await supabase
-    .from("novels")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    console.error(error);
-    return;
+  async function loadChapters() {
+    const { data, error } = await supabase.from("chapters").select("*").eq("novel_id", id).order("number", { ascending: true });
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setChapters(data || []);
   }
 
-  const newViews = (data.views || 0) + 1;
-
-  await supabase
-    .from("novels")
-    .update({
-      views: newViews,
-    })
-    .eq("id", id);
-
-  setNovel({
-    ...data,
-    views: newViews,
-  });
-}
-
-async function loadChapters() {
-  const { data, error } = await supabase
-    .from("chapters")
-    .select("*")
-    .eq("novel_id", id)
-    .order("number", {
-      ascending: true,
-    });
-
-  if (error) {
-    console.error(error);
-    return;
+  async function loadComments() {
+    const { data, error } = await supabase.from("comments").select("*").eq("novel_id", id).order("created_at", { ascending: false });
+    if (error) {
+      console.error(error);
+      return;
+    }
+    const list = data || [];
+    setComments(list);
+    const rated = list.filter((item) => Number(item.rating));
+    setAverageRating(rated.length ? rated.reduce((sum, item) => sum + Number(item.rating || 0), 0) / rated.length : 0);
+    setRatingCount(rated.length);
   }
 
-  setChapters(data || []);
-}
-
-async function loadComments() {
-  const { data, error } = await supabase
-    .from("comments")
-    .select("*")
-    .eq("novel_id", id)
-    .order("created_at", {
-      ascending: false,
-    });
-
-  if (error) {
-    console.error(error);
-    return;
+  async function loadRecommendations(sourceNovel) {
+    if (!sourceNovel) {
+      setRecommendations([]);
+      setRecommendationsLoading(false);
+      return;
+    }
+    const { data, error } = await supabase.from("novels").select("*").order("views", { ascending: false }).limit(24);
+    if (error) console.error(error);
+    const genres = splitPills(sourceNovel.genres).map((genre) => genre.toLowerCase());
+    const scored = (data || [])
+      .filter((item) => String(item.id) !== String(id))
+      .map((item) => {
+        const itemGenres = splitPills(item.genres).map((genre) => genre.toLowerCase());
+        const sameGenreCount = itemGenres.filter((genre) => genres.includes(genre)).length;
+        const sameAuthor = item.author && sourceNovel.author && item.author.toLowerCase() === sourceNovel.author.toLowerCase();
+        return { ...item, recommendationReason: sameAuthor ? "Same author" : sameGenreCount ? "Same genres" : "Similar novel", score: sameGenreCount + (sameAuthor ? 5 : 0) + (item.views || 0) / 100000 };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+    setRecommendations(scored);
+    setRecommendationsLoading(false);
   }
-
-  const list = data || [];
-  setComments(list);
-
-  if (list.length > 0) {
-    const total = list.reduce(
-      (sum, item) => sum + Number(item.rating || 0),
-      0
-    );
-
-    setAverageRating(total / list.length);
-    setRatingCount(list.length);
-  } else {
-    setAverageRating(0);
-    setRatingCount(0);
-  }
-}
 
   async function checkLibrary(currentUser) {
-  if (currentUser?.app_metadata?.provider === "telegram") {
-    setSaved(readList(userKey(currentUser.id, "library")).some((item) => item.novel_id === id));
-    return;
-  }
-  const { data, error } = await supabase
-    .from("library")
-    .select("id")
-    .eq("user_id", currentUser.id)
-    .eq("novel_id", id)
-    .maybeSingle();
-
-  if (error) {
-    console.error(error);
-    return;
+    if (currentUser?.app_metadata?.provider === "telegram") {
+      setSaved(readList(userKey(currentUser.id, "library")).some((item) => item.novel_id === id));
+      return;
+    }
+    const { data, error } = await supabase.from("library").select("id").eq("user_id", currentUser.id).eq("novel_id", id).maybeSingle();
+    if (error) console.error(error);
+    setSaved(!!data);
   }
 
-  setSaved(!!data);
-}
-
-async function addToLibrary() {
-  if (!user) {
-    navigate("/login");
-    return;
-  }
-
-  if (saved) {
-    alert("Новела вже у бібліотеці.");
-    return;
-  }
-
-  if (user.app_metadata?.provider === "telegram") {
-    const key = userKey(user.id, "library");
-    writeList(key, [{ novel_id: id, saved_at: new Date().toISOString() }, ...readList(key).filter((item) => item.novel_id !== id)]);
+  async function addToLibrary() {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    if (saved) return;
+    if (user.app_metadata?.provider === "telegram") {
+      const key = userKey(user.id, "library");
+      writeList(key, [{ novel_id: id, saved_at: new Date().toISOString() }, ...readList(key).filter((item) => item.novel_id !== id)]);
+      setSaved(true);
+      return;
+    }
+    const { error } = await supabase.from("library").insert({ user_id: user.id, novel_id: id });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    const bookmarks = (novel.bookmarks || 0) + 1;
+    await supabase.from("novels").update({ bookmarks }).eq("id", id);
+    setNovel({ ...novel, bookmarks });
     setSaved(true);
-    return;
   }
 
-  const { error } = await supabase
-    .from("library")
-    .insert({
-      user_id: user.id,
-      novel_id: id,
-    });
-
-  if (error) {
-    alert(error.message);
-    return;
+  function shareNovel() {
+    shareToTelegram({ title: novel.title, text: `Читайте ${novel.title} у NovelVerse`, url: window.location.href });
   }
 
-  const bookmarks = (novel.bookmarks || 0) + 1;
-
-  await supabase
-    .from("novels")
-    .update({
-      bookmarks,
-    })
-    .eq("id", id);
-
-  setNovel({
-    ...novel,
-    bookmarks,
-  });
-
-  setSaved(true);
-}
-
-function shareNovel() {
-  shareToTelegram({ title: novel.title, text: `Читайте ${novel.title} у NovelVerse`, url: window.location.href });
-}
-
-async function deleteComment(commentId) {
-  if (!user) return;
-
-  const ok = window.confirm("Видалити коментар?");
-
-  if (!ok) return;
-
-  const { error: deleteError } = await supabase
-    .from("comments")
-    .delete()
-    .eq("id", commentId)
-    .eq("user_id", user.id);
-
-  if (deleteError) {
-    alert(deleteError.message);
-    return;
+  function markChapterRead(chapterId) {
+    const next = readChapters.includes(chapterId) ? readChapters.filter((item) => item !== chapterId) : [...readChapters, chapterId];
+    setReadChapters(next);
+    localStorage.setItem(`readChapters_${id}`, JSON.stringify(next));
   }
 
-  await loadComments();
-}
-
-async function sendComment() {
-  if (!user) {
-    navigate("/login");
-    return;
+  async function deleteComment(commentId) {
+    if (!user || !window.confirm("Delete this comment?")) return;
+    const { error } = await supabase.from("comments").delete().eq("id", commentId).eq("user_id", user.id);
+    if (error) alert(error.message);
+    else await loadComments();
   }
 
-  if (!comment.trim()) {
-    alert("Напишіть коментар.");
-    return;
+  async function saveCommentEdit(commentId) {
+    if (!editMessage.trim()) return;
+    const { error } = await supabase.from("comments").update({ message: editMessage.trim(), rating: editRating }).eq("id", commentId).eq("user_id", user.id);
+    if (error) alert(error.message);
+    else {
+      setEditingCommentId(null);
+      await loadComments();
+    }
   }
 
-  setSending(true);
-
-  const { error: insertError } = await supabase
-    .from("comments")
-    .insert({
-      novel_id: id,
-      user_id: user.id,
-      username: user.user_metadata?.username || user.email,
-      message: comment.trim(),
-      rating,
-    });
-
-  setSending(false);
-
-  if (insertError) {
-    alert(insertError.message);
-    return;
+  async function sendComment() {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    if (!comment.trim()) {
+      alert("Write a comment first.");
+      return;
+    }
+    setSending(true);
+    const { error } = await supabase.from("comments").insert({ novel_id: id, user_id: user.id, username: user.user_metadata?.username || user.email || "NovelVerse reader", message: comment.trim(), rating });
+    setSending(false);
+    if (error) alert(error.message);
+    else {
+      setComment("");
+      setRating(5);
+      await loadComments();
+    }
   }
 
-  setComment("");
-  setRating(5);
+  const filteredChapters = useMemo(() => {
+    const query = chapterSearch.trim().toLowerCase();
+    if (!query) return chapters;
+    return chapters.filter((chapter) => String(chapter.number).includes(query) || chapter.title?.toLowerCase().includes(query));
+  }, [chapterSearch, chapters]);
+  const ranges = useMemo(() => chapterRanges(filteredChapters), [filteredChapters]);
+  const sortedComments = useMemo(() => [...comments].sort((a, b) => commentSort === "highest" ? Number(b.rating || 0) - Number(a.rating || 0) : new Date(b.created_at) - new Date(a.created_at)), [comments, commentSort]);
+  const genres = splitPills(novel?.genres);
+  const readPercent = chapters.length ? Math.round((readChapters.length / chapters.length) * 100) : 0;
+  const lastUpdated = novel?.updated_at || chapters.at(-1)?.created_at || novel?.created_at;
 
-  await loadComments();
-}
-
-  const ranges = useMemo(() => chapterRanges(chapters), [chapters]);
-
-  if (!novel) return <div className="novel-page page-shell"><div className="skeleton novel-loading" /></div>;
+  if (!novel) return <NovelSkeleton />;
 
   return (
     <div className="novel-page page-shell">
-      <button className="novel-back" onClick={() => navigate(-1)}>⬅ Назад</button>
+      <button className="novel-back" onClick={() => navigate(-1)}>← Back</button>
       <section className="novel-hero-card">
+        <img className="novel-cover" loading="eager" src={novel.image || novel.cover_url || defaultCover} alt={novel.title} onError={(event) => { event.currentTarget.src = defaultCover; }} />
         <div className="novel-hero-card__content">
           <span className="novel-id">Novel ID #{novel.id}</span>
           <h1>{novel.title}</h1>
-          <p className="novel-rating">{"★".repeat(Math.round(averageRating))}{"☆".repeat(5 - Math.round(averageRating))}<span>{averageRating.toFixed(1)} / 5 ({ratingCount} оцінок)</span></p>
-          <p className="novel-author">✍️ {novel.author}</p>
-          <div className="novel-stats"><span>⭐ {novel.rating}</span><span>📖 {chapters.length} глав</span><span>👁 {novel.views || 0}</span><span>❤️ {novel.bookmarks || 0}</span><span className="novel-status">{novel.status}</span></div>
-          <div className="novel-pills">{splitPills(novel.genres).map((genre) => <span key={genre}>{genre}</span>)}{splitPills(novel.tags).map((tag) => <span className="novel-pill--tag" key={tag}>{tag}</span>)}</div>
-          <p className="novel-description">{novel.description}</p>
+          <p className="novel-author">✍️ {novel.author || "Unknown author"}</p>
+          <div className="novel-meta-grid">
+            <span>⭐ {averageRating.toFixed(1)} / 5 ({ratingCount})</span><span>👁 {formatNumber(novel.views)}</span><span>❤️ {formatNumber(novel.bookmarks)}</span><span>📌 {novel.status || "Ongoing"}</span><span>🕒 {lastUpdated ? new Date(lastUpdated).toLocaleDateString() : "No updates yet"}</span>
+          </div>
+          <div className="novel-pills">{genres.map((genre) => <span key={genre}>{genre}</span>)}</div>
           <div className="novel-actions">
-            <button
-              onClick={() => {
-                const last = localStorage.getItem(`lastChapter_${id}`);
-
-                if (last) {
-                  navigate(`/reader/${last}`);
-                } else if (chapters.length > 0) {
-                  navigate(`/reader/${chapters[0].id}`);
-                }
-              }}
-
-            >
-              📖 Продовжити читання
-            </button>
-
-            <button
-              onClick={addToLibrary}
-              disabled={saved}
-className={saved ? "novel-save novel-save--saved" : "novel-save"}
-            >
-              {saved ? "💖 У бібліотеці" : "❤️ В бібліотеку"}
-            </button>
-            <button onClick={shareNovel} className="novel-share">📤 Telegram</button>
+            <button onClick={continueReading} disabled={!chapters.length}>📖 Continue reading</button>
+            <button onClick={addToLibrary} disabled={saved} className={saved ? "novel-save novel-save--saved" : "novel-save"}>{saved ? "💖 Bookmarked" : "❤️ Bookmark"}</button>
+            <button onClick={() => commentsRef.current?.scrollIntoView({ behavior: "smooth" })} className="novel-rate">⭐ Rate</button>
+            <button onClick={shareNovel} className="novel-share">🔗 Share</button>
           </div>
         </div>
-        <img className="novel-cover" src={novel.image || defaultCover} alt={novel.title} onError={(event) => { event.currentTarget.src = defaultCover; }} />
       </section>
 
-      <h2 className="novel-section-title">📚 Список глав</h2>
+      <section className="novel-panel">
+        <div className="novel-section-heading"><h2>Description</h2><button onClick={() => setDescriptionOpen(!descriptionOpen)}>{descriptionOpen ? "Collapse" : "Show full description"}</button></div>
+        <p className={descriptionOpen ? "novel-description novel-description--open" : "novel-description"}>{novel.description || "No description yet."}</p>
+      </section>
 
-{chapters.length === 0 ? (
-  <div className="novel-empty">Глав поки немає.</div>
-) : (
-  <div className="chapter-ranges">
-    {ranges.map((group) => (
-      <details className="chapter-range" key={group.label} open={group === ranges[0]}>
-        <summary>{group.label}<span>{group.chapters.length} глав</span></summary>
-        <div className="chapter-list">
-          {group.chapters.map((chapter) => (
-            <button key={chapter.id} className={readChapters.includes(chapter.id) ? "chapter-row chapter-row--read" : "chapter-row"} onClick={() => { localStorage.setItem(`lastChapter_${id}`, chapter.id); navigate(`/reader/${chapter.id}`); }}>
-              <span><strong>Глава {chapter.number}</strong><small>{chapter.title}</small></span><em>{readChapters.includes(chapter.id) ? "✅" : "📖"}</em>
-            </button>
-          ))}
-        </div>
-      </details>
-    ))}
-  </div>
-)}
+      <section className="novel-stat-grid" aria-label="Novel statistics">
+        <div><strong>{formatNumber(chapters.length)}</strong><span>Total chapters</span></div><div><strong>{formatNumber(novel.readers || novel.views || 0)}</strong><span>Readers</span></div><div><strong>{averageRating.toFixed(1)}</strong><span>Average rating</span></div><div><strong>{formatNumber(novel.bookmarks || 0)}</strong><span>Bookmark count</span></div>
+      </section>
 
-<h2 style={{ marginTop: 50 }}>
-  💬 Коментарі ({comments.length})
-</h2>
+      <section className="novel-panel">
+        <div className="novel-section-heading"><h2>📚 Chapters</h2><span>{readPercent}% read</span></div>
+        <div className="novel-progress"><span style={{ width: `${readPercent}%` }} /></div>
+        <input className="chapter-search" value={chapterSearch} onChange={(event) => setChapterSearch(event.target.value)} placeholder="Search chapter..." />
+        {chapters.length === 0 ? <div className="novel-empty">No chapters yet.</div> : <div className="chapter-ranges">{ranges.map((group, index) => <details className="chapter-range" key={group.label} open={index === 0}><summary>{group.label}<span>{group.chapters.length} chapters</span></summary><div className="chapter-list">{group.chapters.map((chapter) => <div key={chapter.id} className={readChapters.includes(chapter.id) ? "chapter-row chapter-row--read" : "chapter-row"}><button onClick={() => { markChapterRead(chapter.id); localStorage.setItem(`lastChapter_${id}`, chapter.id); navigate(`/reader/${chapter.id}`); }}><span><strong>Chapter {chapter.number}</strong><small>{chapter.title}</small></span></button><button className="chapter-read-toggle" onClick={() => markChapterRead(chapter.id)}>{readChapters.includes(chapter.id) ? "✓ Read" : "Mark read"}</button></div>)}</div></details>)}</div>}
+      </section>
 
-<div
-  style={{
-    background: "#1f2937",
-    padding: 20,
-    borderRadius: 12,
-    marginTop: 20,
-  }}
->
-  <textarea
-  value={comment}
-  onChange={(e) => setComment(e.target.value)}
-  placeholder="Напишіть свій коментар..."
-  rows={4}
-  style={{
-    width: "100%",
-    padding: 12,
-    borderRadius: 10,
-    border: "1px solid #374151",
-    background: "#111827",
-    color: "white",
-    resize: "vertical",
-    boxSizing: "border-box",
-  }}
-/>
+      <section className="novel-panel" ref={commentsRef}>
+        <div className="novel-section-heading"><h2>💬 Comments ({comments.length})</h2><select value={commentSort} onChange={(event) => setCommentSort(event.target.value)}><option value="newest">Newest</option><option value="highest">Highest rated</option></select></div>
+        <div className="comment-form"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment..." rows={4} /><div className="star-row">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setRating(value)} className={value <= rating ? "active" : ""}>★</button>)}</div><button onClick={sendComment} disabled={sending}>{sending ? "Sending..." : "💬 Add comment"}</button></div>
+        <div className="comment-list">{sortedComments.length === 0 ? <div className="novel-empty">No comments yet.</div> : sortedComments.map((item) => <article className="comment-card" key={item.id}><header><strong>👤 {item.username}</strong><span>{new Date(item.created_at).toLocaleString()}</span></header>{editingCommentId === item.id ? <div className="comment-edit"><textarea value={editMessage} onChange={(event) => setEditMessage(event.target.value)} rows={3} /><div className="star-row">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setEditRating(value)} className={value <= editRating ? "active" : ""}>★</button>)}</div><button onClick={() => saveCommentEdit(item.id)}>Save</button><button className="ghost" onClick={() => setEditingCommentId(null)}>Cancel</button></div> : <><div className="comment-rating">{"★".repeat(Number(item.rating || 0))}{"☆".repeat(5 - Number(item.rating || 0))}</div><p>{item.message}</p>{user && item.user_id === user.id && <div className="comment-actions"><button onClick={() => { setEditingCommentId(item.id); setEditMessage(item.message); setEditRating(Number(item.rating || 5)); }}>Edit</button><button onClick={() => deleteComment(item.id)}>Delete</button></div>}</>}</article>)}</div>
+      </section>
 
-<div
-  style={{
-    display: "flex",
-    gap: 8,
-    marginTop: 15,
-    marginBottom: 15,
-  }}
->
-  {[1, 2, 3, 4, 5].map((value) => (
-    <button
-      key={value}
-      type="button"
-      onClick={() => setRating(value)}
-      style={{
-        background: "transparent",
-        border: "none",
-        fontSize: 28,
-        cursor: "pointer",
-        color: value <= rating ? "#facc15" : "#6b7280",
-      }}
-    >
-      ★
-    </button>
-  ))}
-</div>
-
-<button
-  onClick={sendComment}
-  disabled={sending}
-  style={{
-    marginTop: 10,
-    padding: "12px 24px",
-    background: "#2563eb",
-    color: "white",
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer",
-  }}
->
-  {sending ? "Відправка..." : "💬 Надіслати"}
-</button>
-</div>
-
-<div style={{ marginTop: 25 }}>
-  {comments.length === 0 ? (
-    <div
-      style={{
-        background: "#1f2937",
-        padding: 20,
-        borderRadius: 12,
-        textAlign: "center",
-        color: "#9ca3af",
-      }}
-    >
-      Поки що коментарів немає.
-    </div>
-  ) : (
-    comments.map((item) => (
-      <div
-        key={item.id}
-        style={{
-          background: "#1f2937",
-          padding: 16,
-          borderRadius: 12,
-          marginBottom: 15,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <strong>
-            👤 {item.username}
-          </strong>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <span
-              style={{
-                color: "#9ca3af",
-                fontSize: 13,
-              }}
-            >
-              {new Date(item.created_at).toLocaleString()}
-            </span>
-
-            {user && item.user_id === user.id && (
-              <button
-                onClick={() => deleteComment(item.id)}
-                style={{
-                  background: "#dc2626",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 6,
-                  padding: "4px 10px",
-                  cursor: "pointer",
-                }}
-              >
-                🗑
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div
-  style={{
-    marginBottom: 10,
-    color: "#facc15",
-    fontSize: 18,
-  }}
->
-  {"★".repeat(item.rating)}
-  {"☆".repeat(5 - item.rating)}
-</div>
-
-<div
-  style={{
-    whiteSpace: "pre-wrap",
-    lineHeight: 1.6,
-  }}
->
-  {item.message}
-</div>
-      </div>
-    ))
-  )}
-</div>
+      <section className="novel-panel">
+        <div className="novel-section-heading"><h2>✨ Recommendations</h2><span>Similar novels · Same genres · Same author</span></div>
+        {recommendationsLoading ? <div className="recommendation-grid"><div className="skeleton recommendation-card" /><div className="skeleton recommendation-card" /></div> : recommendations.length === 0 ? <div className="novel-empty">No recommendations yet.</div> : <div className="recommendation-grid">{recommendations.map((item) => <button className="recommendation-card" key={item.id} onClick={() => navigate(`/novel/${item.id}`)}><img loading="lazy" src={item.image || item.cover_url || defaultCover} alt="" onError={(event) => { event.currentTarget.src = defaultCover; }} /><strong>{item.title}</strong><span>{item.recommendationReason}</span></button>)}</div>}
+      </section>
     </div>
   );
 }
