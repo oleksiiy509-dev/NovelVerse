@@ -1,20 +1,5 @@
-.login {
-  max-width: 400px;
-  margin: 80px auto;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.login input {
-  padding: 14px;
-  border-radius: var(--radius);
-  border: none;
-}
-
-.login button {
-  padding: 14px;
-  border-radius: var(--radius);
-  border: none;
-  cursor: pointer;
-}
+.login { width: min(420px, calc(100% - 32px)); margin: 80px auto; padding: 30px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 15px; box-shadow: var(--shadow); }
+.login h1 { text-align: center; margin: 0 0 8px; font-size: clamp(1.6rem, 6vw, 2.4rem); }
+.login p { color: var(--text-secondary); margin: 0; }
+.login__secondary { background: var(--surface-2); }
+@media (max-width: 520px) { .login { margin-top: 28px; padding: 20px; } }
