@@ -19,6 +19,54 @@ function getChapterNumber(chapter, index) {
   return Number(chapter.number || index + 1);
 }
 
+
+const COMMENTS_PAGE_SIZE = 20;
+const MAX_REPLY_DEPTH = 2;
+
+function getDisplayName(currentUser) {
+  return currentUser?.user_metadata?.username || currentUser?.user_metadata?.full_name || currentUser?.email || "NovelVerse reader";
+}
+
+function getAvatar(currentUser) {
+  return currentUser?.user_metadata?.avatar_url || currentUser?.user_metadata?.picture || "";
+}
+
+function buildRatingStats(ratings = []) {
+  const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  ratings.forEach((item) => {
+    const value = Number(item.rating || item.value || 0);
+    if (value >= 1 && value <= 5) distribution[value] += 1;
+  });
+  const total = Object.values(distribution).reduce((sum, value) => sum + value, 0);
+  const weighted = Object.entries(distribution).reduce((sum, [star, count]) => sum + Number(star) * count, 0);
+  return { average: total ? weighted / total : 0, count: total, distribution };
+}
+
+function normalizeComment(item, likes = []) {
+  return {
+    ...item,
+    likes_count: Number(item.likes_count ?? item.likes ?? likes.filter((like) => like.comment_id === item.id).length ?? 0),
+    avatar_url: item.avatar_url || item.user_avatar || "",
+    parent_id: item.parent_id || null,
+  };
+}
+
+function nestComments(items = []) {
+  const byId = new Map(items.map((item) => [item.id, { ...item, replies: [] }]));
+  const roots = [];
+  byId.forEach((item) => {
+    if (item.parent_id && byId.has(item.parent_id)) byId.get(item.parent_id).replies.push(item);
+    else roots.push(item);
+  });
+  return roots;
+}
+
+function ratingOrder(sort) {
+  if (sort === "oldest") return { column: "created_at", ascending: true };
+  if (sort === "highest") return { column: "likes_count", ascending: false };
+  return { column: "created_at", ascending: false };
+}
+
 function chapterRanges(chapters) {
   const groups = [];
   if (!chapters.length) return groups;
@@ -57,22 +105,30 @@ function Novel() {
   const { id } = useParams();
   const navigate = useNavigate();
   const commentsRef = useRef(null);
+  const loadMoreRef = useRef(null);
   const [user, setUser] = useState(null);
   const [novel, setNovel] = useState(null);
   const [chapters, setChapters] = useState([]);
   const [readChapters, setReadChapters] = useState([]);
   const [saved, setSaved] = useState(false);
   const [comments, setComments] = useState([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentPage, setCommentPage] = useState(0);
+  const [hasMoreComments, setHasMoreComments] = useState(true);
   const [comment, setComment] = useState("");
+  const [replyTo, setReplyTo] = useState(null);
+  const [isSpoiler, setIsSpoiler] = useState(false);
+  const [revealedSpoilers, setRevealedSpoilers] = useState([]);
+  const [collapsedThreads, setCollapsedThreads] = useState([]);
+  const [likedCommentIds, setLikedCommentIds] = useState([]);
   const [sending, setSending] = useState(false);
-  const [rating, setRating] = useState(5);
-  const [averageRating, setAverageRating] = useState(0);
-  const [ratingCount, setRatingCount] = useState(0);
+  const [userRating, setUserRating] = useState(0);
+  const [ratingStats, setRatingStats] = useState({ average: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [commentSort, setCommentSort] = useState("newest");
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editMessage, setEditMessage] = useState("");
-  const [editRating, setEditRating] = useState(5);
+  const [editSpoiler, setEditSpoiler] = useState(false);
   const [chapterSearch, setChapterSearch] = useState("");
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(true);
@@ -96,7 +152,7 @@ function Novel() {
     setReadChapters(JSON.parse(localStorage.getItem(`readChapters_${id}`) || "[]"));
     const loadedNovel = await loadNovel();
     if (currentUser) await checkLibrary(currentUser);
-    await Promise.all([loadChapters(), loadComments(), loadRecommendations(loadedNovel)]);
+    await Promise.all([loadChapters(), loadRatings(currentUser), loadComments({ page: 0, reset: true }), loadRecommendations(loadedNovel)]);
   }
 
   async function loadNovel() {
@@ -121,17 +177,42 @@ function Novel() {
     setChapters(data || []);
   }
 
-  async function loadComments() {
-    const { data, error } = await supabase.from("comments").select("*").eq("novel_id", id).order("created_at", { ascending: false });
+  async function loadRatings(currentUser = user) {
+    const { data, error } = await supabase.from("novel_ratings").select("*").eq("novel_id", id);
     if (error) {
       console.error(error);
+      setRatingStats({ average: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
+      return;
+    }
+    setRatingStats(buildRatingStats(data || []));
+    const mine = (data || []).find((item) => item.user_id === currentUser?.id);
+    setUserRating(Number(mine?.rating || mine?.value || 0));
+  }
+
+  async function loadComments({ page = commentPage, reset = false } = {}) {
+    setCommentsLoading(true);
+    const sort = ratingOrder(commentSort);
+    const from = page * COMMENTS_PAGE_SIZE;
+    const to = from + COMMENTS_PAGE_SIZE - 1;
+    const { data, error } = await supabase.from("comments").select("*").eq("novel_id", id).order(sort.column, { ascending: sort.ascending }).range(from, to);
+    if (error) {
+      console.error(error);
+      setCommentsLoading(false);
       return;
     }
     const list = data || [];
-    setComments(list);
-    const rated = list.filter((item) => Number(item.rating));
-    setAverageRating(rated.length ? rated.reduce((sum, item) => sum + Number(item.rating || 0), 0) / rated.length : 0);
-    setRatingCount(rated.length);
+    const ids = list.map((item) => item.id);
+    let likes = [];
+    if (ids.length) {
+      const { data: likeData } = await supabase.from("comment_likes").select("*").eq("novel_id", id);
+      likes = likeData || [];
+      setLikedCommentIds(likes.filter((like) => like.user_id === user?.id).map((like) => like.comment_id));
+    }
+    const normalized = list.map((item) => normalizeComment(item, likes));
+    setComments((previous) => reset ? normalized : [...previous, ...normalized.filter((item) => !previous.some((oldItem) => oldItem.id === item.id))]);
+    setHasMoreComments(list.length === COMMENTS_PAGE_SIZE);
+    setCommentPage(page);
+    setCommentsLoading(false);
   }
 
   async function loadRecommendations(sourceNovel) {
@@ -156,6 +237,19 @@ function Novel() {
     setRecommendations(scored);
     setRecommendationsLoading(false);
   }
+
+  useEffect(() => {
+    loadComments({ page: 0, reset: true });
+  }, [commentSort]);
+
+  useEffect(() => {
+    if (!loadMoreRef.current || !hasMoreComments) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !commentsLoading) loadComments({ page: commentPage + 1 });
+    }, { rootMargin: "240px" });
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [commentPage, commentsLoading, hasMoreComments]);
 
   async function checkLibrary(currentUser) {
     if (currentUser?.app_metadata?.provider === "telegram") {
@@ -204,16 +298,16 @@ function Novel() {
     if (!user || !window.confirm("Delete this comment?")) return;
     const { error } = await supabase.from("comments").delete().eq("id", commentId).eq("user_id", user.id);
     if (error) alert(error.message);
-    else await loadComments();
+    else await loadComments({ page: 0, reset: true });
   }
 
   async function saveCommentEdit(commentId) {
     if (!editMessage.trim()) return;
-    const { error } = await supabase.from("comments").update({ message: editMessage.trim(), rating: editRating }).eq("id", commentId).eq("user_id", user.id);
+    const { error } = await supabase.from("comments").update({ message: editMessage.trim(), is_spoiler: editSpoiler, edited_at: new Date().toISOString() }).eq("id", commentId).eq("user_id", user.id);
     if (error) alert(error.message);
     else {
       setEditingCommentId(null);
-      await loadComments();
+      await loadComments({ page: 0, reset: true });
     }
   }
 
@@ -227,14 +321,62 @@ function Novel() {
       return;
     }
     setSending(true);
-    const { error } = await supabase.from("comments").insert({ novel_id: id, user_id: user.id, username: user.user_metadata?.username || user.email || "NovelVerse reader", message: comment.trim(), rating });
+    const { error } = await supabase.from("comments").insert({ novel_id: id, user_id: user.id, username: getDisplayName(user), avatar_url: getAvatar(user), message: comment.trim(), parent_id: replyTo?.id || null, is_spoiler: isSpoiler, likes_count: 0 });
     setSending(false);
     if (error) alert(error.message);
     else {
       setComment("");
-      setRating(5);
-      await loadComments();
+      setReplyTo(null);
+      setIsSpoiler(false);
+      await loadComments({ page: 0, reset: true });
     }
+  }
+
+
+  async function submitRating(value) {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    setUserRating(value);
+    const payload = { novel_id: id, user_id: user.id, rating: value };
+    const { error } = await supabase.from("novel_ratings").upsert(payload, { onConflict: "novel_id,user_id" });
+    if (error) alert(error.message);
+    await loadRatings(user);
+  }
+
+  async function toggleLike(item) {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    const liked = likedCommentIds.includes(item.id);
+    const query = supabase.from("comment_likes");
+    const { error } = liked
+      ? await query.delete().eq("comment_id", item.id).eq("user_id", user.id)
+      : await query.upsert({ novel_id: id, comment_id: item.id, user_id: user.id }, { onConflict: "comment_id,user_id" });
+    if (error) alert(error.message);
+    else await loadComments({ page: 0, reset: true });
+  }
+
+  async function reportComment(item) {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    const reason = window.prompt("Why are you reporting this comment?", "Inappropriate content");
+    if (!reason) return;
+    const { error } = await supabase.from("comment_reports").insert({ novel_id: id, comment_id: item.id, reporter_id: user.id, reason });
+    if (error) alert(error.message);
+    else alert("Thanks. The report was submitted.");
+  }
+
+  function toggleSpoiler(idToToggle) {
+    setRevealedSpoilers((current) => current.includes(idToToggle) ? current.filter((item) => item !== idToToggle) : [...current, idToToggle]);
+  }
+
+  function toggleThread(idToToggle) {
+    setCollapsedThreads((current) => current.includes(idToToggle) ? current.filter((item) => item !== idToToggle) : [...current, idToToggle]);
   }
 
   const filteredChapters = useMemo(() => {
@@ -243,10 +385,28 @@ function Novel() {
     return chapters.filter((chapter) => String(chapter.number).includes(query) || chapter.title?.toLowerCase().includes(query));
   }, [chapterSearch, chapters]);
   const ranges = useMemo(() => chapterRanges(filteredChapters), [filteredChapters]);
-  const sortedComments = useMemo(() => [...comments].sort((a, b) => commentSort === "highest" ? Number(b.rating || 0) - Number(a.rating || 0) : new Date(b.created_at) - new Date(a.created_at)), [comments, commentSort]);
+  const nestedComments = useMemo(() => nestComments(comments), [comments]);
   const genres = splitPills(novel?.genres);
   const readPercent = chapters.length ? Math.round((readChapters.length / chapters.length) * 100) : 0;
   const lastUpdated = novel?.updated_at || chapters.at(-1)?.created_at || novel?.created_at;
+
+
+  function renderComment(item, depth = 0) {
+    const isMine = user && item.user_id === user.id;
+    const hiddenSpoiler = item.is_spoiler && !revealedSpoilers.includes(item.id);
+    const collapsed = collapsedThreads.includes(item.id);
+    return (
+      <article className={`comment-card comment-card--depth-${Math.min(depth, MAX_REPLY_DEPTH)}`} key={item.id}>
+        <header><div className="comment-author"><span className="comment-avatar">{item.avatar_url ? <img src={item.avatar_url} alt="" /> : "👤"}</span><strong>{item.username || "NovelVerse reader"}</strong></div><span>{new Date(item.created_at).toLocaleString()}</span></header>
+        {editingCommentId === item.id ? <div className="comment-edit"><textarea value={editMessage} onChange={(event) => setEditMessage(event.target.value)} rows={3} /><label className="spoiler-toggle"><input type="checkbox" checked={editSpoiler} onChange={(event) => setEditSpoiler(event.target.checked)} /> Spoiler</label><button onClick={() => saveCommentEdit(item.id)}>Save</button><button className="ghost" onClick={() => setEditingCommentId(null)}>Cancel</button></div> : <>
+          {item.edited_at && <span className="edited-badge">edited</span>}
+          {hiddenSpoiler ? <button className="spoiler-card" onClick={() => toggleSpoiler(item.id)}>⚠️ Spoiler hidden · Tap to reveal</button> : <p>{item.message}</p>}
+          <div className="comment-actions"><button className={likedCommentIds.includes(item.id) ? "liked" : "ghost"} onClick={() => toggleLike(item)}>♥ {formatNumber(item.likes_count)}</button>{depth < MAX_REPLY_DEPTH && <button className="ghost" onClick={() => setReplyTo(item)}>Reply</button>}<button className="ghost" onClick={() => reportComment(item)}>Report</button>{isMine && <><button onClick={() => { setEditingCommentId(item.id); setEditMessage(item.message); setEditSpoiler(!!item.is_spoiler); }}>Edit</button><button onClick={() => deleteComment(item.id)}>Delete</button></>}</div>
+        </>}
+        {item.replies?.length > 0 && <div className="reply-thread"><button className="thread-toggle" onClick={() => toggleThread(item.id)}>{collapsed ? `Show ${item.replies.length} replies` : "Collapse replies"}</button>{!collapsed && item.replies.map((reply) => renderComment(reply, depth + 1))}</div>}
+      </article>
+    );
+  }
 
   if (!novel) return <NovelSkeleton />;
 
@@ -260,7 +420,7 @@ function Novel() {
           <h1>{novel.title}</h1>
           <p className="novel-author">✍️ {novel.author || "Unknown author"}</p>
           <div className="novel-meta-grid">
-            <span>⭐ {averageRating.toFixed(1)} / 5 ({ratingCount})</span><span>👁 {formatNumber(novel.views)}</span><span>❤️ {formatNumber(novel.bookmarks)}</span><span>📌 {novel.status || "Ongoing"}</span><span>🕒 {lastUpdated ? new Date(lastUpdated).toLocaleDateString() : "No updates yet"}</span>
+            <span>⭐ {ratingStats.average.toFixed(1)} / 5 ({ratingStats.count})</span><span>👁 {formatNumber(novel.views)}</span><span>❤️ {formatNumber(novel.bookmarks)}</span><span>📌 {novel.status || "Ongoing"}</span><span>🕒 {lastUpdated ? new Date(lastUpdated).toLocaleDateString() : "No updates yet"}</span>
           </div>
           <div className="novel-pills">{genres.map((genre) => <span key={genre}>{genre}</span>)}</div>
           <div className="novel-actions">
@@ -278,7 +438,7 @@ function Novel() {
       </section>
 
       <section className="novel-stat-grid" aria-label="Novel statistics">
-        <div><strong>{formatNumber(chapters.length)}</strong><span>Total chapters</span></div><div><strong>{formatNumber(novel.readers || novel.views || 0)}</strong><span>Readers</span></div><div><strong>{averageRating.toFixed(1)}</strong><span>Average rating</span></div><div><strong>{formatNumber(novel.bookmarks || 0)}</strong><span>Bookmark count</span></div>
+        <div><strong>{formatNumber(chapters.length)}</strong><span>Total chapters</span></div><div><strong>{formatNumber(novel.readers || novel.views || 0)}</strong><span>Readers</span></div><div><strong>{ratingStats.average.toFixed(1)}</strong><span>Average rating</span></div><div><strong>{formatNumber(novel.bookmarks || 0)}</strong><span>Bookmark count</span></div>
       </section>
 
       <section className="novel-panel">
@@ -288,10 +448,13 @@ function Novel() {
         {chapters.length === 0 ? <div className="novel-empty">No chapters yet.</div> : <div className="chapter-ranges">{ranges.map((group, index) => <details className="chapter-range" key={group.label} open={index === 0}><summary>{group.label}<span>{group.chapters.length} chapters</span></summary><div className="chapter-list">{group.chapters.map((chapter) => <div key={chapter.id} className={readChapters.includes(chapter.id) ? "chapter-row chapter-row--read" : "chapter-row"}><button onClick={() => { markChapterRead(chapter.id); localStorage.setItem(`lastChapter_${id}`, chapter.id); navigate(`/reader/${chapter.id}`); }}><span><strong>Chapter {chapter.number}</strong><small>{chapter.title}</small></span></button><button className="chapter-read-toggle" onClick={() => markChapterRead(chapter.id)}>{readChapters.includes(chapter.id) ? "✓ Read" : "Mark read"}</button></div>)}</div></details>)}</div>}
       </section>
 
-      <section className="novel-panel" ref={commentsRef}>
-        <div className="novel-section-heading"><h2>💬 Comments ({comments.length})</h2><select value={commentSort} onChange={(event) => setCommentSort(event.target.value)}><option value="newest">Newest</option><option value="highest">Highest rated</option></select></div>
-        <div className="comment-form"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment..." rows={4} /><div className="star-row">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setRating(value)} className={value <= rating ? "active" : ""}>★</button>)}</div><button onClick={sendComment} disabled={sending}>{sending ? "Sending..." : "💬 Add comment"}</button></div>
-        <div className="comment-list">{sortedComments.length === 0 ? <div className="novel-empty">No comments yet.</div> : sortedComments.map((item) => <article className="comment-card" key={item.id}><header><strong>👤 {item.username}</strong><span>{new Date(item.created_at).toLocaleString()}</span></header>{editingCommentId === item.id ? <div className="comment-edit"><textarea value={editMessage} onChange={(event) => setEditMessage(event.target.value)} rows={3} /><div className="star-row">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => setEditRating(value)} className={value <= editRating ? "active" : ""}>★</button>)}</div><button onClick={() => saveCommentEdit(item.id)}>Save</button><button className="ghost" onClick={() => setEditingCommentId(null)}>Cancel</button></div> : <><div className="comment-rating">{"★".repeat(Number(item.rating || 0))}{"☆".repeat(5 - Number(item.rating || 0))}</div><p>{item.message}</p>{user && item.user_id === user.id && <div className="comment-actions"><button onClick={() => { setEditingCommentId(item.id); setEditMessage(item.message); setEditRating(Number(item.rating || 5)); }}>Edit</button><button onClick={() => deleteComment(item.id)}>Delete</button></div>}</>}</article>)}</div>
+      <section className="novel-panel community-panel" ref={commentsRef}>
+        <div className="novel-section-heading"><h2>⭐ Community rating</h2><span>{ratingStats.count} votes</span></div>
+        <div className="rating-dashboard"><div className="rating-score"><strong>{ratingStats.average.toFixed(1)}</strong><span>average</span><div className="star-row star-row--interactive">{[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" onClick={() => submitRating(value)} className={value <= userRating ? "active" : ""}>★</button>)}</div></div><div className="rating-bars">{[5, 4, 3, 2, 1].map((star) => <div className="rating-bar" key={star}><span>{star}★</span><meter min="0" max={Math.max(1, ratingStats.count)} value={ratingStats.distribution[star]} /><strong>{ratingStats.distribution[star]}</strong></div>)}</div></div>
+        <div className="novel-section-heading"><h2>💬 Comments ({comments.length})</h2><select value={commentSort} onChange={(event) => setCommentSort(event.target.value)}><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="highest">Highest rated</option></select></div>
+        <div className="comment-form">{replyTo && <div className="replying-to">Replying to {replyTo.username}<button onClick={() => setReplyTo(null)}>Cancel</button></div>}<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder={user ? "Add a comment..." : "Sign in to join the discussion..."} rows={4} /><label className="spoiler-toggle"><input type="checkbox" checked={isSpoiler} onChange={(event) => setIsSpoiler(event.target.checked)} /> Mark as spoiler</label><button onClick={sendComment} disabled={sending}>{sending ? "Sending..." : "💬 Post comment"}</button></div>
+        <div className="comment-list">{commentsLoading && comments.length === 0 ? <><div className="skeleton comment-card" /><div className="skeleton comment-card" /></> : nestedComments.length === 0 ? <div className="novel-empty">No comments yet. Start the conversation.</div> : nestedComments.map((item) => renderComment(item))}</div>
+        {hasMoreComments && <button ref={loadMoreRef} className="load-more-comments" onClick={() => loadComments({ page: commentPage + 1 })} disabled={commentsLoading}>{commentsLoading ? "Loading..." : "Load more comments"}</button>}
       </section>
 
       <section className="novel-panel">
