@@ -65,7 +65,7 @@ export function splitIntoChapters(text = "", fallbackTitle = "Chapter") {
 
 export function buildNovelMetadata(form) {
   const title = form.title || "Untitled Novel";
-  const tags = [form.category, form.genres, form.tags].filter(Boolean).join(", ");
+  const tags = [form.genres, form.tags].filter(Boolean).join(", ");
   const description = form.description?.trim() || `${title} by ${form.author || "Unknown author"}. ${tags ? `Themes: ${tags}.` : "Add a synopsis before publishing."}`;
   return {
     slug: slugify(title),

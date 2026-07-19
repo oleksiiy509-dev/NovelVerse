@@ -55,7 +55,7 @@ function Home() {
   const categories = useMemo(() => {
     const values = new Set(["Усі"]);
     novels.forEach((novel) => {
-      [novel.category, novel.status, ...(novel.genres || "").split(",")]
+      [novel.status, ...(novel.genres || "").split(",")]
         .map((item) => item?.trim())
         .filter(Boolean)
         .forEach((item) => values.add(item));
@@ -69,14 +69,14 @@ function Home() {
 
     if (query) {
       result = result.filter((novel) =>
-        [novel.title, novel.author, novel.tags, novel.genres, novel.category]
+        [novel.title, novel.author, novel.tags, novel.genres]
           .some((value) => normalize(value).includes(query))
       );
     }
 
     if (category !== "Усі") {
       result = result.filter((novel) =>
-        [novel.category, novel.status, novel.genres, novel.tags]
+        [novel.status, novel.genres, novel.tags]
           .some((value) => normalize(value).includes(normalize(category)))
       );
     }
