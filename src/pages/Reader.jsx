@@ -5,6 +5,7 @@ import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapte
 import "../styles/Reader.css";
 
 const defaultSettings = { fontSize: 20, lineHeight: 1.9, textWidth: 760, theme: "dark" };
+const readerPanelKey = "readerSettingsPanelOpen";
 
 function getReaderSettings() {
   const legacyDark = localStorage.getItem("readerDarkMode");
@@ -18,6 +19,10 @@ function getReaderSettings() {
   };
 }
 
+function getReaderPanelOpen() {
+  return localStorage.getItem(readerPanelKey) === "true";
+}
+
 function Reader() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -28,6 +33,8 @@ function Reader() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [settings, setSettings] = useState(getReaderSettings);
+  const [settingsOpen, setSettingsOpen] = useState(getReaderPanelOpen);
+  const [ttsActive, setTtsActive] = useState(false);
 
   useEffect(() => { loadChapter(); }, [id]);
 
@@ -36,6 +43,10 @@ function Reader() {
     localStorage.setItem("readerFontSize", settings.fontSize);
     localStorage.setItem("readerDarkMode", settings.theme === "dark");
   }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem(readerPanelKey, settingsOpen);
+  }, [settingsOpen]);
 
   useEffect(() => {
     if (!chapter) return;
@@ -52,6 +63,8 @@ function Reader() {
     window.addEventListener("scroll", saveScroll);
     return () => window.removeEventListener("scroll", saveScroll);
   }, [id, chapter, user]);
+
+  useEffect(() => () => window.speechSynthesis?.cancel(), []);
 
   async function loadChapter() {
     setLoading(true);
@@ -118,30 +131,48 @@ function Reader() {
     alert("Главу збережено для офлайн-читання.");
   }
 
+  function toggleTts() {
+    if (!chapter || !window.speechSynthesis) return;
+    if (ttsActive) {
+      window.speechSynthesis.cancel();
+      setTtsActive(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(`${chapter.title}. ${chapter.content}`);
+    utterance.onend = () => setTtsActive(false);
+    utterance.onerror = () => setTtsActive(false);
+    window.speechSynthesis.speak(utterance);
+    setTtsActive(true);
+  }
+
   if (loading) return <main className="reader reader--dark"><div className="reader__shell"><div className="skeleton reader__skeleton" /></div></main>;
   if (errorMessage) return <main className="reader reader--dark"><div className="reader__shell"><div className="error-state">{errorMessage}</div></div></main>;
 
   return (
     <main className={`reader reader--${settings.theme}`}>
+      <button className="reader__settings-toggle" onClick={() => setSettingsOpen(true)} aria-expanded={settingsOpen} aria-controls="reader-settings-panel">⚙️<span>Налаштування</span></button>
       <div className="reader__shell" style={{ maxWidth: `${settings.textWidth}px` }}>
         <button className="reader__back" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>⬅ До списку глав</button>
         <header className="reader__header">
           <span>Глава {chapter.number}</span>
           <h1>{chapter.title}</h1>
         </header>
-        <section className="reader__settings" aria-label="Налаштування читання">
-          <label>Розмір <input type="range" min="16" max="30" value={settings.fontSize} onChange={(e) => setSettings({ ...settings, fontSize: Number(e.target.value) })} /></label>
-          <label>Інтервал <input type="range" min="1.5" max="2.4" step="0.1" value={settings.lineHeight} onChange={(e) => setSettings({ ...settings, lineHeight: Number(e.target.value) })} /></label>
-          <label>Ширина <input type="range" min="560" max="960" step="20" value={settings.textWidth} onChange={(e) => setSettings({ ...settings, textWidth: Number(e.target.value) })} /></label>
-          <select value={settings.theme} onChange={(e) => setSettings({ ...settings, theme: e.target.value })} aria-label="Тема читання">
-            <option value="light">Світла</option><option value="dark">Темна</option><option value="sepia">Sepia</option>
-          </select>
-          <button onClick={toggleBookmark}>{bookmarked ? "🔖 Додано" : "🔖 Закладка"}</button>
-          <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
-        </section>
         <article className="reader__content" style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }}>{chapter.content}</article>
         <nav className="reader__chapter-nav"><button onClick={previousChapter}>⬅ Попередня</button><button onClick={nextChapter}>Наступна ➡</button></nav>
       </div>
+      {settingsOpen && <div className="reader__settings-scrim" onClick={() => setSettingsOpen(false)} />}
+      <section id="reader-settings-panel" className={`reader__settings ${settingsOpen ? "reader__settings--open" : ""}`} aria-label="Налаштування читання" aria-hidden={!settingsOpen}>
+        <div className="reader__settings-header"><h2>Налаштування</h2><button onClick={() => setSettingsOpen(false)} aria-label="Закрити налаштування">✕</button></div>
+        <label>Розмір <input type="range" min="16" max="30" value={settings.fontSize} onChange={(e) => setSettings({ ...settings, fontSize: Number(e.target.value) })} /></label>
+        <label>Інтервал <input type="range" min="1.5" max="2.4" step="0.1" value={settings.lineHeight} onChange={(e) => setSettings({ ...settings, lineHeight: Number(e.target.value) })} /></label>
+        <label>Ширина <input type="range" min="560" max="960" step="20" value={settings.textWidth} onChange={(e) => setSettings({ ...settings, textWidth: Number(e.target.value) })} /></label>
+        <select value={settings.theme} onChange={(e) => setSettings({ ...settings, theme: e.target.value })} aria-label="Тема читання">
+          <option value="light">Світла</option><option value="dark">Темна</option><option value="sepia">Sepia</option>
+        </select>
+        <button onClick={toggleBookmark}>{bookmarked ? "🔖 Додано" : "🔖 Закладка"}</button>
+        <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
+        <button onClick={toggleTts} disabled={!window.speechSynthesis}>{ttsActive ? "⏹️ Зупинити TTS" : "🔊 TTS"}</button>
+      </section>
     </main>
   );
 }
