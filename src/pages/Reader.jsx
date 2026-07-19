@@ -4,7 +4,8 @@ import { supabase } from "../lib/supabase";
 import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapter, syncReadingProgress, userKey, readList, writeList } from "../lib/userFeatures";
 import "../styles/Reader.css";
 
-const defaultSettings = { fontSize: 20, lineHeight: 1.9, textWidth: 760, theme: "dark" };
+const defaultSettings = { fontSize: 20, lineHeight: 1.9, textWidth: 760, theme: "dark", fontFamily: "serif" };
+const fontFamilies = { serif: "Georgia, \"Times New Roman\", serif", sans: "Inter, system-ui, -apple-system, sans-serif", dyslexic: "Verdana, Arial, sans-serif", mono: "\"Courier New\", monospace" };
 const defaultNarrationSettings = { rate: 1, voiceURI: "" };
 const readerPanelKey = "readerSettingsPanelOpen";
 const narrationSettingsKey = "readerNarrationSettings";
@@ -18,6 +19,7 @@ function getReaderSettings() {
     lineHeight: saved?.lineHeight || defaultSettings.lineHeight,
     textWidth: saved?.textWidth || defaultSettings.textWidth,
     theme: saved?.theme || (legacyDark === "false" ? "light" : defaultSettings.theme),
+    fontFamily: saved?.fontFamily || defaultSettings.fontFamily,
   };
 }
 
@@ -67,6 +69,9 @@ function Reader() {
   const [ttsActive, setTtsActive] = useState(false);
   const [ttsPaused, setTtsPaused] = useState(false);
   const [narrationSettings, setNarrationSettings] = useState(getNarrationSettings);
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState(0);
+  const [navigatingChapter, setNavigatingChapter] = useState(false);
+  const sleepTimerRef = useRef(null);
   const [voices, setVoices] = useState([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(() => getSavedNarrationPosition(id));
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -95,7 +100,14 @@ function Reader() {
   useEffect(() => {
     if (!chapter) return;
     const saved = localStorage.getItem(`scroll_${id}`);
-    setTimeout(() => window.scrollTo(0, saved ? Number(saved) : 0), 100);
+    const target = saved ? Number(saved) : 0;
+    let attempts = 0;
+    function restore() {
+      window.scrollTo({ top: target, behavior: "auto" });
+      attempts += 1;
+      if (attempts < 8 && Math.abs(window.scrollY - target) > 2) requestAnimationFrame(restore);
+    }
+    requestAnimationFrame(restore);
   }, [chapter, id]);
 
   useEffect(() => {
@@ -104,12 +116,13 @@ function Reader() {
       localStorage.setItem(`scroll_${id}`, window.scrollY);
       if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress });
     }
-    window.addEventListener("scroll", saveScroll);
+    window.addEventListener("scroll", saveScroll, { passive: true });
     return () => window.removeEventListener("scroll", saveScroll);
   }, [id, chapter, user]);
 
   useEffect(() => () => {
     if (narrationSupported) window.speechSynthesis.cancel();
+    clearTimeout(sleepTimerRef.current);
   }, [id, narrationSupported]);
 
   useEffect(() => {
@@ -164,17 +177,20 @@ function Reader() {
     setLoading(false);
   }
 
-  async function previousChapter() {
-    if (!chapter) return;
-    const { data } = await supabase.from("chapters").select("id").eq("novel_id", chapter.novel_id).lt("number", chapter.number).order("number", { ascending: false }).limit(1).maybeSingle();
-    if (data) navigate(`/reader/${data.id}`);
+  async function goToAdjacentChapter(direction) {
+    if (!chapter || navigatingChapter) return;
+    setNavigatingChapter(true);
+    const query = supabase.from("chapters").select("id").eq("novel_id", chapter.novel_id);
+    const { data } = direction < 0
+      ? await query.lt("number", chapter.number).order("number", { ascending: false }).limit(1).maybeSingle()
+      : await query.gt("number", chapter.number).order("number", { ascending: true }).limit(1).maybeSingle();
+    setNavigatingChapter(false);
+    if (data) navigate(`/reader/${data.id}`, { preventScrollReset: true });
   }
 
-  async function nextChapter() {
-    if (!chapter) return;
-    const { data } = await supabase.from("chapters").select("id").eq("novel_id", chapter.novel_id).gt("number", chapter.number).order("number", { ascending: true }).limit(1).maybeSingle();
-    if (data) navigate(`/reader/${data.id}`);
-  }
+  function previousChapter() { goToAdjacentChapter(-1); }
+
+  function nextChapter() { goToAdjacentChapter(1); }
 
   async function toggleBookmark() {
     if (!chapter) return;
@@ -273,6 +289,12 @@ function Reader() {
     if (ttsActive || ttsPaused) setTimeout(() => speakParagraph(currentParagraphIndex, rate), 0);
   }
 
+  function updateSleepTimer(minutes) {
+    setSleepTimerMinutes(minutes);
+    clearTimeout(sleepTimerRef.current);
+    if (minutes > 0) sleepTimerRef.current = setTimeout(() => stopNarration(), minutes * 60 * 1000);
+  }
+
   if (loading) return <main className="reader reader--dark"><div className="reader__shell"><div className="skeleton reader__skeleton" /></div></main>;
   if (errorMessage) return <main className="reader reader--dark"><div className="reader__shell"><div className="error-state">{errorMessage}</div></div></main>;
 
@@ -292,7 +314,7 @@ function Reader() {
       <div className="reader__shell" style={{ maxWidth: `${settings.textWidth}px` }}>
         <article
           className="reader__content"
-          style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }}
+          style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight, fontFamily: fontFamilies[settings.fontFamily] || fontFamilies.serif }}
           onPointerDown={handleReadingPointerDown}
           onPointerUp={handleReadingPointerUp}
         >
@@ -303,7 +325,7 @@ function Reader() {
       </div>
       <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-hidden={!controlsVisible}>
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
-          <button onClick={previousChapter}>⬅ Попередня</button><button onClick={nextChapter}>Наступна ➡</button>
+          <button onClick={previousChapter} disabled={navigatingChapter}>⬅ Попередня</button><button onClick={nextChapter} disabled={navigatingChapter}>{navigatingChapter ? "Переходимо..." : "Наступна ➡"}</button>
         </div>
       </nav>
       {settingsOpen && <div className="reader__settings-scrim" onClick={() => setSettingsOpen(false)} />}
@@ -315,9 +337,13 @@ function Reader() {
         <select value={settings.theme} onChange={(e) => setSettings({ ...settings, theme: e.target.value })} aria-label="Тема читання">
           <option value="light">Світла</option><option value="dark">Темна</option><option value="sepia">Sepia</option>
         </select>
+        <select value={settings.fontFamily} onChange={(e) => setSettings({ ...settings, fontFamily: e.target.value })} aria-label="Шрифт читання">
+          <option value="serif">Serif book</option><option value="sans">Sans clean</option><option value="dyslexic">Readable wide</option><option value="mono">Mono</option>
+        </select>
         <button onClick={toggleBookmark}>{bookmarked ? "🔖 Додано" : "🔖 Закладка"}</button>
         <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
       </section>
+      {(ttsActive || ttsPaused) && <div className="reader__tts-mini"><button onClick={ttsPaused ? resumeNarration : pauseNarration}>{ttsPaused ? "▶️" : "⏸"}</button><span>{currentParagraphIndex + 1}/{paragraphs.length}</span><button onClick={stopNarration}>⏹</button></div>}
       <section id="reader-narration-panel" className={`reader__narration ${narrationOpen ? "reader__narration--open" : ""}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
         <div className="reader__narration-header"><h2>Озвучення</h2><button onClick={() => setNarrationOpen(false)} aria-label="Закрити озвучення">✕</button></div>
         {!narrationSupported && <p className="reader__narration-warning">Ваш браузер не підтримує SpeechSynthesis API.</p>}
@@ -330,6 +356,7 @@ function Reader() {
           <button onClick={() => moveParagraph(1)} disabled={!paragraphs.length || currentParagraphIndex >= paragraphs.length - 1}>Paragraph ➡</button>
         </div>
         <label>Швидкість {narrationSettings.rate.toFixed(1)}x <input type="range" min="0.5" max="2" step="0.1" value={narrationSettings.rate} onChange={(e) => updateNarrationRate(Number(e.target.value))} /></label>
+        <label>Sleep timer <select value={sleepTimerMinutes} onChange={(e) => updateSleepTimer(Number(e.target.value))}><option value="0">Вимкнено</option><option value="5">5 хв</option><option value="10">10 хв</option><option value="20">20 хв</option><option value="30">30 хв</option><option value="45">45 хв</option></select></label>
         <label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => setNarrationSettings({ ...narrationSettings, voiceURI: e.target.value })}>
           <option value="">Авто: Українська / Русский / English</option>
           {voices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}
