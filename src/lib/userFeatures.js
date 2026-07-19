@@ -19,6 +19,27 @@ export function writeList(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+export async function readCloudBackedList(key, cloudGetItem) {
+  const local = readList(key);
+  const cloudValue = await cloudGetItem?.(key);
+  if (!cloudValue) return local;
+  try {
+    const cloud = JSON.parse(cloudValue);
+    if (Array.isArray(cloud)) {
+      writeList(key, cloud);
+      return cloud;
+    }
+  } catch {
+    return local;
+  }
+  return local;
+}
+
+export async function writeCloudBackedList(key, value, cloudSetItem) {
+  writeList(key, value);
+  await cloudSetItem?.(key, JSON.stringify(value));
+}
+
 export function readObject(key, fallback = {}) {
   try {
     return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
@@ -38,11 +59,12 @@ export function getOfflineChapter(chapterId) {
   return readObject("novelverse:offlineChapters")[chapterId] || null;
 }
 
-export async function syncReadingProgress(supabase, user, payload) {
+export async function syncReadingProgress(supabase, user, payload, cloudSetItem) {
   const record = { ...payload, user_id: user?.id, updated_at: new Date().toISOString() };
   const local = readObject(userKey(user?.id, "readingProgress"));
   local[payload.novel_id] = record;
   localStorage.setItem(userKey(user?.id, "readingProgress"), JSON.stringify(local));
+  await cloudSetItem?.(userKey(user?.id, "readingProgress"), JSON.stringify(local));
 
   if (!user) return { data: record, error: null };
 
@@ -62,11 +84,3 @@ export async function addReadingHistory(supabase, user, payload) {
   return supabase.from("reading_history").insert(entry);
 }
 
-export function initTelegramMiniApp() {
-  const telegram = window.Telegram?.WebApp;
-  if (!telegram) return null;
-  telegram.ready();
-  telegram.expand();
-  document.documentElement.style.setProperty("--tg-bg", telegram.themeParams?.bg_color || "#0f172a");
-  return telegram;
-}
