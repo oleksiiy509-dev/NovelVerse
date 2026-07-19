@@ -1,16 +1,11 @@
 import "./CategoryTabs.css";
 
-const tabs = [
-  "Усі",
-  "Популярні",
-  "Новинки",
-  "Завершені",
-];
+const defaultTabs = ["Усі", "Популярні", "Новинки", "Завершені"];
 
-function CategoryTabs({ active, onChange }) {
+function CategoryTabs({ active, onChange, categories = defaultTabs }) {
   return (
-    <div className="tabs">
-      {tabs.map((tab) => (
+    <div className="tabs" aria-label="Категорії та жанри">
+      {categories.map((tab) => (
         <button
           key={tab}
           className={active === tab ? "tab active" : "tab"}

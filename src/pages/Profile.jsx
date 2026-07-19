@@ -1,28 +1,31 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
+import { readList, userKey } from "../lib/userFeatures";
 
 function Profile() {
   const navigate = useNavigate();
-
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState({ username: "", avatar_url: "" });
   const [libraryCount, setLibraryCount] = useState(0);
+  const [historyCount, setHistoryCount] = useState(0);
 
   useEffect(() => {
     loadProfile();
   }, []);
 
   async function loadProfile() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       navigate("/login");
       return;
     }
 
     setUser(user);
+    setProfile({
+      username: user.user_metadata?.username || user.email?.split("@")[0] || "Reader",
+      avatar_url: user.user_metadata?.avatar_url || "",
+    });
 
     const { count } = await supabase
       .from("library")
@@ -30,6 +33,21 @@ function Profile() {
       .eq("user_id", user.id);
 
     setLibraryCount(count || 0);
+    setHistoryCount(readList(userKey(user.id, "history")).length);
+  }
+
+  async function saveProfile() {
+    if (!user) return;
+    const payload = { id: user.id, username: profile.username, avatar_url: profile.avatar_url };
+    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    const nextUser = { ...user, user_metadata: { ...user.user_metadata, ...profile } };
+    localStorage.setItem("supabase_user", JSON.stringify(nextUser));
+    setUser(nextUser);
+    alert("Профіль збережено.");
   }
 
   async function logout() {
@@ -38,59 +56,20 @@ function Profile() {
   }
 
   return (
-    <div
-      style={{
-        maxWidth: "500px",
-        margin: "40px auto",
-        color: "white",
-        display: "flex",
-        flexDirection: "column",
-        gap: "20px",
-      }}
-    >
+    <div style={{ maxWidth: "720px", margin: "40px auto", color: "white", display: "flex", flexDirection: "column", gap: "20px", padding: 20 }}>
       <h1>👤 Профіль</h1>
-
-      <div
-        style={{
-          background: "#1f2937",
-          padding: "20px",
-          borderRadius: "12px",
-        }}
-      >
-        <h3>Email</h3>
-        <p>{user?.email}</p>
-
-        <h3>❤️ Моя бібліотека</h3>
-        <p>{libraryCount} новел</p>
+      <div style={{ background: "#1f2937", padding: "20px", borderRadius: "16px", display: "grid", gap: 16 }}>
+        <img src={profile.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(profile.username || "NovelVerse")}`} alt="Аватар" style={{ width: 104, height: 104, borderRadius: "50%", background: "#0f172a" }} />
+        <label>Ім'я користувача<input value={profile.username} onChange={(e) => setProfile({ ...profile, username: e.target.value })} /></label>
+        <label>URL аватара<input value={profile.avatar_url} onChange={(e) => setProfile({ ...profile, avatar_url: e.target.value })} placeholder="https://..." /></label>
+        <p>Email: {user?.email}</p>
+        <p>❤️ Моя бібліотека: {libraryCount} новел</p>
+        <p>🕘 Історія читання: {historyCount} записів</p>
+        <button onClick={saveProfile}>💾 Зберегти профіль</button>
       </div>
-
-      <button
-        onClick={() => navigate("/library")}
-        style={{
-          padding: "14px",
-          background: "#2563eb",
-          color: "white",
-          border: "none",
-          borderRadius: "10px",
-          cursor: "pointer",
-        }}
-      >
-        📚 Відкрити бібліотеку
-      </button>
-
-      <button
-        onClick={logout}
-        style={{
-          padding: "14px",
-          background: "#dc2626",
-          color: "white",
-          border: "none",
-          borderRadius: "10px",
-          cursor: "pointer",
-        }}
-      >
-        🚪 Вийти
-      </button>
+      <button onClick={() => navigate("/library")}>📚 Відкрити бібліотеку</button>
+      <button onClick={() => navigate("/admin")}>⚙️ Адмін-панель</button>
+      <button onClick={logout} style={{ background: "#dc2626" }}>🚪 Вийти</button>
     </div>
   );
 }
