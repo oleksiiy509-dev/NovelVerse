@@ -48,6 +48,8 @@ class QueryBuilder {
   update(payload) { this.action = "update"; this.payload = payload; return this; }
   delete() { this.action = "delete"; return this; }
   eq(column, value) { this.params.append(column, `eq.${value}`); return this; }
+  neq(column, value) { this.params.append(column, `neq.${value}`); return this; }
+  in(column, values) { this.params.append(column, `in.(${(values || []).join(",")})`); return this; }
   ilike(column, value) { this.params.append(column, `ilike.${value}`); return this; }
   or(filter) { this.params.append("or", `(${filter})`); return this; }
   lt(column, value) { this.params.append(column, `lt.${value}`); return this; }
