@@ -1,9 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
 import { shareToTelegram } from "../lib/telegram";
 import { useTelegramMainButton } from "../hooks/useTelegram";
+import "../styles/Novel.css";
+
+
+function splitPills(value = "") {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function chapterRanges(chapters) {
+  const groups = [];
+  for (let i = 0; i < chapters.length; i += 10) {
+    const chunk = chapters.slice(i, i + 10);
+    groups.push({ label: `${chunk[0].number}–${chunk[chunk.length - 1].number}`, chapters: chunk });
+  }
+  return groups;
+}
 
 function Novel() {
   const { id } = useParams();
@@ -270,144 +285,23 @@ async function sendComment() {
   await loadComments();
 }
 
-  if (!novel) {
-    return (
-      <div
-        style={{
-          color: "white",
-          padding: 30,
-        }}
-      >
-        Завантаження...
-      </div>
-    );
-  }
+  const ranges = useMemo(() => chapterRanges(chapters), [chapters]);
+
+  if (!novel) return <div className="novel-page page-shell"><div className="skeleton novel-loading" /></div>;
 
   return (
-    <div
-      style={{
-        maxWidth: "1100px",
-        margin: "30px auto",
-        padding: 20,
-        color: "white",
-        paddingBottom: 120,
-      }}
-    >      <button
-        onClick={() => navigate(-1)}
-        style={{
-          padding: "10px 20px",
-          borderRadius: 8,
-          border: "none",
-          cursor: "pointer",
-          marginBottom: 25,
-        }}
-      >
-        ⬅ Назад
-      </button>
-
-      <div
-        style={{
-          display: "flex",
-          gap: 30,
-          flexWrap: "wrap",
-          background: "#111827",
-          borderRadius: 20,
-          padding: 25,
-        }}
-      >
-        <img
-          src={novel.image}
-          alt={novel.title}
-          style={{
-            width: 220,
-            borderRadius: 15,
-            objectFit: "cover",
-          }}
-        />
-
-        <div style={{ flex: 1 }}>
+    <div className="novel-page page-shell">
+      <button className="novel-back" onClick={() => navigate(-1)}>⬅ Назад</button>
+      <section className="novel-hero-card">
+        <div className="novel-hero-card__content">
+          <span className="novel-id">Novel ID #{novel.id}</span>
           <h1>{novel.title}</h1>
-          <p
-  style={{
-    color: "#facc15",
-    fontSize: "18px",
-    marginBottom: "15px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  }}
->
-  {"★".repeat(Math.round(averageRating))}
-  {"☆".repeat(5 - Math.round(averageRating))}
-  <span style={{ color: "white" }}>
-    {averageRating.toFixed(1)} / 5 ({ratingCount} оцінок)
-  </span>
-</p>
-
-          <p style={{ color: "#9ca3af" }}>
-            ✍️ {novel.author}
-          </p>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 20,
-              flexWrap: "wrap",
-              marginTop: 15,
-              marginBottom: 20,
-            }}
-          >
-            <span>⭐ {novel.rating}</span>
-            <span>📖 {chapters.length} глав</span>
-            <span>👁 {novel.views || 0}</span>
-            <span>❤️ {novel.bookmarks || 0}</span>
-            <span>📚 {novel.status}</span>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              marginBottom: 20,
-            }}
-          >
-            {(novel.genres || "")
-              .split(",")
-              .filter(Boolean)
-              .map((genre) => (
-                <span
-                  key={genre}
-                  style={{
-                    background: "#2563eb",
-                    padding: "6px 14px",
-                    borderRadius: 30,
-                    fontSize: 14,
-                    fontWeight: "bold",
-                  }}
-                >
-                  {genre.trim()}
-                </span>
-              ))}
-          </div>
-
-          <p
-            style={{
-              lineHeight: 1.8,
-              color: "#d1d5db",
-            }}
-          >
-            {novel.description}
-          </p>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 15,
-              marginTop: 25,
-              flexWrap: "wrap",
-            }}
-          >
+          <p className="novel-rating">{"★".repeat(Math.round(averageRating))}{"☆".repeat(5 - Math.round(averageRating))}<span>{averageRating.toFixed(1)} / 5 ({ratingCount} оцінок)</span></p>
+          <p className="novel-author">✍️ {novel.author}</p>
+          <div className="novel-stats"><span>⭐ {novel.rating}</span><span>📖 {chapters.length} глав</span><span>👁 {novel.views || 0}</span><span>❤️ {novel.bookmarks || 0}</span><span className="novel-status">{novel.status}</span></div>
+          <div className="novel-pills">{splitPills(novel.genres).map((genre) => <span key={genre}>{genre}</span>)}{splitPills(novel.tags).map((tag) => <span className="novel-pill--tag" key={tag}>{tag}</span>)}</div>
+          <p className="novel-description">{novel.description}</p>
+          <div className="novel-actions">
             <button
               onClick={() => {
                 const last = localStorage.getItem(`lastChapter_${id}`);
@@ -418,15 +312,7 @@ async function sendComment() {
                   navigate(`/reader/${chapters[0].id}`);
                 }
               }}
-              style={{
-                padding: "14px 30px",
-                background: "#2563eb",
-                color: "white",
-                border: "none",
-                borderRadius: 10,
-                cursor: "pointer",
-                fontSize: 16,
-              }}
+
             >
               📖 Продовжити читання
             </button>
@@ -434,76 +320,35 @@ async function sendComment() {
             <button
               onClick={addToLibrary}
               disabled={saved}
-              style={{
-                padding: "14px 30px",
-                background: saved ? "#16a34a" : "#dc2626",
-                color: "white",
-                border: "none",
-                borderRadius: 10,
-                cursor: saved ? "default" : "pointer",
-                fontSize: 16,
-              }}
+className={saved ? "novel-save novel-save--saved" : "novel-save"}
             >
               {saved ? "💖 У бібліотеці" : "❤️ В бібліотеку"}
             </button>
-            <button onClick={shareNovel} style={{ padding: "14px 30px", background: "#0088cc", color: "white", border: "none", borderRadius: 10, cursor: "pointer", fontSize: 16 }}>📤 Поділитися в Telegram</button>
+            <button onClick={shareNovel} className="novel-share">📤 Telegram</button>
           </div>
         </div>
-      </div>
+        <img className="novel-cover" src={novel.image} alt={novel.title} />
+      </section>
 
-      <h2 style={{ marginTop: 40 }}>📚 Список глав</h2>
+      <h2 className="novel-section-title">📚 Список глав</h2>
 
 {chapters.length === 0 ? (
-  <div
-    style={{
-      background: "#1f2937",
-      padding: 20,
-      borderRadius: 12,
-      marginTop: 20,
-      textAlign: "center",
-    }}
-  >
-    Глав поки немає.
-  </div>
+  <div className="novel-empty">Глав поки немає.</div>
 ) : (
-  chapters.map((chapter) => (
-    <div
-      key={chapter.id}
-      onClick={() => {
-        localStorage.setItem(`lastChapter_${id}`, chapter.id);
-        navigate(`/reader/${chapter.id}`);
-      }}
-      style={{
-        background: readChapters.includes(chapter.id)
-          ? "#166534"
-          : "#1e293b",
-        marginTop: 12,
-        padding: 18,
-        borderRadius: 12,
-        cursor: "pointer",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
-      <div>
-        <strong>Глава {chapter.number}</strong>
-
-        <div
-          style={{
-            marginTop: 5,
-            color: "#d1d5db",
-          }}
-        >
-          {chapter.title}
+  <div className="chapter-ranges">
+    {ranges.map((group) => (
+      <details className="chapter-range" key={group.label} open={group === ranges[0]}>
+        <summary>{group.label}<span>{group.chapters.length} глав</span></summary>
+        <div className="chapter-list">
+          {group.chapters.map((chapter) => (
+            <button key={chapter.id} className={readChapters.includes(chapter.id) ? "chapter-row chapter-row--read" : "chapter-row"} onClick={() => { localStorage.setItem(`lastChapter_${id}`, chapter.id); navigate(`/reader/${chapter.id}`); }}>
+              <span><strong>Глава {chapter.number}</strong><small>{chapter.title}</small></span><em>{readChapters.includes(chapter.id) ? "✅" : "📖"}</em>
+            </button>
+          ))}
         </div>
-      </div>
-
-      <div style={{ fontSize: 24 }}>
-        {readChapters.includes(chapter.id) ? "✅" : "📖"}
-      </div>
-    </div>
-  ))
+      </details>
+    ))}
+  </div>
 )}
 
 <h2 style={{ marginTop: 50 }}>
