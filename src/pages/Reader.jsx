@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapter, syncReadingProgress, userKey, readList, writeList } from "../lib/userFeatures";
 
 function Reader() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [chapter, setChapter] = useState(null);
+  const [user, setUser] = useState(null);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [offlineReady, setOfflineReady] = useState(false);
 
   const [fontSize, setFontSize] = useState(() => {
     return Number(localStorage.getItem("readerFontSize")) || 20;
@@ -18,6 +22,7 @@ function Reader() {
 
   useEffect(() => {
     loadChapter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -36,10 +41,9 @@ function Reader() {
 
   useEffect(() => {
     function saveScroll() {
-      localStorage.setItem(
-        `scroll_${id}`,
-        window.scrollY
-      );
+      const progress = Math.min(100, Math.round((window.scrollY / Math.max(1, document.body.scrollHeight - window.innerHeight)) * 100));
+      localStorage.setItem(`scroll_${id}`, window.scrollY);
+      if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress });
     }
 
     window.addEventListener("scroll", saveScroll);
@@ -47,41 +51,55 @@ function Reader() {
     return () => {
       window.removeEventListener("scroll", saveScroll);
     };
-  }, [id]);
+  }, [id, chapter, user]);
 
   async function loadChapter() {
+    const currentUser = await getCurrentUser(supabase);
+    setUser(currentUser);
     const { data, error } = await supabase
       .from("chapters")
       .select("*")
       .eq("id", id)
       .single();
 
-    if (error) {
+    const cached = getOfflineChapter(id);
+    if (error && !cached) {
       console.error(error);
       return;
     }
 
-    setChapter(data);
+    const activeChapter = data || cached;
+    setChapter(activeChapter);
+    setOfflineReady(!!cached);
+    const bookmarks = readList(userKey(currentUser?.id, "bookmarks"));
+    setBookmarked(bookmarks.some((item) => item.chapter_id === activeChapter.id));
+    if (data) saveOfflineChapter(data);
 
     localStorage.setItem(
-      `lastChapter_${data.novel_id}`,
-      data.id
+      `lastChapter_${activeChapter.novel_id}`,
+      activeChapter.id
     );
 
-    const readKey = `readChapters_${data.novel_id}`;
+    const readKey = `readChapters_${activeChapter.novel_id}`;
 
     const read = JSON.parse(
       localStorage.getItem(readKey) || "[]"
     );
 
-    if (!read.includes(data.id)) {
-      read.push(data.id);
+    if (!read.includes(activeChapter.id)) {
+      read.push(activeChapter.id);
 
       localStorage.setItem(
         readKey,
         JSON.stringify(read)
       );
     }
+
+    await addReadingHistory(supabase, currentUser, {
+      novel_id: activeChapter.novel_id,
+      chapter_id: activeChapter.id,
+      chapter_title: activeChapter.title,
+    });
   }
 
   async function previousChapter() {
@@ -124,6 +142,30 @@ function Reader() {
       "readerFontSize",
       size
     );
+  }
+
+
+
+  async function toggleBookmark() {
+    if (!chapter) return;
+    const key = userKey(user?.id, "bookmarks");
+    const bookmarks = readList(key);
+    if (bookmarked) {
+      writeList(key, bookmarks.filter((item) => item.chapter_id !== chapter.id));
+      setBookmarked(false);
+      if (user) await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("chapter_id", chapter.id);
+      return;
+    }
+    const entry = { novel_id: chapter.novel_id, chapter_id: chapter.id, chapter_title: chapter.title, scroll_y: window.scrollY, created_at: new Date().toISOString() };
+    writeList(key, [entry, ...bookmarks]);
+    setBookmarked(true);
+    if (user) await supabase.from("bookmarks").insert({ ...entry, user_id: user.id });
+  }
+
+  function cacheCurrentChapter() {
+    saveOfflineChapter(chapter);
+    setOfflineReady(true);
+    alert("Главу збережено для офлайн-читання.");
   }
 
   function toggleDarkMode() {
@@ -208,6 +250,10 @@ function Reader() {
         <button onClick={() => changeFontSize(28)}>
           A++
         </button>
+
+        <button onClick={toggleBookmark}>{bookmarked ? "🔖 Закладку додано" : "🔖 Закладка"}</button>
+
+        <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
 
         <button onClick={toggleDarkMode}>
           {darkMode

@@ -33,6 +33,13 @@ class QueryBuilder {
     return this;
   }
 
+  upsert(payload, options = {}) {
+    this.action = "upsert";
+    this.payload = payload;
+    this.options = { ...this.options, ...options, resolution: "merge-duplicates" };
+    return this;
+  }
+
   update(payload) {
     this.action = "update";
     this.payload = payload;
@@ -46,6 +53,16 @@ class QueryBuilder {
 
   eq(column, value) {
     this.params.append(column, `eq.${value}`);
+    return this;
+  }
+
+  ilike(column, value) {
+    this.params.append(column, `ilike.${value}`);
+    return this;
+  }
+
+  or(filter) {
+    this.params.append("or", `(${filter})`);
     return this;
   }
 
@@ -85,10 +102,12 @@ class QueryBuilder {
 
   async execute() {
     try {
+      if (this.options.onConflict) this.params.set("on_conflict", this.options.onConflict);
       const url = `${supabaseUrl}/rest/v1/${this.table}?${this.params}`;
       const method = {
         select: "GET",
         insert: "POST",
+        upsert: "POST",
         update: "PATCH",
         delete: "DELETE",
       }[this.action];
@@ -99,7 +118,7 @@ class QueryBuilder {
           ...headers(),
           Prefer: this.options.count === "exact"
             ? "count=exact"
-            : "return=representation",
+            : `return=representation${this.options.resolution ? `,resolution=${this.options.resolution}` : ""}`,
         },
         body: this.payload ? JSON.stringify(this.payload) : undefined,
       });
