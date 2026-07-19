@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { getCurrentUser, readList, userKey } from "../lib/userFeatures";
 import { useTelegram } from "../hooks/useTelegram";
+import "../styles/Profile.css";
 
 function Profile() {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ function Profile() {
   const [profile, setProfile] = useState({ username: "", avatar_url: "" });
   const [libraryCount, setLibraryCount] = useState(0);
   const [historyCount, setHistoryCount] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -63,22 +65,42 @@ function Profile() {
     navigate("/");
   }
 
+  const avatarUrl = profile.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(profile.username || "NovelVerse")}`;
+
   return (
-    <div style={{ maxWidth: "720px", margin: "40px auto", color: "white", display: "flex", flexDirection: "column", gap: "20px", padding: 20 }}>
-      <h1>👤 Профіль</h1>
-      <div style={{ background: "#1f2937", padding: "20px", borderRadius: "16px", display: "grid", gap: 16 }}>
-        <img src={profile.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(profile.username || "NovelVerse")}`} alt="Аватар" style={{ width: 104, height: 104, borderRadius: "50%", background: "#0f172a" }} />
-        {isTelegram && telegramUser && <p>📱 Telegram: @{telegramUser.username || localUser?.user_metadata?.username} · ID {telegramUser.id}</p>}
-        <label>Ім'я користувача<input value={profile.username} onChange={(e) => setProfile({ ...profile, username: e.target.value })} /></label>
-        <label>URL аватара<input value={profile.avatar_url} onChange={(e) => setProfile({ ...profile, avatar_url: e.target.value })} placeholder="https://..." /></label>
-        <p>Email: {user?.email}</p>
-        <p>❤️ Моя бібліотека: {libraryCount} новел</p>
-        <p>🕘 Історія читання: {historyCount} записів</p>
-        <button onClick={saveProfile}>💾 Зберегти профіль</button>
+    <div className="profile-page page-shell">
+      <h1>Профіль</h1>
+      <div className="profile-card">
+        <div className="profile-card__compact">
+          <img src={avatarUrl} alt="Аватар" className="profile-card__avatar" />
+          <div className="profile-card__name">
+            <strong>{profile.username || "Reader"}</strong>
+            <span>{isTelegram ? `@${telegramUser?.username || localUser?.user_metadata?.username || "telegram"}` : user?.email}</span>
+          </div>
+          <button type="button" className="profile-card__settings" aria-label="Налаштування профілю" onClick={() => setShowSettings((value) => !value)}>⚙️</button>
+        </div>
+
+        {isTelegram && telegramUser && <p className="profile-card__telegram">📱 Telegram Mini App · ID {telegramUser.id}</p>}
+
+        {showSettings && (
+          <div className="profile-card__form">
+            <label>Ім'я користувача<input value={profile.username} onChange={(e) => setProfile({ ...profile, username: e.target.value })} /></label>
+            <label>URL аватара<input value={profile.avatar_url} onChange={(e) => setProfile({ ...profile, avatar_url: e.target.value })} placeholder="https://..." /></label>
+            <button onClick={saveProfile}>💾 Зберегти профіль</button>
+          </div>
+        )}
+
+        <p className="profile-card__email">Email: {user?.email || "Telegram user"}</p>
+        <div className="profile-card__stats">
+          <span>❤️ Моя бібліотека: {libraryCount} новел</span>
+          <span>🕘 Історія читання: {historyCount} записів</span>
+        </div>
       </div>
-      <button onClick={() => navigate("/library")}>📚 Відкрити бібліотеку</button>
-      <button onClick={() => navigate("/admin")}>⚙️ Адмін-панель</button>
-      <button onClick={logout} style={{ background: "#dc2626" }}>🚪 Вийти</button>
+      <div className="profile-actions">
+        <button onClick={() => navigate("/library")}>📚 Відкрити бібліотеку</button>
+        <button onClick={() => navigate("/admin")}>⚙️ Адмін-панель</button>
+        <button onClick={logout} className="profile-actions__danger">🚪 Вийти</button>
+      </div>
     </div>
   );
 }

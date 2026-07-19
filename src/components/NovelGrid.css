@@ -1,3 +1,5 @@
-.novel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 18px; margin-top: 20px; }
-.novel-grid--loading .novel-card-skeleton { height: 232px; border-radius: var(--radius-lg); }
-@media (max-width: 520px) { .novel-grid { gap: 12px; } .novel-grid--loading .novel-card-skeleton { height: 188px; } }
+.novel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 18px; margin-top: 18px; }
+.novel-grid--loading .novel-card-skeleton { height: 232px; border-radius: 26px; box-shadow: var(--shadow-card); }
+.novel-card-skeleton { background: linear-gradient(110deg, var(--surface) 8%, var(--surface-2) 18%, var(--surface) 33%); background-size: 200% 100%; animation: skeleton-pulse 1.2s ease-in-out infinite; }
+@keyframes skeleton-pulse { 0% { opacity: .72; background-position: 100% 0; } 50% { opacity: 1; } 100% { opacity: .72; background-position: -100% 0; } }
+@media (max-width: 520px) { .novel-grid { gap: 12px; margin-top: 14px; } .novel-grid--loading .novel-card-skeleton { height: 188px; border-radius: 22px; } }
