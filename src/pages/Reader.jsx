@@ -56,6 +56,11 @@ function getVoiceLanguage(text = "") {
   return "en";
 }
 
+function formatClock(seconds) {
+  const safe = Math.max(0, Math.floor(seconds || 0));
+  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
+}
+
 function Reader() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -89,7 +94,9 @@ function Reader() {
   }), [bookmarked, chapter]));
 
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapter?.content), [chapter?.content]);
-  const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+  const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  const estimatedTotalSeconds = useMemo(() => Math.max(1, Math.round(paragraphs.join(" ").split(/\s+/).filter(Boolean).length / (165 * narrationSettings.rate) * 60)), [paragraphs, narrationSettings.rate]);
+  const elapsedSeconds = useMemo(() => Math.round((currentParagraphIndex / Math.max(1, paragraphs.length)) * estimatedTotalSeconds), [currentParagraphIndex, estimatedTotalSeconds, paragraphs.length]);
 
   useEffect(() => { loadChapter(); }, [id]);
 
@@ -303,6 +310,17 @@ function Reader() {
     if (ttsActive || ttsPaused) speakParagraph(target);
   }
 
+  function restartNarration() {
+    setCurrentParagraphIndex(0);
+    if (narrationSupported) speakParagraph(0);
+  }
+
+  function scrubNarration(value) {
+    const target = Math.min(Math.max(Number(value), 0), Math.max(paragraphs.length - 1, 0));
+    setCurrentParagraphIndex(target);
+    if (ttsActive || ttsPaused) speakParagraph(target);
+  }
+
   function updateNarrationRate(rate) {
     setNarrationSettings((current) => ({ ...current, rate }));
     if (ttsActive || ttsPaused) setTimeout(() => speakParagraph(currentParagraphIndex, rate), 0);
@@ -363,25 +381,25 @@ function Reader() {
         <button onClick={shareChapter}>📤 Поділитися в Telegram</button>
         <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
       </section>
-      {(ttsActive || ttsPaused) && <div className="reader__tts-mini"><button onClick={ttsPaused ? resumeNarration : pauseNarration}>{ttsPaused ? "▶️" : "⏸"}</button><span>{currentParagraphIndex + 1}/{paragraphs.length}</span><button onClick={stopNarration}>⏹</button></div>}
-      <section id="reader-narration-panel" className={`reader__narration ${narrationOpen ? "reader__narration--open" : ""}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
-        <div className="reader__narration-header"><h2>Озвучення</h2><button onClick={() => setNarrationOpen(false)} aria-label="Закрити озвучення">✕</button></div>
-        {!narrationSupported && <p className="reader__narration-warning">Ваш браузер не підтримує SpeechSynthesis API.</p>}
-        <div className="reader__narration-controls">
-          <button onClick={() => speakParagraph(currentParagraphIndex)} disabled={!narrationSupported || !paragraphs.length}>▶️ Play</button>
-          <button onClick={pauseNarration} disabled={!ttsActive || ttsPaused}>⏸ Pause</button>
-          <button onClick={resumeNarration} disabled={!ttsPaused}>⏯ Resume</button>
-          <button onClick={stopNarration} disabled={!ttsActive && !ttsPaused}>⏹ Stop</button>
-          <button onClick={() => moveParagraph(-1)} disabled={!paragraphs.length || currentParagraphIndex === 0}>⬅ Paragraph</button>
-          <button onClick={() => moveParagraph(1)} disabled={!paragraphs.length || currentParagraphIndex >= paragraphs.length - 1}>Paragraph ➡</button>
-        </div>
-        <label>Швидкість {narrationSettings.rate.toFixed(1)}x <input type="range" min="0.5" max="2" step="0.1" value={narrationSettings.rate} onChange={(e) => updateNarrationRate(Number(e.target.value))} /></label>
-        <label>Sleep timer <select value={sleepTimerMinutes} onChange={(e) => updateSleepTimer(Number(e.target.value))}><option value="0">Вимкнено</option><option value="5">5 хв</option><option value="10">10 хв</option><option value="20">20 хв</option><option value="30">30 хв</option><option value="45">45 хв</option></select></label>
-        <label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => setNarrationSettings({ ...narrationSettings, voiceURI: e.target.value })}>
-          <option value="">Авто: Українська / Русский / English</option>
-          {voices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}
-        </select></label>
-        <p className="reader__narration-status">Параграф {paragraphs.length ? currentParagraphIndex + 1 : 0} з {paragraphs.length}</p>
+      <section id="reader-narration-panel" className={`reader__narration-player ${narrationOpen ? "reader__narration-player--open" : ""}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
+        <div className="reader__player-grip" />
+        <div className="reader__player-header"><div><p>Audio reader</p><strong>{chapter.title}</strong></div><button onClick={() => { stopNarration(); setNarrationOpen(false); }} aria-label="Закрити озвучення">✕</button></div>
+        {!narrationSupported ? (
+          <p className="reader__narration-warning">Озвучення недоступне у цьому браузері. Відкрийте NovelVerse у середовищі зі SpeechSynthesis, щоб слухати глави.</p>
+        ) : (
+          <>
+            <input className="reader__progress-slider" type="range" min="0" max={Math.max(paragraphs.length - 1, 0)} value={currentParagraphIndex} onChange={(e) => scrubNarration(e.target.value)} disabled={!paragraphs.length} aria-label="Прогрес озвучення" />
+            <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{currentParagraphIndex + 1}/{paragraphs.length || 1}</span><span>{formatClock(estimatedTotalSeconds)}</span></div>
+            <div className="reader__media-controls">
+              <button onClick={() => moveParagraph(-1)} disabled={!paragraphs.length || currentParagraphIndex === 0} aria-label="Попередній параграф">⏮</button>
+              <button className="reader__play-button" onClick={() => ttsPaused ? resumeNarration() : ttsActive ? pauseNarration() : speakParagraph(currentParagraphIndex)} disabled={!paragraphs.length} aria-label="Відтворити або пауза">{ttsActive && !ttsPaused ? "⏸" : "▶"}</button>
+              <button onClick={() => moveParagraph(1)} disabled={!paragraphs.length || currentParagraphIndex >= paragraphs.length - 1} aria-label="Наступний параграф">⏭</button>
+              <button onClick={restartNarration} disabled={!paragraphs.length} aria-label="Спочатку">↻</button>
+            </div>
+            <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateNarrationRate(Number(e.target.value))}><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option></select></label></div>
+            <details className="reader__player-settings"><summary>Voice & sleep timer</summary><label>Sleep timer <select value={sleepTimerMinutes} onChange={(e) => updateSleepTimer(Number(e.target.value))}><option value="0">Вимкнено</option><option value="5">5 хв</option><option value="10">10 хв</option><option value="20">20 хв</option><option value="30">30 хв</option><option value="45">45 хв</option></select></label><label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => setNarrationSettings({ ...narrationSettings, voiceURI: e.target.value })}><option value="">Авто: Українська / Русский / English</option>{voices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label></details>
+          </>
+        )}
       </section>
     </main>
   );
