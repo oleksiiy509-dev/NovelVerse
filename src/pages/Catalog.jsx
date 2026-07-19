@@ -82,6 +82,7 @@ function Catalog() {
     );
     if (error) {
       setError(error.message || "Перевірте підключення до каталогу.");
+      setHasMore(false);
     } else {
       const rows = data || [];
       setNovels((current) => replace ? rows : [...current, ...rows]);
@@ -122,8 +123,8 @@ function Catalog() {
       </div>
       <div className="catalog__actions"><span>{activeCount} active filters</span><button type="button" onClick={()=>{ setSearch(""); setFilters(initialFilters); setSort("newest"); }}>Reset</button></div>
     </section>
-    <section className="catalog__results"><div className="home__section-heading"><div><p className="home__eyebrow">Results</p><h2>{novels.length} novels loaded</h2></div></div><NovelGrid novels={novels} loading={loading} error={error} /></section>
-    <div ref={loadMoreRef} className="catalog__load-more">{loadingMore ? "Loading more novels…" : hasMore ? "Scroll for more" : !loading && "End of catalog"}</div>
+    <section className="catalog__results"><div className="home__section-heading"><div><p className="home__eyebrow">Results</p><h2>{novels.length} novels loaded</h2></div></div><NovelGrid novels={novels} loading={loading} error={error} onRetry={()=>loadNovels(0, true)} /></section>
+    <div ref={loadMoreRef} className="catalog__load-more">{error ? "" : loadingMore ? "Loading more novels…" : hasMore ? "Scroll for more" : !loading && "End of catalog"}</div>
   </main>;
 }
 

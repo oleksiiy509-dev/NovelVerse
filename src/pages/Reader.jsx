@@ -78,6 +78,7 @@ function Reader() {
   const [narrationSettings, setNarrationSettings] = useState(getNarrationSettings);
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState(0);
   const [navigatingChapter, setNavigatingChapter] = useState(false);
+  const [adjacentChapters, setAdjacentChapters] = useState({ previous: null, next: null });
   const sleepTimerRef = useRef(null);
   const [voices, setVoices] = useState([]);
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(() => getSavedNarrationPosition(id));
@@ -185,6 +186,7 @@ function Reader() {
     const activeChapter = data || cached;
     setCurrentParagraphIndex(getSavedNarrationPosition(activeChapter.id));
     setChapter(activeChapter);
+    await loadAdjacentChapters(activeChapter);
     setOfflineReady(!!cached);
     const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
     if (cloudSettings) {
@@ -203,15 +205,21 @@ function Reader() {
     setLoading(false);
   }
 
+  async function loadAdjacentChapters(activeChapter) {
+    const base = supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id);
+    const [{ data: previous }, { data: next }] = await Promise.all([
+      base.lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
+    ]);
+    setAdjacentChapters({ previous, next });
+  }
+
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
+    const target = direction < 0 ? adjacentChapters.previous : adjacentChapters.next;
+    if (!target) return;
     setNavigatingChapter(true);
-    const query = supabase.from("chapters").select("id").eq("novel_id", chapter.novel_id);
-    const { data } = direction < 0
-      ? await query.lt("number", chapter.number).order("number", { ascending: false }).limit(1).maybeSingle()
-      : await query.gt("number", chapter.number).order("number", { ascending: true }).limit(1).maybeSingle();
-    setNavigatingChapter(false);
-    if (data) navigate(`/reader/${data.id}`, { preventScrollReset: true });
+    navigate(`/reader/${target.id}`, { preventScrollReset: true });
   }
 
   function previousChapter() { goToAdjacentChapter(-1); }
@@ -365,9 +373,9 @@ function Reader() {
           ))}
         </article>
       </div>
-      <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-hidden={!controlsVisible}>
+      <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-label="Chapter navigation">
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
-          <button onClick={previousChapter} disabled={navigatingChapter}>⬅ Попередня</button><button className="reader__next-chapter" onClick={nextChapter} disabled={navigatingChapter}>{navigatingChapter ? "Переходимо..." : "Наступна глава ➡"}</button>
+          <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous}>⬅ Попередня</button><button className="reader__next-chapter" onClick={nextChapter} disabled={navigatingChapter || !adjacentChapters.next}>{navigatingChapter ? "Переходимо..." : "Наступна глава ➡"}</button>
         </div>
       </nav>
       {settingsOpen && <div className="reader__settings-scrim" onClick={() => setSettingsOpen(false)} />}

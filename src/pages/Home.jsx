@@ -88,7 +88,7 @@ function Home() {
     <CategoryTabs active={category} onChange={setCategory} categories={categories} />
     {!search && category === "Усі" && sort === "default" && <><ContinueReading /><section className="home__section"><div className="home__section-heading"><div><p className="home__eyebrow">Top of the Week</p><h2>Топ тижня</h2></div></div><TopCarousel novels={top} loading={loading} onOpen={(novelId) => navigate(`/novel/${novelId}`)} /></section><section className="home__section home__section--latest"><div className="home__section-heading"><div><p className="home__eyebrow">Fresh chapters</p><h2>Latest Updates</h2></div></div><LatestUpdates novels={latest} loading={loading} error={errorMessage} onOpen={(novelId) => navigate(`/novel/${novelId}`)} /></section></>}
     <div className="home__sorts"><button onClick={() => setSort("default")}>Усі</button><button onClick={() => setSort("rating")}>⭐ Рейтинг</button><button onClick={() => setSort("views")}>🔥 Популярні</button><button onClick={() => setSort("bookmarks")}>❤️ Збережені</button><button onClick={() => setSort("new")}>🆕 Новинки</button></div>
-    <section className="home__section" id="catalog"><div className="home__section-heading"><div><p className="home__eyebrow">Browse</p><h2>Каталог</h2></div><span>{filteredNovels.length} новел</span></div><NovelGrid novels={filteredNovels} loading={loading} error={errorMessage} /></section>
+    <section className="home__section" id="catalog"><div className="home__section-heading"><div><p className="home__eyebrow">Browse</p><h2>Каталог</h2></div><span>{filteredNovels.length} новел</span></div><NovelGrid novels={filteredNovels} loading={loading} error={errorMessage} onRetry={loadNovels} /></section>
   </div>;
 }
 export default Home;
