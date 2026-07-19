@@ -112,41 +112,24 @@ async function loadComments() {
   if (error) {
     console.error(error);
     return;
-
-  const list = data || [];
-
-  setComments(list);
-
-  if (list.length === 0) {
-    setAverageRating(0);
-    setRatingCount(0);
-    return;
   }
 
-  const total = list.reduce(
-    (sum, item) => sum + Number(item.rating || 0),
-    0
-  );
+  const list = data || [];
+  setComments(list);
 
-  setAverageRating(total / list.length);
-  setRatingCount(list.length);
+  if (list.length > 0) {
+    const total = list.reduce(
+      (sum, item) => sum + Number(item.rating || 0),
+      0
+    );
+
+    setAverageRating(total / list.length);
+    setRatingCount(list.length);
+  } else {
+    setAverageRating(0);
+    setRatingCount(0);
+  }
 }
-
-setComments(data || []);
-
-if (data && data.length > 0) {
-  const total = data.reduce(
-    (sum, item) => sum + (item.rating || 0),
-    0
-  );
-
-  setAverageRating(total / data.length);
-  setRatingCount(data.length);
-} else {
-  setAverageRating(0);
-  setRatingCount(0);
-}
-} //
 
   async function checkLibrary(userId) {
   const { data, error } = await supabase
@@ -259,30 +242,6 @@ async function sendComment() {
   setRating(5);
 
   await loadComments();
-
-
-  if (!comment.trim()) return;
-
-  setSending(true);
-
-  const { error: secondInsertError } = await supabase
-    .from("comments")
-   .insert({
-  novel_id: id,
-  user_id: user.id,
-  username: user.user_metadata?.username || user.email,
-  message: comment.trim(),
-});
-
-  setSending(false);
-
-  if (secondInsertError) {
-    alert(secondInsertError.message);
-    return;
-  }
-
-  setComment("");
-  loadComments();
 }
 
   if (!novel) {
