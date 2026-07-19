@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
+import defaultCover from "../assets/default-cover.svg";
+import "./Library.css";
 
 function Library() {
   const navigate = useNavigate();
@@ -34,7 +36,8 @@ function Library() {
           author,
           image,
           rating,
-          chapters
+          chapters,
+          views
         )
       `)
       .eq("user_id", user.id);
@@ -61,91 +64,53 @@ function Library() {
   }
 
   if (loading) {
-    return (
-      <div
-        style={{
-          color: "white",
-          padding: "30px",
-        }}
-      >
-        Завантаження...
-      </div>
-    );
+    return <div className="library page-shell"><div className="loading-state">Завантаження...</div></div>;
   }
 
   return (
-    <div
-      style={{
-        maxWidth: "1000px",
-        margin: "30px auto",
-        color: "white",
-        padding: "20px",
-      }}
-    >
-      <h1>📚 Моя бібліотека</h1>
+    <main className="library page-shell">
+      <header className="library__header">
+        <h1>📚 Моя бібліотека</h1>
+        <p>Збережені новели з швидким доступом до читання.</p>
+      </header>
 
       {novels.length === 0 ? (
-        <p>У бібліотеці поки немає новел.</p>
+        <div className="empty-state">У бібліотеці поки немає новел.</div>
       ) : (
-        novels.map((item) => (
-          <div
-            key={item.id}
-            style={{
-              display: "flex",
-              gap: "20px",
-              background: "#1f2937",
-              marginBottom: "20px",
-              padding: "15px",
-              borderRadius: "12px",
-              alignItems: "center",
-            }}
-          >
-            <img
-              src={item.novels.image}
-              alt={item.novels.title}
-              style={{
-                width: "90px",
-                borderRadius: "10px",
-              }}
-            />
+        <section className="library__grid" aria-label="Збережені новели">
+          {novels.map((item) => {
+            const novel = item.novels || {};
+            const coverSrc = novel.image?.trim ? novel.image.trim() : novel.image;
 
-            <div style={{ flex: 1 }}>
-              <h3>{item.novels.title}</h3>
+            return (
+              <article className="library-card" key={item.id}>
+                <img
+                  src={coverSrc || defaultCover}
+                  alt={novel.title || "NovelVerse"}
+                  loading="lazy"
+                  onError={(event) => { event.currentTarget.src = defaultCover; }}
+                />
 
-              <p>✍️ {item.novels.author}</p>
+                <div>
+                  <h3>{novel.title}</h3>
+                  <p>✍️ {novel.author}</p>
+                  <div className="library-card__meta">
+                    <span>⭐ {novel.rating || "—"}</span>
+                    <span>👁 {Number(novel.views || 0).toLocaleString("uk-UA")}</span>
+                    <span>📖 {Number(novel.chapters || 0).toLocaleString("uk-UA")} глав</span>
+                  </div>
+                </div>
 
-              <p>⭐ {item.novels.rating}</p>
-
-              <p>📖 {item.novels.chapters} глав</p>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-              }}
-            >
-              <button
-                onClick={() =>
-                  navigate(`/novel/${item.novels.id}`)
-                }
-              >
-                📖 Відкрити
-              </button>
-
-              <button
-                onClick={() =>
-                  removeFromLibrary(item.id)
-                }
-              >
-                🗑 Видалити
-              </button>
-            </div>
-          </div>
-        ))
+                <div className="library-card__actions">
+                  <button onClick={() => navigate(`/novel/${novel.id}`)}>📖 Відкрити</button>
+                  <button onClick={() => removeFromLibrary(item.id)}>🗑 Видалити</button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
       )}
-    </div>
+    </main>
   );
 }
 

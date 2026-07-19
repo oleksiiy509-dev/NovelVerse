@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
 import { shareToTelegram } from "../lib/telegram";
 import { useTelegramMainButton } from "../hooks/useTelegram";
+import defaultCover from "../assets/default-cover.svg";
 import "../styles/Novel.css";
 
 
@@ -327,7 +328,7 @@ className={saved ? "novel-save novel-save--saved" : "novel-save"}
             <button onClick={shareNovel} className="novel-share">📤 Telegram</button>
           </div>
         </div>
-        <img className="novel-cover" src={novel.image} alt={novel.title} />
+        <img className="novel-cover" src={novel.image || defaultCover} alt={novel.title} onError={(event) => { event.currentTarget.src = defaultCover; }} />
       </section>
 
       <h2 className="novel-section-title">📚 Список глав</h2>

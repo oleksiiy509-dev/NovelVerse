@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" role="img" aria-labelledby="title desc">
+  <title id="title">NovelVerse default cover</title>
+  <desc id="desc">A polished blue and gold book cover placeholder for NovelVerse.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#07101d"/>
+      <stop offset="0.55" stop-color="#132a48"/>
+      <stop offset="1" stop-color="#050914"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="34%" r="55%">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" x2="1">
+      <stop offset="0" stop-color="#8a6508"/>
+      <stop offset="0.42" stop-color="#f8e7ad"/>
+      <stop offset="1" stop-color="#b8860b"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" rx="34" fill="url(#bg)"/>
+  <rect width="400" height="600" rx="34" fill="url(#glow)"/>
+  <path d="M70 88h260v424H70z" fill="#0b1728" opacity="0.58"/>
+  <path d="M90 108h220v384H90z" fill="none" stroke="url(#gold)" stroke-width="4" opacity="0.9"/>
+  <path d="M120 186c47-27 113-27 160 0v185c-47-25-113-25-160 0z" fill="#101f35" stroke="url(#gold)" stroke-width="5"/>
+  <path d="M200 177v188" stroke="#f8e7ad" stroke-width="3" opacity="0.75"/>
+  <path d="M139 225c28-12 49-12 61 0M139 260c28-12 49-12 61 0M261 225c-28-12-49-12-61 0M261 260c-28-12-49-12-61 0" stroke="#94a3b8" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+  <circle cx="200" cy="406" r="34" fill="none" stroke="url(#gold)" stroke-width="4"/>
+  <path d="M200 384l8 16 18 3-13 13 3 18-16-8-16 8 3-18-13-13 18-3z" fill="url(#gold)"/>
+  <text x="200" y="468" fill="#f8e7ad" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="800" text-anchor="middle" letter-spacing="1">NovelVerse</text>
+  <text x="200" y="506" fill="#cbd5e1" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" letter-spacing="5">DEFAULT COVER</text>
+</svg>
