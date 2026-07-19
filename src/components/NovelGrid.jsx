@@ -13,7 +13,7 @@ function NovelGrid({ novels, loading = false, error = "", onRetry, emptyTitle = 
   }
 
   if (error) {
-    return <div className="error-state">Не вдалося завантажити новели. {error}{onRetry && <><br /><button type="button" onClick={onRetry}>Retry</button></>}</div>;
+    return <div className="error-state">Не вдалося завантажити новели. {error}{onRetry && <><br /><button type="button" onClick={onRetry}>Спробувати ще раз</button></>}</div>;
   }
 
   if (!novels.length) {

@@ -6,7 +6,7 @@ import defaultCover from "../assets/default-cover.svg";
 import "../styles/AdminPanel.css";
 
 const PAGE_SIZE = 10;
-const sorters = { newest:["created_at", false], updated:["updated_at", false], title:["title", true], views:["views", false], rating:["rating", false] };
+const sorters = { newest:["created_at", false], updated:["created_at", false], title:["title", true], views:["views", false], rating:["rating", false] };
 const hasNoCover = (n) => !n.image;
 const hasNoChapters = (n) => Number(n.chapters || n.chapter_count || 0) === 0;
 
