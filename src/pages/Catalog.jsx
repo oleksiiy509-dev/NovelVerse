@@ -18,7 +18,10 @@ const sortOptions = {
 const normalize = (value = "") => String(value).trim().toLowerCase();
 const splitGenres = (value = "") => value.split(",").map((item) => item.trim()).filter(Boolean);
 const escapeFilter = (value = "") => String(value).replaceAll("%", "\\%").replaceAll("*", "\\*").replaceAll(",", "\\,");
-const isMissingColumnError = (error, column) => String(error?.message || error?.details || "").toLowerCase().includes(column.toLowerCase()) && String(error?.message || error?.details || "").toLowerCase().includes("does not exist");
+const isMissingColumnError = (error, column) => {
+  const message = String(error?.message || error?.details || "").toLowerCase();
+  return message.includes(column.toLowerCase()) && message.includes("does not exist");
+};
 
 function uniqueBy(values) {
   return [...new Set(values.map((value) => value?.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -96,12 +99,12 @@ function Catalog() {
     let result = await runQuery(NOVEL_COLUMNS, option);
 
     if (isMissingColumnError(result.error, "created_at")) {
-      console.error("Catalog novels query failed; retrying ordered by id.", result.error);
+      console.warn("Catalog novels query used unavailable date metadata; retrying ordered by id.");
       result = await runQuery(FALLBACK_NOVEL_COLUMNS, { column: "id", ascending: false, fallback: "id" });
     }
 
     if (result.error) {
-      console.error("Catalog novels query failed.", result.error);
+      console.error("Catalog novels query failed.");
       setError(CATALOG_ERROR_MESSAGE);
       setHasMore(false);
     } else {
@@ -121,8 +124,21 @@ function Catalog() {
     if (!query) return undefined;
     const timeout = setTimeout(async () => {
       const term = `%${escapeFilter(query)}%`;
-      const { data } = await supabase.from("novels").select("id,title,author,genres").neq("status", "Draft").or(`title.ilike.${term},author.ilike.${term},genres.ilike.${term}`).limit(6);
-      setSuggestions(data || []);
+      const buildSuggestionsQuery = (orderColumn) => supabase
+        .from("novels")
+        .select("id,title,author,genres")
+        .neq("status", "Draft")
+        .or(`title.ilike.${term},author.ilike.${term},genres.ilike.${term}`)
+        .order(orderColumn, { ascending: false })
+        .limit(6);
+
+      let result = await buildSuggestionsQuery("created_at");
+      if (isMissingColumnError(result.error, "created_at")) {
+        console.warn("Catalog suggestions query used unavailable date metadata; retrying ordered by id.");
+        result = await buildSuggestionsQuery("id");
+      }
+
+      setSuggestions(result.error ? [] : result.data || []);
     }, 140);
     return () => clearTimeout(timeout);
   }, [search]);
