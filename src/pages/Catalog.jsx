@@ -64,6 +64,7 @@ function Catalog() {
       builder.or(`title.ilike.${term},author.ilike.${term},genres.ilike.${term}`);
     }
     if (filters.status !== "all") builder.eq("status", filters.status);
+    else builder.neq("status", "Draft");
     if (filters.author !== "all") builder.eq("author", filters.author);
     if (filters.genre !== "all") builder.ilike("genres", `%${escapeFilter(filters.genre)}%`);
     if (filters.rating !== "all") builder.gte("rating", Number(filters.rating));
@@ -100,7 +101,7 @@ function Catalog() {
     if (!query) return undefined;
     const timeout = setTimeout(async () => {
       const term = `%${escapeFilter(query)}%`;
-      const { data } = await supabase.from("novels").select("id,title,author,genres").or(`title.ilike.${term},author.ilike.${term},genres.ilike.${term}`).limit(6);
+      const { data } = await supabase.from("novels").select("id,title,author,genres").neq("status", "Draft").or(`title.ilike.${term},author.ilike.${term},genres.ilike.${term}`).limit(6);
       setSuggestions(data || []);
     }, 140);
     return () => clearTimeout(timeout);
