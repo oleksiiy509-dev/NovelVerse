@@ -4,7 +4,9 @@ import NovelGrid from "../components/NovelGrid";
 import "../styles/Catalog.css";
 
 const PAGE_SIZE = 12;
-const NOVEL_COLUMNS = "id,title,author,rating,chapters,views,status,genres,image,description,created_at,updated_at,bookmarks";
+const NOVEL_COLUMNS = "id,title,author,rating,chapters,views,status,genres,image,description,created_at,bookmarks";
+const FALLBACK_NOVEL_COLUMNS = "id,title,author,rating,chapters,views,status,genres,image,description,bookmarks";
+const CATALOG_ERROR_MESSAGE = "Не вдалося завантажити каталог. Спробуйте ще раз за мить.";
 const initialFilters = { genre: "all", status: "all", rating: "all", author: "all" };
 const sortOptions = {
   newest: { label: "Newest", column: "created_at", ascending: false, fallback: "id" },
@@ -16,7 +18,7 @@ const sortOptions = {
 const normalize = (value = "") => String(value).trim().toLowerCase();
 const splitGenres = (value = "") => value.split(",").map((item) => item.trim()).filter(Boolean);
 const escapeFilter = (value = "") => String(value).replaceAll("%", "\\%").replaceAll("*", "\\*").replaceAll(",", "\\,");
-
+const isMissingColumnError = (error, column) => String(error?.message || error?.details || "").toLowerCase().includes(column.toLowerCase()) && String(error?.message || error?.details || "").toLowerCase().includes("does not exist");
 
 function uniqueBy(values) {
   return [...new Set(values.map((value) => value?.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -78,14 +80,28 @@ function Catalog() {
     const start = nextPage * PAGE_SIZE;
     const end = start + PAGE_SIZE - 1;
     const option = sortOptions[sort] || sortOptions.newest;
-    const { data, error } = await applyQuery(
-      supabase.from("novels").select(NOVEL_COLUMNS).order(option.column, { ascending: option.ascending }).order(option.fallback, { ascending: false }).range(start, end)
+    const runQuery = (columns, orderOption) => applyQuery(
+      supabase
+        .from("novels")
+        .select(columns)
+        .order(orderOption.column, { ascending: orderOption.ascending })
+        .order(orderOption.fallback, { ascending: false })
+        .range(start, end)
     );
-    if (error) {
-      setError(error.message || "Перевірте підключення до каталогу.");
+
+    let result = await runQuery(NOVEL_COLUMNS, option);
+
+    if (isMissingColumnError(result.error, "created_at")) {
+      console.error("Catalog novels query failed; retrying ordered by id.", result.error);
+      result = await runQuery(FALLBACK_NOVEL_COLUMNS, { column: "id", ascending: false, fallback: "id" });
+    }
+
+    if (result.error) {
+      console.error("Catalog novels query failed.", result.error);
+      setError(CATALOG_ERROR_MESSAGE);
       setHasMore(false);
     } else {
-      const rows = data || [];
+      const rows = result.data || [];
       setNovels((current) => replace ? rows : [...current, ...rows]);
       setPage(nextPage);
       setHasMore(rows.length === PAGE_SIZE);
