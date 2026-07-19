@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
+import { shareToTelegram } from "../lib/telegram";
+import { useTelegramMainButton } from "../hooks/useTelegram";
 
 function Novel() {
   const { id } = useParams();
@@ -28,14 +31,22 @@ function Novel() {
 
   const [ratingCount, setRatingCount] = useState(0);
 
+  useTelegramMainButton(novel ? {
+    text: "Read novel",
+    onClick: () => {
+      const last = localStorage.getItem(`lastChapter_${id}`);
+      if (last) navigate(`/reader/${last}`);
+      else if (chapters.length > 0) navigate(`/reader/${chapters[0].id}`);
+    },
+    disabled: !chapters.length,
+  } : null);
+
   useEffect(() => {
     init();
   }, [id]);
 
   async function init() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getCurrentUser(supabase);
 
     setUser(user);
 
@@ -48,7 +59,7 @@ function Novel() {
     await loadNovel();
 
     if (user) {
-      await checkLibrary(user.id);
+      await checkLibrary(user);
     }
 
     await loadChapters();
@@ -131,11 +142,15 @@ async function loadComments() {
   }
 }
 
-  async function checkLibrary(userId) {
+  async function checkLibrary(currentUser) {
+  if (currentUser?.app_metadata?.provider === "telegram") {
+    setSaved(readList(userKey(currentUser.id, "library")).some((item) => item.novel_id === id));
+    return;
+  }
   const { data, error } = await supabase
     .from("library")
     .select("id")
-    .eq("user_id", userId)
+    .eq("user_id", currentUser.id)
     .eq("novel_id", id)
     .maybeSingle();
 
@@ -155,6 +170,13 @@ async function addToLibrary() {
 
   if (saved) {
     alert("Новела вже у бібліотеці.");
+    return;
+  }
+
+  if (user.app_metadata?.provider === "telegram") {
+    const key = userKey(user.id, "library");
+    writeList(key, [{ novel_id: id, saved_at: new Date().toISOString() }, ...readList(key).filter((item) => item.novel_id !== id)]);
+    setSaved(true);
     return;
   }
 
@@ -185,6 +207,10 @@ async function addToLibrary() {
   });
 
   setSaved(true);
+}
+
+function shareNovel() {
+  shareToTelegram({ title: novel.title, text: `Читайте ${novel.title} у NovelVerse`, url: window.location.href });
 }
 
 async function deleteComment(commentId) {
@@ -420,6 +446,7 @@ async function sendComment() {
             >
               {saved ? "💖 У бібліотеці" : "❤️ В бібліотеку"}
             </button>
+            <button onClick={shareNovel} style={{ padding: "14px 30px", background: "#0088cc", color: "white", border: "none", borderRadius: 10, cursor: "pointer", fontSize: 16 }}>📤 Поділитися в Telegram</button>
           </div>
         </div>
       </div>

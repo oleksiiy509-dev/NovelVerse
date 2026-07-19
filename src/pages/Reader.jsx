@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { addReadingHistory, getOfflineChapter, getCurrentUser, saveOfflineChapter, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
-import { telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
+import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
 
@@ -185,8 +185,8 @@ function Reader() {
     localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
 
     const readKey = `readChapters_${activeChapter.novel_id}`;
-    const read = JSON.parse(localStorage.getItem(readKey) || "[]");
-    if (!read.includes(activeChapter.id)) localStorage.setItem(readKey, JSON.stringify([...read, activeChapter.id]));
+    const read = await readCloudBackedList(readKey, telegramCloudGetItem);
+    if (!read.includes(activeChapter.id)) await writeCloudBackedList(readKey, [...read, activeChapter.id], telegramCloudSetItem);
 
     await addReadingHistory(supabase, currentUser, { novel_id: activeChapter.novel_id, chapter_id: activeChapter.id, chapter_title: activeChapter.title });
     setLoading(false);
@@ -227,6 +227,10 @@ function Reader() {
     saveOfflineChapter(chapter);
     setOfflineReady(true);
     alert("Главу збережено для офлайн-читання.");
+  }
+
+  function shareChapter() {
+    shareToTelegram({ title: chapter.title, text: `Глава ${chapter.number} у NovelVerse`, url: window.location.href });
   }
 
   function handleReadingPointerDown(e) {
@@ -356,6 +360,7 @@ function Reader() {
           <option value="serif">Serif book</option><option value="sans">Sans clean</option><option value="dyslexic">Readable wide</option><option value="mono">Mono</option>
         </select>
         <button onClick={toggleBookmark}>{bookmarked ? "🔖 Додано" : "🔖 Закладка"}</button>
+        <button onClick={shareChapter}>📤 Поділитися в Telegram</button>
         <button onClick={cacheCurrentChapter}>{offlineReady ? "✅ Офлайн" : "⬇️ Офлайн"}</button>
       </section>
       {(ttsActive || ttsPaused) && <div className="reader__tts-mini"><button onClick={ttsPaused ? resumeNarration : pauseNarration}>{ttsPaused ? "▶️" : "⏸"}</button><span>{currentParagraphIndex + 1}/{paragraphs.length}</span><button onClick={stopNarration}>⏹</button></div>}

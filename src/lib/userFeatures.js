@@ -1,6 +1,8 @@
+import { getTelegramLocalUser } from "./telegram";
+
 export async function getCurrentUser(supabase) {
   const { data } = await supabase.auth.getUser();
-  return data?.user || null;
+  return data?.user || getTelegramLocalUser() || null;
 }
 
 export function userKey(userId, name) {
@@ -83,4 +85,3 @@ export async function addReadingHistory(supabase, user, payload) {
 
   return supabase.from("reading_history").insert(entry);
 }
-

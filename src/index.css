@@ -17,6 +17,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 body.telegram-webapp { min-height: var(--tg-viewport-stable-height, 100vh); background: var(--tg-bg, var(--bg)); color: var(--tg-text, var(--text)); }
+body.telegram-webapp #root {
+  min-height: var(--tg-viewport-stable-height, 100vh);
+  overflow-x: hidden;
+}
+body.telegram-webapp .page-shell {
+  width: 100%;
+  padding: calc(14px + var(--safe-top)) max(12px, var(--safe-right)) calc(92px + var(--safe-bottom)) max(12px, var(--safe-left));
+}
+body.telegram-webapp button {
+  min-height: 48px;
+  touch-action: manipulation;
+}
 a { color: inherit; }
 img { max-width: 100%; display: block; }
 button, input, textarea, select { font: inherit; }

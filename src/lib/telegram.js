@@ -12,6 +12,7 @@ let sdkModulePromise;
 let cachedApp;
 let backButtonHandler;
 let mainButtonHandler;
+const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "";
 
 function getTelegramApp() {
   if (typeof window === "undefined") return null;
@@ -80,6 +81,48 @@ export function getTelegramUser() {
   return getTelegramApp()?.initDataUnsafe?.user || null;
 }
 
+export function getTelegramInitData() {
+  return getTelegramApp()?.initData || "";
+}
+
+export function getTelegramDisplayName(user = getTelegramUser()) {
+  if (!user) return "Telegram Reader";
+  return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.username || "Telegram Reader";
+}
+
+export function getTelegramAvatarUrl(user = getTelegramUser()) {
+  return user?.photo_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(getTelegramDisplayName(user))}`;
+}
+
+export function getTelegramLocalUser(user = getTelegramUser()) {
+  if (!user?.id) return null;
+  return {
+    id: `telegram:${user.id}`,
+    email: user.username ? `${user.username}@telegram.local` : `telegram-${user.id}@telegram.local`,
+    app_metadata: { provider: "telegram" },
+    user_metadata: {
+      provider: "telegram",
+      telegram_id: user.id,
+      username: user.username || getTelegramDisplayName(user),
+      first_name: user.first_name || "",
+      last_name: user.last_name || "",
+      avatar_url: getTelegramAvatarUrl(user),
+      photo_url: user.photo_url || "",
+      language_code: user.language_code || "",
+    },
+  };
+}
+
+export function openTelegramLogin(botUsername = BOT_USERNAME) {
+  const webApp = getTelegramApp();
+  if (webApp?.initDataUnsafe?.user) return true;
+  if (!botUsername) return false;
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const loginUrl = `https://oauth.telegram.org/auth?bot_id=${encodeURIComponent(botUsername)}&origin=${encodeURIComponent(origin)}&request_access=write`;
+  webApp?.openTelegramLink?.(loginUrl) || window.open(loginUrl, "_blank", "noopener,noreferrer");
+  return true;
+}
+
 export function configureTelegramBackButton(onClick) {
   const backButton = getTelegramApp()?.BackButton;
   if (!backButton) return () => {};
@@ -110,6 +153,14 @@ export function configureTelegramMainButton(options = {}) {
     mainButton.hide?.();
     if (mainButtonHandler === options.onClick) mainButtonHandler = null;
   };
+}
+
+export function shareToTelegram({ title, text, url = window.location.href }) {
+  const shareText = [title, text].filter(Boolean).join(" — ");
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(shareText)}`;
+  const webApp = getTelegramApp();
+  if (webApp?.openTelegramLink) webApp.openTelegramLink(shareUrl);
+  else window.open(shareUrl, "_blank", "noopener,noreferrer");
 }
 
 export const telegramTheme = { applyTheme, applyViewport };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getTelegramUser, initTelegramMiniApp, isTelegramMiniApp } from "../lib/telegram";
+import { getTelegramInitData, getTelegramLocalUser, getTelegramUser, initTelegramMiniApp, isTelegramMiniApp } from "../lib/telegram";
 import { TelegramContext } from "./TelegramContextValue";
 
 export function TelegramProvider({ children }) {
@@ -20,6 +20,8 @@ export function TelegramProvider({ children }) {
     isTelegram: isTelegramMiniApp(),
     webApp,
     user: getTelegramUser(),
+    localUser: getTelegramLocalUser(),
+    initData: getTelegramInitData(),
     ready,
   }), [webApp, ready]);
 
