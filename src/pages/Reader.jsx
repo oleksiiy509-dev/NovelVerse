@@ -35,6 +35,8 @@ function Reader() {
   const [settings, setSettings] = useState(getReaderSettings);
   const [settingsOpen, setSettingsOpen] = useState(getReaderPanelOpen);
   const [ttsActive, setTtsActive] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [tapStart, setTapStart] = useState(null);
 
   useEffect(() => { loadChapter(); }, [id]);
 
@@ -131,6 +133,19 @@ function Reader() {
     alert("Главу збережено для офлайн-читання.");
   }
 
+  function handleReadingPointerDown(e) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    setTapStart({ x: e.clientX, y: e.clientY });
+  }
+
+  function handleReadingPointerUp(e) {
+    if (!tapStart) return;
+    const moved = Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y);
+    setTapStart(null);
+    if (moved > 10 || e.target.closest("button, a, input, select, textarea, label, [role=button]")) return;
+    setControlsVisible((visible) => !visible);
+  }
+
   function toggleTts() {
     if (!chapter || !window.speechSynthesis) return;
     if (ttsActive) {
@@ -149,17 +164,30 @@ function Reader() {
   if (errorMessage) return <main className="reader reader--dark"><div className="reader__shell"><div className="error-state">{errorMessage}</div></div></main>;
 
   return (
-    <main className={`reader reader--${settings.theme}`}>
+    <main className={`reader reader--${settings.theme} ${controlsVisible ? "reader--controls-visible" : "reader--immersive"}`}>
       <button className="reader__settings-toggle" onClick={() => setSettingsOpen(true)} aria-expanded={settingsOpen} aria-controls="reader-settings-panel">⚙️<span>Налаштування</span></button>
-      <div className="reader__shell" style={{ maxWidth: `${settings.textWidth}px` }}>
-        <button className="reader__back" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>⬅ До списку глав</button>
-        <header className="reader__header">
-          <span>Глава {chapter.number}</span>
-          <h1>{chapter.title}</h1>
-        </header>
-        <article className="reader__content" style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }}>{chapter.content}</article>
-        <nav className="reader__chapter-nav"><button onClick={previousChapter}>⬅ Попередня</button><button onClick={nextChapter}>Наступна ➡</button></nav>
+      <div className="reader__controls reader__controls--top" aria-hidden={!controlsVisible}>
+        <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
+          <button className="reader__back" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>⬅ До списку глав</button>
+          <header className="reader__header">
+            <span>Глава {chapter.number}</span>
+            <h1>{chapter.title}</h1>
+          </header>
+        </div>
       </div>
+      <div className="reader__shell" style={{ maxWidth: `${settings.textWidth}px` }}>
+        <article
+          className="reader__content"
+          style={{ fontSize: `${settings.fontSize}px`, lineHeight: settings.lineHeight }}
+          onPointerDown={handleReadingPointerDown}
+          onPointerUp={handleReadingPointerUp}
+        >{chapter.content}</article>
+      </div>
+      <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-hidden={!controlsVisible}>
+        <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
+          <button onClick={previousChapter}>⬅ Попередня</button><button onClick={nextChapter}>Наступна ➡</button>
+        </div>
+      </nav>
       {settingsOpen && <div className="reader__settings-scrim" onClick={() => setSettingsOpen(false)} />}
       <section id="reader-settings-panel" className={`reader__settings ${settingsOpen ? "reader__settings--open" : ""}`} aria-label="Налаштування читання" aria-hidden={!settingsOpen}>
         <div className="reader__settings-header"><h2>Налаштування</h2><button onClick={() => setSettingsOpen(false)} aria-label="Закрити налаштування">✕</button></div>
