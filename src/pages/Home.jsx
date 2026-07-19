@@ -13,8 +13,8 @@ import "../styles/Home.css";
 
 function normalize(value = "") { return String(value).toLowerCase(); }
 function byRecentUpdate(a, b) {
-  const left = new Date(b.updated_at || b.created_at || 0).getTime() || b.id || 0;
-  const right = new Date(a.updated_at || a.created_at || 0).getTime() || a.id || 0;
+  const left = new Date(b.created_at || 0).getTime() || b.id || 0;
+  const right = new Date(a.created_at || 0).getTime() || a.id || 0;
   return left - right;
 }
 function relativeTime(value) {
@@ -47,7 +47,7 @@ function LatestUpdates({ novels, loading, error, onOpen }) {
       <span className="update-row__rank">{index + 1}</span>
       <img src={novel.image || defaultCover} alt="" loading="lazy" onError={(event) => { event.currentTarget.src = defaultCover; }} />
       <span className="update-row__body"><strong>{novel.title}</strong><span>{splitPills(novel.genres).join(" • ") || novel.status || "Novel"}</span></span>
-      <time>{relativeTime(novel.updated_at || novel.created_at)}</time>
+      <time>{relativeTime(novel.created_at)}</time>
     </button>
   ))}</div>;
 }

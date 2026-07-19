@@ -80,14 +80,18 @@ function Catalog() {
     const start = nextPage * PAGE_SIZE;
     const end = start + PAGE_SIZE - 1;
     const option = sortOptions[sort] || sortOptions.newest;
-    const runQuery = (columns, orderOption) => applyQuery(
-      supabase
+    const runQuery = (columns, orderOption) => {
+      let query = supabase
         .from("novels")
         .select(columns)
-        .order(orderOption.column, { ascending: orderOption.ascending })
-        .order(orderOption.fallback, { ascending: false })
-        .range(start, end)
-    );
+        .order(orderOption.column, { ascending: orderOption.ascending });
+
+      if (orderOption.fallback && orderOption.fallback !== orderOption.column) {
+        query = query.order(orderOption.fallback, { ascending: false });
+      }
+
+      return applyQuery(query.range(start, end));
+    };
 
     let result = await runQuery(NOVEL_COLUMNS, option);
 
