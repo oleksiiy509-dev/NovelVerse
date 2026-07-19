@@ -1,7 +1,7 @@
 import NovelCard from "./NovelCard";
 import "./NovelGrid.css";
 
-function NovelGrid({ novels, loading = false, error = "" }) {
+function NovelGrid({ novels, loading = false, error = "", emptyTitle = "Новел не знайдено", emptyText = "Спробуйте змінити пошук, категорію або сортування." }) {
   if (loading) {
     return (
       <div className="novel-grid novel-grid--loading" aria-label="Завантаження новел">
@@ -19,8 +19,8 @@ function NovelGrid({ novels, loading = false, error = "" }) {
   if (!novels.length) {
     return (
       <div className="empty-state">
-        <h3>Новел не знайдено</h3>
-        <p>Спробуйте змінити пошук, категорію або сортування.</p>
+        <h3>{emptyTitle}</h3>
+        <p>{emptyText}</p>
       </div>
     );
   }

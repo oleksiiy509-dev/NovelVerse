@@ -6,11 +6,18 @@ import { initTelegramMiniApp } from "../lib/userFeatures";
 import SearchBar from "../components/SearchBar";
 import CategoryTabs from "../components/CategoryTabs";
 import NovelGrid from "../components/NovelGrid";
+import ContinueReading from "../components/ContinueReading";
 
 import "../styles/Home.css";
 
 function normalize(value = "") {
   return String(value).toLowerCase();
+}
+
+function byRecentUpdate(a, b) {
+  const left = new Date(b.updated_at || b.created_at || 0).getTime() || b.id || 0;
+  const right = new Date(a.updated_at || a.created_at || 0).getTime() || a.id || 0;
+  return left - right;
 }
 
 function Home() {
@@ -101,6 +108,9 @@ function Home() {
     return result;
   }, [novels, search, category, sort]);
 
+  const recentlyUpdated = useMemo(() => [...novels].sort(byRecentUpdate).slice(0, 6), [novels]);
+  const popularNovels = useMemo(() => [...novels].sort((a, b) => (b.views || 0) - (a.views || 0) || (b.rating || 0) - (a.rating || 0)).slice(0, 6), [novels]);
+
   return (
     <div className="home page-shell">
       <div className="home__hero">
@@ -120,6 +130,20 @@ function Home() {
 
       <CategoryTabs active={category} onChange={setCategory} categories={categories} />
 
+      {!search && category === "Усі" && sort === "default" && (
+        <>
+          <ContinueReading />
+          <section className="home__section" aria-labelledby="recently-updated-title">
+            <div className="home__section-heading"><div><p className="home__eyebrow">Fresh chapters</p><h2 id="recently-updated-title">Нещодавно оновлені</h2></div></div>
+            <NovelGrid novels={recentlyUpdated} loading={loading} error={errorMessage} emptyTitle="Поки немає оновлень" emptyText="Коли новели отримають нові глави, вони зʼявляться тут." />
+          </section>
+          <section className="home__section" aria-labelledby="popular-title">
+            <div className="home__section-heading"><div><p className="home__eyebrow">Community picks</p><h2 id="popular-title">Популярні новели</h2></div></div>
+            <NovelGrid novels={popularNovels} loading={loading} error={errorMessage} emptyTitle="Популярні новели ще формуються" emptyText="Перегляди, рейтинг і закладки допоможуть наповнити цю секцію." />
+          </section>
+        </>
+      )}
+
       <div className="home__sorts">
         <button onClick={() => setSort("default")}>📚 Усі</button>
         <button onClick={() => setSort("rating")}>⭐ Рейтинг</button>
@@ -128,7 +152,10 @@ function Home() {
         <button onClick={() => setSort("new")}>🆕 Новинки</button>
       </div>
 
-      <NovelGrid novels={filteredNovels} loading={loading} error={errorMessage} />
+      <section className="home__section" aria-labelledby="catalog-title">
+        <div className="home__section-heading"><div><p className="home__eyebrow">Browse</p><h2 id="catalog-title">Каталог</h2></div><span>{filteredNovels.length} новел</span></div>
+        <NovelGrid novels={filteredNovels} loading={loading} error={errorMessage} />
+      </section>
     </div>
   );
 }

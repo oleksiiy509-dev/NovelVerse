@@ -49,3 +49,8 @@
 .reader__narration select { min-height: 42px; width: 100%; }
 .reader__narration-status, .reader__narration-warning { margin: 0; color: color-mix(in srgb, currentColor 72%, transparent); font-size: .86rem; }
 @media (max-width: 640px) { .reader__audio-toggle { top: max(58px, calc(50px + env(safe-area-inset-top))); right: 12px; min-width: 42px; padding-inline: 12px; } .reader__audio-toggle span { display: none; } .reader__narration { left: 12px; right: 12px; bottom: calc(84px + var(--safe-bottom)); width: auto; } }
+.reader__tts-mini { align-items: center; backdrop-filter: blur(18px); background: color-mix(in srgb, var(--primary) 24%, #020617 72%); border: 1px solid rgba(148,163,184,.35); border-radius: 999px; bottom: calc(158px + var(--safe-bottom)); box-shadow: 0 18px 44px rgba(2,6,23,.32); color: #f8fafc; display: inline-flex; gap: 8px; padding: 8px 10px; position: fixed; right: 16px; z-index: 11; }
+.reader__tts-mini button { min-height: 34px; min-width: 34px; padding: 0; border-radius: 999px; }
+.reader__tts-mini span { font-size: .85rem; font-weight: 900; min-width: 52px; text-align: center; }
+.reader__settings select[aria-label="Шрифт читання"] { grid-column: span 1; }
+@media (max-width: 640px) { .reader__tts-mini { bottom: calc(150px + var(--safe-bottom)); right: 12px; } }

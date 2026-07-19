@@ -5,3 +5,16 @@
 .home__sorts { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
 .home__sorts button { background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary); min-height: 42px; }
 @media (max-width: 720px) { .home__hero { align-items: stretch; flex-direction: column; border-radius: 22px; } .home__hero button, .home__sorts button { flex: 1 1 140px; } }
+.home__section { margin: 26px 0 34px; }
+.home__section-heading { align-items: end; display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.home__section-heading h2 { margin: 0; text-align: left; font-size: clamp(1.4rem, 3vw, 2rem); }
+.home__section-heading span { color: var(--muted); font-weight: 800; }
+.continue-reading__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.continue-reading__card { align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 14px; padding: 14px; }
+.continue-reading__card img { aspect-ratio: 2 / 3; background: var(--surface-2); border-radius: 12px; height: 112px; object-fit: cover; width: 74px; }
+.continue-reading__card h3 { margin: 0 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.continue-reading__card p { margin: 0 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.continue-reading__progress { background: var(--surface-2); border-radius: 999px; height: 7px; margin-bottom: 12px; overflow: hidden; }
+.continue-reading__progress span { background: linear-gradient(90deg, var(--primary), #c084fc); display: block; height: 100%; }
+.continue-reading__skeleton { border-radius: var(--radius-lg); height: 142px; }
+@media (max-width: 520px) { .home__section-heading { align-items: flex-start; flex-direction: column; } }
