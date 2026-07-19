@@ -1,5 +1,6 @@
-.tabs { display: flex; gap: 10px; overflow-x: auto; margin-bottom: 18px; padding: 2px 2px 8px; scrollbar-width: none; }
+.tabs { display: flex; gap: 10px; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; margin: 0 calc(-1 * max(0px, var(--safe-right))) 18px calc(-1 * max(0px, var(--safe-left))); padding: 2px max(2px, var(--safe-right)) 8px max(2px, var(--safe-left)); scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-secondary); min-height: 42px; padding: .55rem 1rem; white-space: nowrap; }
 .tab:hover { background: var(--surface-2); }
 .tab.active { background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; border-color: transparent; }
+@media (max-width: 520px) { .tabs { gap: 8px; margin-bottom: 14px; padding-bottom: 7px; } .tab { min-height: 38px; padding: .46rem .82rem; font-size: .9rem; } }

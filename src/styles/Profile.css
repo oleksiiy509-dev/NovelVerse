@@ -110,10 +110,19 @@
   background: linear-gradient(135deg, #ef4444, #b91c1c);
 }
 
+
 @media (max-width: 520px) {
-  .profile-page { gap: 12px; }
-  .profile-card { border-radius: 22px; }
-  .profile-card__compact { grid-template-columns: 52px minmax(0, 1fr) 46px; }
-  .profile-card__avatar { width: 52px; height: 52px; border-radius: 17px; }
-  .profile-card__stats { grid-template-columns: 1fr; }
+  .profile-page { gap: 10px; }
+  .profile-page h1 { font-size: clamp(1.45rem, 7vw, 1.8rem); }
+  .profile-card { border-radius: 20px; gap: 10px; padding: 12px; }
+  .profile-card__compact { grid-template-columns: 46px minmax(0, 1fr) 42px; gap: 10px; }
+  .profile-card__avatar { width: 46px; height: 46px; border-radius: 15px; }
+  .profile-card__name strong { font-size: .98rem; }
+  .profile-card__name span { font-size: .8rem; }
+  .profile-card__settings { border-radius: 14px; min-height: 40px; min-width: 42px; }
+  .profile-card__form { gap: 9px; }
+  .profile-card__form label { gap: 5px; }
+  .profile-card__stats { grid-template-columns: 1fr; gap: 8px; }
+  .profile-card__stats span { border-radius: 15px; padding: 8px 10px; }
+  .profile-actions { gap: 8px; }
 }
