@@ -10,6 +10,9 @@ import AdminNovels from "./pages/AdminNovels.jsx";
 import AddNovel from "./pages/AddNovel.jsx";
 import AdminChapters from "./pages/AdminChapters.jsx";
 import AddChapter from "./pages/AddChapter.jsx";
+import EditNovel from "./pages/EditNovel.jsx";
+import AdminTaxonomy from "./pages/AdminTaxonomy.jsx";
+import ProtectedAdminRoute from "./components/ProtectedAdminRoute.jsx";
 
 import BottomNav from "./components/BottomNav.jsx";
 import EditChapter from "./pages/EditChapter";
@@ -24,12 +27,16 @@ function App() {
   <Route path="/profile" element={<Profile />} />
   <Route path="/reader/:id" element={<Reader />} />
   <Route path="/login" element={<Login />} />
-  <Route path="/admin" element={<Admin />} />
-  <Route path="/admin/novels" element={<AdminNovels />} />
-  <Route path="/admin/novels/add" element={<AddNovel />} />
-  <Route path="/admin/chapters" element={<AdminChapters />} />
-<Route path="/admin/chapters/add" element={<AddChapter />} />
-<Route path="/admin/chapters/edit/:id" element={<EditChapter />} />
+  <Route element={<ProtectedAdminRoute />}>
+    <Route path="/admin" element={<Admin />} />
+    <Route path="/admin/novels" element={<AdminNovels />} />
+    <Route path="/admin/novels/add" element={<AddNovel />} />
+    <Route path="/admin/novels/edit/:id" element={<EditNovel />} />
+    <Route path="/admin/chapters" element={<AdminChapters />} />
+    <Route path="/admin/chapters/add" element={<AddChapter />} />
+    <Route path="/admin/chapters/edit/:id" element={<EditChapter />} />
+    <Route path="/admin/taxonomy" element={<AdminTaxonomy />} />
+  </Route>
 <Route path="/novel/:id" element={<Novel />} />
 </Routes>
 
