@@ -69,14 +69,14 @@ function Home() {
 
     if (query) {
       result = result.filter((novel) =>
-        [novel.title, novel.author, novel.tags, novel.genres]
+        [novel.title, novel.author, novel.genres]
           .some((value) => normalize(value).includes(query))
       );
     }
 
     if (category !== "Усі") {
       result = result.filter((novel) =>
-        [novel.status, novel.genres, novel.tags]
+        [novel.status, novel.genres]
           .some((value) => normalize(value).includes(normalize(category)))
       );
     }
