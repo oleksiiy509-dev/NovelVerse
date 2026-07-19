@@ -435,7 +435,7 @@ function Novel() {
   const nestedComments = useMemo(() => nestComments(comments), [comments]);
   const genres = splitPills(novel?.genres);
   const readPercent = chapters.length ? Math.round((readChapters.length / chapters.length) * 100) : 0;
-  const lastUpdated = novel?.updated_at || chapters.at(-1)?.created_at || novel?.created_at;
+  const lastUpdated = chapters.at(-1)?.created_at || novel?.created_at;
 
 
   function renderComment(item, depth = 0) {
