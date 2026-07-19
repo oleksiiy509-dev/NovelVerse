@@ -10,16 +10,22 @@ export function userKey(userId, name) {
   return `novelverse:${userId || "guest"}:${name}`;
 }
 
+export function storageAvailable() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
 export function readList(key) {
   try {
-    return JSON.parse(localStorage.getItem(key) || "[]");
+    if (!storageAvailable()) return [];
+    return JSON.parse(window.localStorage.getItem(key) || "[]");
   } catch {
     return [];
   }
 }
 
 export function writeList(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  if (!storageAvailable()) return;
+  window.localStorage.setItem(key, JSON.stringify(value));
 }
 
 export async function readCloudBackedList(key, cloudGetItem) {
@@ -45,7 +51,8 @@ export async function writeCloudBackedList(key, value, cloudSetItem) {
 
 export function readObject(key, fallback = {}) {
   try {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    if (!storageAvailable()) return fallback;
+    return JSON.parse(window.localStorage.getItem(key) || JSON.stringify(fallback));
   } catch {
     return fallback;
   }
@@ -55,7 +62,7 @@ export function saveOfflineChapter(chapter) {
   if (!chapter?.id) return;
   const cache = readObject("novelverse:offlineChapters");
   cache[chapter.id] = { ...chapter, cached_at: new Date().toISOString() };
-  localStorage.setItem("novelverse:offlineChapters", JSON.stringify(cache));
+  writeList("novelverse:offlineChapters", cache);
 }
 
 export function getOfflineChapter(chapterId) {
@@ -66,7 +73,7 @@ export async function syncReadingProgress(supabase, user, payload, cloudSetItem)
   const record = { ...payload, user_id: user?.id, updated_at: new Date().toISOString() };
   const local = readObject(userKey(user?.id, "readingProgress"));
   local[payload.novel_id] = record;
-  localStorage.setItem(userKey(user?.id, "readingProgress"), JSON.stringify(local));
+  writeList(userKey(user?.id, "readingProgress"), local);
   await cloudSetItem?.(userKey(user?.id, "readingProgress"), JSON.stringify(local));
 
   if (!user) return { data: record, error: null };

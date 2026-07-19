@@ -13,7 +13,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
-    "@telegram-apps/sdk": "^3.11.8"
+    "@telegram-apps/sdk": "^3.11.8",
+    "@supabase/supabase-js": "^2.87.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

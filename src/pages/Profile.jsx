@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
-import { getCurrentUser, readList, userKey } from "../lib/userFeatures";
+import { getCurrentUser, readList, userKey, writeList } from "../lib/userFeatures";
 import { useTelegram } from "../hooks/useTelegram";
 import "../styles/Profile.css";
 
@@ -44,7 +44,7 @@ function Profile() {
     if (!user) return;
     const payload = { id: user.id, username: profile.username, avatar_url: profile.avatar_url };
     if (user.app_metadata?.provider === "telegram") {
-      localStorage.setItem(userKey(user.id, "profile"), JSON.stringify(payload));
+      writeList(userKey(user.id, "profile"), payload);
       setUser({ ...user, user_metadata: { ...user.user_metadata, ...profile } });
       alert("Telegram профіль збережено локально.");
       return;
@@ -55,7 +55,6 @@ function Profile() {
       return;
     }
     const nextUser = { ...user, user_metadata: { ...user.user_metadata, ...profile } };
-    localStorage.setItem("supabase_user", JSON.stringify(nextUser));
     setUser(nextUser);
     alert("Профіль збережено.");
   }

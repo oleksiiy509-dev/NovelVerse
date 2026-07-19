@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
+import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList, storageAvailable } from "../lib/userFeatures";
 import { deleteDownloadedChapter, getDownloadedChapter, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
@@ -14,11 +14,11 @@ const readerPanelKey = "readerSettingsPanelOpen";
 const narrationSettingsKey = "readerNarrationSettings";
 
 function getReaderSettings() {
-  const legacyDark = localStorage.getItem("readerDarkMode");
-  const saved = JSON.parse(localStorage.getItem("readerSettings") || "null");
+  const legacyDark = storageAvailable() ? window.localStorage.getItem("readerDarkMode") : null;
+  const saved = storageAvailable() ? JSON.parse(window.localStorage.getItem("readerSettings") || "null") : null;
   return {
     ...defaultSettings,
-    fontSize: Number(localStorage.getItem("readerFontSize")) || saved?.fontSize || defaultSettings.fontSize,
+    fontSize: Number(storageAvailable() ? window.localStorage.getItem("readerFontSize") : 0) || saved?.fontSize || defaultSettings.fontSize,
     lineHeight: saved?.lineHeight || defaultSettings.lineHeight,
     textWidth: saved?.textWidth || defaultSettings.textWidth,
     theme: saved?.theme || (legacyDark === "false" ? "light" : defaultSettings.theme),
@@ -27,11 +27,11 @@ function getReaderSettings() {
 }
 
 function getReaderPanelOpen() {
-  return localStorage.getItem(readerPanelKey) === "true";
+  return storageAvailable() && window.localStorage.getItem(readerPanelKey) === "true";
 }
 
 function getNarrationSettings() {
-  const saved = JSON.parse(localStorage.getItem(narrationSettingsKey) || "null");
+  const saved = storageAvailable() ? JSON.parse(window.localStorage.getItem(narrationSettingsKey) || "null") : null;
   return {
     ...defaultNarrationSettings,
     ...saved,
@@ -54,7 +54,7 @@ function getNarrationPositionKey(chapterId) {
 }
 
 function getSavedNarrationPosition(chapterId) {
-  return Math.max(0, Number(localStorage.getItem(getNarrationPositionKey(chapterId))) || 0);
+  return Math.max(0, Number(storageAvailable() ? window.localStorage.getItem(getNarrationPositionKey(chapterId)) : 0) || 0);
 }
 
 function getVoiceLanguage(text = "") {
@@ -105,7 +105,7 @@ function Reader() {
     text: bookmarked ? "Remove bookmark" : "Bookmark",
     onClick: () => toggleBookmark(),
     disabled: !chapter,
-  }), [bookmarked, chapter]));
+  }), [bookmarked, chapter, toggleBookmark]));
 
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapter?.content), [chapter?.content]);
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
@@ -113,26 +113,27 @@ function Reader() {
   const elapsedSeconds = useMemo(() => Math.round((currentParagraphIndex / Math.max(1, paragraphs.length)) * estimatedTotalSeconds), [currentParagraphIndex, estimatedTotalSeconds, paragraphs.length]);
   const paragraphProgress = paragraphs.length ? Math.round(((currentParagraphIndex + (ttsActive ? 1 : 0)) / paragraphs.length) * 100) : 0;
 
-  useEffect(() => { loadChapter(); }, [id]);
 
   useEffect(() => {
-    localStorage.setItem("readerSettings", JSON.stringify(settings));
-    localStorage.setItem("readerFontSize", settings.fontSize);
-    localStorage.setItem("readerDarkMode", settings.theme === "dark");
+    if (storageAvailable()) {
+      window.localStorage.setItem("readerSettings", JSON.stringify(settings));
+      window.localStorage.setItem("readerFontSize", settings.fontSize);
+      window.localStorage.setItem("readerDarkMode", settings.theme === "dark");
+    }
     telegramCloudSetItem("novelverse:readerSettings", JSON.stringify(settings));
   }, [settings]);
 
   useEffect(() => {
-    localStorage.setItem(narrationSettingsKey, JSON.stringify(narrationSettings));
+    if (storageAvailable()) window.localStorage.setItem(narrationSettingsKey, JSON.stringify(narrationSettings));
   }, [narrationSettings]);
 
   useEffect(() => {
-    localStorage.setItem(readerPanelKey, settingsOpen);
+    if (storageAvailable()) window.localStorage.setItem(readerPanelKey, settingsOpen);
   }, [settingsOpen]);
 
   useEffect(() => {
     if (!chapter) return;
-    const saved = localStorage.getItem(`scroll_${id}`);
+    const saved = storageAvailable() ? window.localStorage.getItem(`scroll_${id}`) : null;
     const target = saved ? Number(saved) : 0;
     let attempts = 0;
     function restore() {
@@ -147,7 +148,7 @@ function Reader() {
     function saveScroll() {
       const progress = Math.min(100, Math.max(0, Math.round((window.scrollY / Math.max(1, document.body.scrollHeight - window.innerHeight)) * 100)));
       setReadingProgress(progress);
-      localStorage.setItem(`scroll_${id}`, window.scrollY);
+      if (storageAvailable()) window.localStorage.setItem(`scroll_${id}`, window.scrollY);
       if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress }, telegramCloudSetItem);
     }
     saveScroll();
@@ -173,7 +174,7 @@ function Reader() {
 
   useEffect(() => {
     if (!chapter) return;
-    localStorage.setItem(getNarrationPositionKey(chapter.id), currentParagraphIndex);
+    if (storageAvailable()) window.localStorage.setItem(getNarrationPositionKey(chapter.id), currentParagraphIndex);
     const record = { novel_id: chapter.novel_id, chapter_id: chapter.id, audio_paragraph_index: currentParagraphIndex, audio_progress: paragraphProgress, scroll_y: window.scrollY, progress: readingProgress };
     const audioKey = userKey(user?.id, "audioProgress");
     const localAudio = readList(audioKey).filter((item) => item.chapter_id !== chapter.id);
@@ -186,7 +187,7 @@ function Reader() {
     if (ttsActive && activeParagraph) activeParagraph.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [currentParagraphIndex, ttsActive]);
 
-  async function loadChapter() {
+  const loadChapter = useCallback(async function loadChapter() {
     setLoading(true);
     setErrorMessage("");
     const currentUser = await getCurrentUser(supabase);
@@ -206,7 +207,17 @@ function Reader() {
     const savedAudio = (await readCloudBackedList(audioKey, telegramCloudGetItem)).find((item) => item.chapter_id === activeChapter.id);
     setCurrentParagraphIndex(Math.min(Math.max(Number(savedAudio?.audio_paragraph_index ?? getSavedNarrationPosition(activeChapter.id)) || 0, 0), Math.max(splitChapterIntoParagraphs(activeChapter.content).length - 1, 0)));
     setChapter(activeChapter);
-    await loadAdjacentChapters(activeChapter);
+    const [{ data: previous, error: prevError }, { data: next, error: nextError }] = await Promise.all([
+      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
+    ]);
+    if (!prevError && !nextError) {
+      setAdjacentChapters({ previous, next });
+    } else {
+      const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
+      const index = offline.findIndex((item) => item.chapter_id === activeChapter.id);
+      setAdjacentChapters({ previous: index > 0 ? { id: offline[index - 1].chapter_id } : null, next: index >= 0 && index < offline.length - 1 ? { id: offline[index + 1].chapter_id } : null });
+    }
     setOfflineReady(!!cached);
     setDownloadState(cached ? "downloaded" : "idle");
     const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
@@ -216,7 +227,7 @@ function Reader() {
     const bookmarks = await readCloudBackedList(userKey(currentUser?.id, "bookmarks"), telegramCloudGetItem);
     setBookmarked(bookmarks.some((item) => item.chapter_id === activeChapter.id));
 
-    localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
+    if (storageAvailable()) window.localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
 
     const readKey = `readChapters_${activeChapter.novel_id}`;
     const read = await readCloudBackedList(readKey, telegramCloudGetItem);
@@ -224,18 +235,9 @@ function Reader() {
 
     await addReadingHistory(supabase, currentUser, { novel_id: activeChapter.novel_id, chapter_id: activeChapter.id, chapter_title: activeChapter.title });
     setLoading(false);
-  }
+  }, [id]);
 
-  async function loadAdjacentChapters(activeChapter) {
-    const [{ data: previous, error: prevError }, { data: next, error: nextError }] = await Promise.all([
-      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
-    ]);
-    if (!prevError && !nextError) { setAdjacentChapters({ previous, next }); return; }
-    const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
-    const index = offline.findIndex((item) => item.chapter_id === activeChapter.id);
-    setAdjacentChapters({ previous: index > 0 ? { id: offline[index - 1].chapter_id } : null, next: index >= 0 && index < offline.length - 1 ? { id: offline[index + 1].chapter_id } : null });
-  }
+  useEffect(() => { loadChapter(); }, [loadChapter]);
 
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
@@ -424,7 +426,7 @@ function Reader() {
       </div>
       <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-label="Chapter navigation">
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
-          <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous}>{adjacentChapters.previous ? "← Назад" : "Перша глава"}</button><button className="reader__next-chapter" onClick={nextChapter} disabled={navigatingChapter || !adjacentChapters.next}>{navigatingChapter ? "Завантаження…" : adjacentChapters.next ? "Далі →" : "Остання глава"}</button>
+          <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous}>{adjacentChapters.previous ? "← Попередня" : "Перша глава"}</button><button className="reader__next-chapter" onClick={nextChapter} disabled={navigatingChapter || !adjacentChapters.next}>{navigatingChapter ? "Завантаження…" : adjacentChapters.next ? "Наступна →" : "Остання глава"}</button>
         </div>
       </nav>
       {settingsOpen && <div className="reader__settings-scrim" onClick={() => setSettingsOpen(false)} />}
