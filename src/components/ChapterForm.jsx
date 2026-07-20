@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { markdownToText, splitIntoChapters, stripMarkup } from "../lib/admin";
 import { duplicateChapterNumberExists, safeWrite } from "../lib/adminContent";
-import RichTextEditor, { htmlToPlainText, sanitizeRichText } from "./RichTextEditor";
+import { htmlToPlainText, sanitizeRichText } from "../lib/richText";
+import RichTextEditor from "./RichTextEditor";
 
 const empty = { novel_id: "", title: "", number: "", content: "", status: "Published" };
 function readFile(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || "")); reader.onerror = () => reject(reader.error); reader.readAsText(file); }); }
