@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import defaultCover from "../assets/default-cover.svg";
@@ -21,11 +21,7 @@ function NovelCard({
   const [user, setUser] = useState(null);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    checkLibrary();
-  }, []);
-
-  async function checkLibrary() {
+  const checkLibrary = useCallback(async () => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -44,7 +40,11 @@ function NovelCard({
     if (data) {
       setSaved(true);
     }
-  }
+  }, [id]);
+
+  useEffect(() => {
+    checkLibrary();
+  }, [checkLibrary]);
 
   async function toggleLibrary() {
     if (!user) {

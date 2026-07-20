@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
@@ -99,13 +99,31 @@ function Reader() {
   const [audioReady, setAudioReady] = useState(false);
   const [playerExpanded, setPlayerExpanded] = useState(false);
 
+  const toggleBookmark = useCallback(async () => {
+    if (!chapter) return;
+    const key = userKey(user?.id, "bookmarks");
+    const bookmarks = readList(key);
+    if (bookmarked) {
+      await writeCloudBackedList(key, bookmarks.filter((item) => item.chapter_id !== chapter.id), telegramCloudSetItem);
+      setBookmarked(false);
+      if (user) await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("chapter_id", chapter.id);
+      return;
+    }
+    const entry = { novel_id: chapter.novel_id, chapter_id: chapter.id, chapter_title: chapter.title, scroll_y: window.scrollY, created_at: new Date().toISOString() };
+    await writeCloudBackedList(key, [entry, ...bookmarks], telegramCloudSetItem);
+    setBookmarked(true);
+    if (user) await supabase.from("bookmarks").insert({ ...entry, user_id: user.id });
+  }, [bookmarked, chapter, user]);
+
   useTelegramBackButton(true, chapter ? `/novel/${chapter.novel_id}` : "/");
 
-  useTelegramMainButton(useMemo(() => ({
+  const mainButtonConfig = useMemo(() => ({
     text: bookmarked ? "Remove bookmark" : "Bookmark",
-    onClick: () => toggleBookmark(),
+    onClick: toggleBookmark,
     disabled: !chapter,
-  }), [bookmarked, chapter]));
+  }), [bookmarked, chapter, toggleBookmark]);
+
+  useTelegramMainButton(mainButtonConfig);
 
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapter?.content), [chapter?.content]);
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
@@ -249,21 +267,7 @@ function Reader() {
 
   function nextChapter() { goToAdjacentChapter(1); }
 
-  async function toggleBookmark() {
-    if (!chapter) return;
-    const key = userKey(user?.id, "bookmarks");
-    const bookmarks = readList(key);
-    if (bookmarked) {
-      await writeCloudBackedList(key, bookmarks.filter((item) => item.chapter_id !== chapter.id), telegramCloudSetItem);
-      setBookmarked(false);
-      if (user) await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("chapter_id", chapter.id);
-      return;
-    }
-    const entry = { novel_id: chapter.novel_id, chapter_id: chapter.id, chapter_title: chapter.title, scroll_y: window.scrollY, created_at: new Date().toISOString() };
-    await writeCloudBackedList(key, [entry, ...bookmarks], telegramCloudSetItem);
-    setBookmarked(true);
-    if (user) await supabase.from("bookmarks").insert({ ...entry, user_id: user.id });
-  }
+
 
   async function toggleDownloadChapter() {
     if (!chapter || downloadState === "loading") return;

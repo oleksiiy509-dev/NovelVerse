@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
@@ -138,13 +138,15 @@ function Novel() {
   const [downloadError, setDownloadError] = useState("");
   const cancelDownloadRef = useRef(false);
 
-  const continueReading = () => {
+  const continueReading = useCallback(() => {
     const last = localStorage.getItem(`lastChapter_${id}`);
     if (last) navigate(`/reader/${last}`);
     else if (chapters.length > 0) navigate(`/reader/${chapters[0].id}`);
-  };
+  }, [chapters, id, navigate]);
 
-  useTelegramMainButton(novel ? { text: "Continue reading", onClick: continueReading, disabled: !chapters.length } : null);
+  const mainButtonConfig = useMemo(() => novel ? { text: "Continue reading", onClick: continueReading, disabled: !chapters.length } : null, [chapters.length, continueReading, novel]);
+
+  useTelegramMainButton(mainButtonConfig);
 
   useEffect(() => {
     init();
