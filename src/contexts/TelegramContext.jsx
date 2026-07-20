@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getTelegramInitData, getTelegramLocalUser, getTelegramUser, initTelegramMiniApp, isTelegramMiniApp } from "../lib/telegram";
+import { getTelegramInitData, getTelegramLocalUser, getTelegramProfileFields, getTelegramUser, initTelegramMiniApp, isTelegramMiniApp } from "../lib/telegram";
 import { TelegramContext } from "./TelegramContextValue";
 
 export function TelegramProvider({ children }) {
@@ -21,8 +21,10 @@ export function TelegramProvider({ children }) {
     webApp,
     user: getTelegramUser(),
     localUser: getTelegramLocalUser(),
+    profileFields: getTelegramProfileFields(),
     initData: getTelegramInitData(),
     ready,
+    verifiedAuthentication: false,
   }), [webApp, ready]);
 
   return <TelegramContext.Provider value={value}>{children}</TelegramContext.Provider>;

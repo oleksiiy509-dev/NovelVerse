@@ -89,3 +89,21 @@
 .reader__player-collapse { min-width: 36px; min-height: 36px; padding: 0; border-radius: 999px; }
 .reader__player-settings input { accent-color: #d4af37; padding: 0; }
 .reader__offline-badge{display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;background:rgba(216,168,79,.18);color:#f4c76b;font-size:12px;vertical-align:middle}
+
+body.telegram-webapp .reader {
+  min-height: var(--tg-viewport-height, 100vh);
+  padding-top: calc(82px + var(--safe-top));
+  padding-bottom: calc(var(--reader-bottom-nav-height) + var(--reader-chapter-nav-height) + var(--safe-bottom) + var(--tg-keyboard-height, 0px) + 24px);
+}
+body.telegram-webapp .reader__controls--top {
+  padding-top: calc(9px + var(--safe-top));
+}
+body.telegram-webapp .reader__settings-toggle {
+  top: max(8px, calc(var(--safe-top) + 8px));
+}
+body.telegram-webapp .reader__chapter-nav {
+  bottom: calc(var(--reader-bottom-nav-height) + var(--safe-bottom) + var(--tg-keyboard-height, 0px));
+}
+body.telegram-webapp .reader__narration-player {
+  bottom: calc(86px + var(--safe-bottom) + var(--tg-keyboard-height, 0px));
+}

@@ -12,6 +12,7 @@ let sdkModulePromise;
 let cachedApp;
 let backButtonHandler;
 let mainButtonHandler;
+let viewportCleanup;
 const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "";
 
 function getTelegramApp() {
@@ -19,60 +20,101 @@ function getTelegramApp() {
   return window.Telegram?.WebApp || null;
 }
 
+function getViewportHeight() {
+  if (typeof window === "undefined") return 0;
+  return window.visualViewport?.height || window.innerHeight || 0;
+}
+
 function setPxProperty(name, value) {
   const number = Number(value) || 0;
   document.documentElement.style.setProperty(name, `${Math.max(0, number)}px`);
 }
 
-function applyTheme(webApp = getTelegramApp()) {
+function setClass(name, enabled) {
+  document.documentElement.classList.toggle(name, Boolean(enabled));
+}
+
+export function applyTheme(webApp = getTelegramApp()) {
   if (typeof document === "undefined") return;
   const params = webApp?.themeParams || {};
   Object.entries(THEME_MAP).forEach(([key, cssVar]) => {
     if (params[key]) document.documentElement.style.setProperty(cssVar, params[key]);
   });
   document.documentElement.dataset.telegramColorScheme = webApp?.colorScheme || "";
-  document.documentElement.classList.toggle("telegram-theme-light", webApp?.colorScheme === "light");
-  document.documentElement.classList.toggle("telegram-theme-dark", webApp?.colorScheme === "dark");
+  setClass("telegram-theme-light", webApp?.colorScheme === "light");
+  setClass("telegram-theme-dark", webApp?.colorScheme === "dark");
 }
 
-function applyViewport(webApp = getTelegramApp()) {
+export function applyViewport(webApp = getTelegramApp()) {
   if (typeof document === "undefined") return;
-  setPxProperty("--tg-viewport-height", webApp?.viewportHeight || window.innerHeight);
-  setPxProperty("--tg-viewport-stable-height", webApp?.viewportStableHeight || window.innerHeight);
+  const viewportHeight = webApp?.viewportHeight || getViewportHeight();
+  const stableHeight = webApp?.viewportStableHeight || window.innerHeight || viewportHeight;
   const safeArea = webApp?.safeAreaInset || {};
   const contentSafeArea = webApp?.contentSafeAreaInset || {};
-  setPxProperty("--tg-safe-area-inset-top", safeArea.top || contentSafeArea.top);
-  setPxProperty("--tg-safe-area-inset-right", safeArea.right || contentSafeArea.right);
-  setPxProperty("--tg-safe-area-inset-bottom", safeArea.bottom || contentSafeArea.bottom);
-  setPxProperty("--tg-safe-area-inset-left", safeArea.left || contentSafeArea.left);
+  setPxProperty("--tg-viewport-height", viewportHeight);
+  setPxProperty("--tg-viewport-stable-height", stableHeight);
+  setPxProperty("--tg-keyboard-height", Math.max(0, stableHeight - viewportHeight));
+  setPxProperty("--tg-safe-area-inset-top", safeArea.top ?? contentSafeArea.top ?? 0);
+  setPxProperty("--tg-safe-area-inset-right", safeArea.right ?? contentSafeArea.right ?? 0);
+  setPxProperty("--tg-safe-area-inset-bottom", safeArea.bottom ?? contentSafeArea.bottom ?? 0);
+  setPxProperty("--tg-safe-area-inset-left", safeArea.left ?? contentSafeArea.left ?? 0);
+  setClass("telegram-keyboard-open", stableHeight - viewportHeight > 120);
 }
 
 export function isTelegramMiniApp() {
   const webApp = getTelegramApp();
+  if (typeof navigator === "undefined") return false;
   return Boolean(webApp && (webApp.initData || webApp.initDataUnsafe?.user || /Telegram/i.test(navigator.userAgent)));
 }
 
 export async function loadTelegramSdk() {
   if (!sdkModulePromise) sdkModulePromise = import(/* @vite-ignore */ "@telegram-apps/sdk").catch((error) => {
-    console.warn("Telegram SDK could not be loaded", error);
+    console.warn("Telegram SDK could not be loaded; falling back to window.Telegram.WebApp", error);
     return null;
   });
   return sdkModulePromise;
 }
 
+function bindViewportListeners(webApp) {
+  if (viewportCleanup) viewportCleanup();
+  const refresh = () => applyViewport(webApp);
+  const onFocusIn = () => setClass("telegram-input-focused", true);
+  const onFocusOut = () => setClass("telegram-input-focused", false);
+  webApp?.onEvent?.("viewportChanged", refresh);
+  window.addEventListener("resize", refresh);
+  window.visualViewport?.addEventListener("resize", refresh);
+  window.visualViewport?.addEventListener("scroll", refresh);
+  document.addEventListener("focusin", onFocusIn);
+  document.addEventListener("focusout", onFocusOut);
+  viewportCleanup = () => {
+    webApp?.offEvent?.("viewportChanged", refresh);
+    window.removeEventListener("resize", refresh);
+    window.visualViewport?.removeEventListener("resize", refresh);
+    window.visualViewport?.removeEventListener("scroll", refresh);
+    document.removeEventListener("focusin", onFocusIn);
+    document.removeEventListener("focusout", onFocusOut);
+  };
+}
+
 export async function initTelegramMiniApp() {
-  if (cachedApp) return cachedApp;
+  if (typeof document === "undefined") return null;
   const webApp = getTelegramApp();
-  if (!webApp) return null;
+  applyViewport(webApp);
+  if (!webApp) {
+    document.body.classList.add("browser-webapp");
+    return null;
+  }
+  if (cachedApp) return cachedApp;
   await loadTelegramSdk();
   webApp.ready?.();
   webApp.expand?.();
   webApp.enableClosingConfirmation?.();
   document.body.classList.add("telegram-webapp");
+  document.body.classList.remove("browser-webapp");
   applyTheme(webApp);
   applyViewport(webApp);
   webApp.onEvent?.("themeChanged", () => applyTheme(webApp));
-  webApp.onEvent?.("viewportChanged", () => applyViewport(webApp));
+  bindViewportListeners(webApp);
   cachedApp = webApp;
   return webApp;
 }
@@ -94,23 +136,41 @@ export function getTelegramAvatarUrl(user = getTelegramUser()) {
   return user?.photo_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(getTelegramDisplayName(user))}`;
 }
 
-export function getTelegramLocalUser(user = getTelegramUser()) {
+export function getTelegramProfileFields(user = getTelegramUser()) {
   if (!user?.id) return null;
   return {
-    id: `telegram:${user.id}`,
-    email: user.username ? `${user.username}@telegram.local` : `telegram-${user.id}@telegram.local`,
-    app_metadata: { provider: "telegram" },
+    telegram_id: String(user.id),
+    username: user.username || getTelegramDisplayName(user),
+    first_name: user.first_name || "",
+    last_name: user.last_name || "",
+    language_code: user.language_code || "",
+    photo_url: user.photo_url || "",
+  };
+}
+
+export function getTelegramLocalUser(user = getTelegramUser()) {
+  const fields = getTelegramProfileFields(user);
+  if (!fields) return null;
+  return {
+    id: `telegram:${fields.telegram_id}`,
+    email: user.username ? `${user.username}@telegram.local` : `telegram-${fields.telegram_id}@telegram.local`,
+    app_metadata: { provider: "telegram", verified_auth: false },
     user_metadata: {
       provider: "telegram",
-      telegram_id: user.id,
-      username: user.username || getTelegramDisplayName(user),
-      first_name: user.first_name || "",
-      last_name: user.last_name || "",
+      ...fields,
       avatar_url: getTelegramAvatarUrl(user),
-      photo_url: user.photo_url || "",
-      language_code: user.language_code || "",
     },
   };
+}
+
+export async function syncTelegramDisplayProfile(supabase, authUser) {
+  const fields = getTelegramProfileFields();
+  if (!fields || !authUser?.id) return { synced: false, reason: "missing-telegram-user" };
+  const profilePayload = { id: authUser.id, ...fields, avatar_url: fields.photo_url };
+  localStorage.setItem(`novelverse:${authUser.id}:telegramProfile`, JSON.stringify(profilePayload));
+  if (authUser.id.startsWith("telegram:")) return { synced: true, localOnly: true };
+  const { error } = await supabase.from("profiles").upsert(profilePayload, { onConflict: "id" });
+  return { synced: !error, error };
 }
 
 export function openTelegramLogin(botUsername = BOT_USERNAME) {
