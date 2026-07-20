@@ -42,3 +42,12 @@
 }
 .bottom-nav a:active { transform: translateY(0) scale(.97); }
 @media (max-width: 380px) { .bottom-nav { border-radius: 15px; gap: 3px; padding: 4px; } .bottom-nav a { min-height: 32px; font-size: .82rem; } }
+
+body.telegram-webapp .bottom-nav {
+  bottom: max(6px, calc(var(--safe-bottom) + var(--tg-keyboard-height, 0px)));
+  background: color-mix(in srgb, var(--tg-secondary-bg, rgba(5, 14, 27, .92)) 92%, transparent);
+  color: var(--tg-text, var(--text));
+}
+html.telegram-keyboard-open .bottom-nav {
+  transform: translateX(-50%) translateY(calc(var(--tg-keyboard-height, 0px) * -0.02));
+}

@@ -71,3 +71,19 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 @keyframes skeleton-breathe { 0%, 100% { opacity: .72; } 50% { opacity: 1; } }
 @media (max-width: 640px) { .page-shell { width: min(100% - 20px, 1120px); padding-top: max(12px, var(--safe-top)); padding-bottom: calc(128px + var(--safe-bottom)); } button { min-height: 44px; } }
 @media (max-width: 380px) { .page-shell { width: min(100% - 16px, 1120px); padding-bottom: calc(136px + var(--safe-bottom)); } }
+
+body.telegram-webapp {
+  min-height: var(--tg-viewport-height, 100vh);
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+}
+body.telegram-webapp #root {
+  min-height: var(--tg-viewport-height, 100vh);
+}
+body.telegram-webapp .page-shell {
+  padding-bottom: calc(128px + var(--safe-bottom) + var(--tg-keyboard-height, 0px));
+}
+html.telegram-input-focused body.telegram-webapp .page-shell {
+  padding-bottom: calc(96px + var(--safe-bottom) + var(--tg-keyboard-height, 0px));
+}

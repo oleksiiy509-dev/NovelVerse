@@ -1,9 +1,11 @@
-import { getTelegramLocalUser } from "./telegram";
+import { getTelegramLocalUser, syncTelegramDisplayProfile } from "./telegram";
 import { queueProgress } from "./offlineStorage";
 
 export async function getCurrentUser(supabase) {
   const { data } = await supabase.auth.getUser();
-  return data?.user || getTelegramLocalUser() || null;
+  const user = data?.user || getTelegramLocalUser() || null;
+  if (user) await syncTelegramDisplayProfile(supabase, user).catch(() => null);
+  return user;
 }
 
 export function userKey(userId, name) {
