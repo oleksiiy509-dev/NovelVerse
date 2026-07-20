@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import defaultCover from "../assets/default-cover.svg";
@@ -21,30 +21,37 @@ function NovelCard({
   const [user, setUser] = useState(null);
   const [saved, setSaved] = useState(false);
 
-  const checkLibrary = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    setUser(user);
-
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("library")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("novel_id", id)
-      .maybeSingle();
-
-    if (data) {
-      setSaved(true);
-    }
-  }, [id]);
-
   useEffect(() => {
+    let ignore = false;
+
+    async function checkLibrary() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (ignore) return;
+
+      setUser(user);
+      setSaved(false);
+
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("library")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("novel_id", id)
+        .maybeSingle();
+
+      if (!ignore) setSaved(!!data);
+    }
+
     checkLibrary();
-  }, [checkLibrary]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
 
   async function toggleLibrary() {
     if (!user) {

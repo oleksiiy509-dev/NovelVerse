@@ -131,7 +131,16 @@ function Reader() {
   const elapsedSeconds = useMemo(() => Math.round((currentParagraphIndex / Math.max(1, paragraphs.length)) * estimatedTotalSeconds), [currentParagraphIndex, estimatedTotalSeconds, paragraphs.length]);
   const paragraphProgress = paragraphs.length ? Math.round(((currentParagraphIndex + (ttsActive ? 1 : 0)) / paragraphs.length) * 100) : 0;
 
-  useEffect(() => { loadChapter(); }, [id]);
+  const loadChapterRef = useRef(null);
+  loadChapterRef.current = loadChapter;
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      loadChapterRef.current?.();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [id]);
 
   useEffect(() => {
     localStorage.setItem("readerSettings", JSON.stringify(settings));
@@ -168,10 +177,10 @@ function Reader() {
       localStorage.setItem(`scroll_${id}`, window.scrollY);
       if (chapter) syncReadingProgress(supabase, user, { novel_id: chapter.novel_id, chapter_id: chapter.id, scroll_y: window.scrollY, progress }, telegramCloudSetItem);
     }
-    saveScroll();
+    const timeoutId = window.setTimeout(saveScroll, 0);
     window.addEventListener("scroll", saveScroll, { passive: true });
     window.addEventListener("resize", saveScroll);
-    return () => { window.removeEventListener("scroll", saveScroll); window.removeEventListener("resize", saveScroll); };
+    return () => { window.clearTimeout(timeoutId); window.removeEventListener("scroll", saveScroll); window.removeEventListener("resize", saveScroll); };
   }, [id, chapter, user]);
 
   useEffect(() => () => {
@@ -184,9 +193,9 @@ function Reader() {
     function loadVoices() {
       setVoices(window.speechSynthesis.getVoices());
     }
-    loadVoices();
+    const timeoutId = window.setTimeout(loadVoices, 0);
     window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+    return () => { window.clearTimeout(timeoutId); window.speechSynthesis.removeEventListener("voiceschanged", loadVoices); };
   }, [audioReady, narrationSupported]);
 
   useEffect(() => {

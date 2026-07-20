@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import defaultCover from "../assets/default-cover.svg";
@@ -10,21 +10,22 @@ function Library() {
   const [novels, setNovels] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadLibrary = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    let ignore = false;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    async function loadLibrary() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    if (!user) {
-      navigate("/login");
-      return;
-    }
+      if (!user) {
+        navigate("/login");
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from("library")
-      .select(`
+      const { data, error } = await supabase
+        .from("library")
+        .select(`
         id,
         novels (
           id,
@@ -36,21 +37,26 @@ function Library() {
           views
         )
       `)
-      .eq("user_id", user.id);
+        .eq("user_id", user.id);
 
-    if (error) {
-      console.log(error);
+      if (ignore) return;
+
+      if (error) {
+        console.log(error);
+        setLoading(false);
+        return;
+      }
+
+      setNovels(data || []);
       setLoading(false);
-      return;
     }
 
-    setNovels(data || []);
-    setLoading(false);
-  }, [navigate]);
-
-  useEffect(() => {
     loadLibrary();
-  }, [loadLibrary]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [navigate]);
 
   async function removeFromLibrary(id) {
     const { error } = await supabase
@@ -59,7 +65,7 @@ function Library() {
       .eq("id", id);
 
     if (!error) {
-      loadLibrary();
+      setNovels((items) => items.filter((item) => item.id !== id));
     }
   }
 
