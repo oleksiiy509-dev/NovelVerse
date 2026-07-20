@@ -3,15 +3,15 @@ import { requireAdmin, slugify } from "./admin";
 
 export const DEFAULT_COVER = "/src/assets/default-cover.svg";
 export const PAGE_SIZE = 12;
-export const STATUS_OPTIONS = ["Draft", "Ongoing", "Completed", "Hiatus"];
-export const splitList = (value = "") => String(value).split(",").map((x) => x.trim()).filter(Boolean);
+export const STATUS_OPTIONS = ["Draft", "Ongoing", "Completed", "Paused"];
+export const splitList = (value = "") => String(value ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 export const joinList = (items = []) => [...new Set(items.map((x) => String(x).trim()).filter(Boolean))].join(", ");
 export const normalize = (value = "") => String(value ?? "").toLowerCase();
 export const adminError = (error, fallback = "Action failed") => error?.message || error?.details || error?.hint || fallback;
 
 export async function assertAdmin() {
   const access = await requireAdmin(supabase);
-  if (!access.allowed) throw new Error(access.error?.message || "Admin access is required for this action.");
+  if (!access.allowed) throw new Error(access.error?.message || "Your admin session expired. Please sign in again.");
   return access.user;
 }
 
@@ -26,12 +26,47 @@ export function makeSlug(title, current = "") {
   return current || slugify(title || "untitled-novel");
 }
 
+function missingColumnName(error) {
+  const message = adminError(error, "");
+  return message.match(/'([^']+)' column/)?.[1] || message.match(/column "([^"]+)"/)?.[1] || null;
+}
+
+export async function safeWrite(table, payload, applyQuery, required = []) {
+  await assertAdmin();
+  let next = Array.isArray(payload) ? payload.map((row) => ({ ...row })) : { ...payload };
+  for (let attempts = 0; attempts < 8; attempts += 1) {
+    if ((Array.isArray(next) && next.every((row) => Object.keys(row).length === 0)) || (!Array.isArray(next) && Object.keys(next).length === 0)) return { data: null, error: null, skipped: true };
+    const result = await applyQuery(supabase.from(table), next);
+    if (!result.error) return result;
+    const column = missingColumnName(result.error);
+    const hasColumn = Array.isArray(next) ? next.some((row) => column in row) : column in next;
+    if (!column || required.includes(column) || !hasColumn) throw new Error(adminError(result.error));
+    if (Array.isArray(next)) next = next.map((row) => { const copy = { ...row }; delete copy[column]; return copy; });
+    else delete next[column];
+  }
+  throw new Error("Could not save because the database schema rejected optional fields.");
+}
+
+export async function optionalCount(table, configure = (q) => q) {
+  const { count, error } = await configure(supabase.from(table).select("id", { count: "exact", head: true }));
+  if (error) return { count: 0, available: false, error };
+  return { count: count || 0, available: true, error: null };
+}
+
 export async function duplicateSlugExists(slug, novelId) {
   if (!slug) return false;
   let query = supabase.from("novels").select("id").eq("slug", slug).limit(1);
   if (novelId) query = query.neq("id", novelId);
   const { data, error } = await query;
-  if (error) throw new Error(adminError(error, "Could not check duplicate slug."));
+  if (error) return false;
+  return Boolean(data?.length);
+}
+
+export async function duplicateChapterNumberExists(novelId, number, chapterId) {
+  let query = supabase.from("chapters").select("id").eq("novel_id", Number(novelId)).eq("number", Number(number)).limit(1);
+  if (chapterId) query = query.neq("id", chapterId);
+  const { data, error } = await query;
+  if (error) throw new Error(adminError(error, "Could not check duplicate chapter numbers."));
   return Boolean(data?.length);
 }
 
