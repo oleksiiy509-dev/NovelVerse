@@ -249,8 +249,10 @@ function Novel() {
     setRecommendationsLoading(false);
   }
 
-  initRef.current = init;
-  loadCommentsRef.current = loadComments;
+  useEffect(() => {
+    initRef.current = init;
+    loadCommentsRef.current = loadComments;
+  });
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
