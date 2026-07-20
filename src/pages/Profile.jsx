@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { getCurrentUser, readList, userKey } from "../lib/userFeatures";
@@ -14,11 +14,7 @@ function Profile() {
   const [historyCount, setHistoryCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  async function loadProfile() {
+  const loadProfile = useCallback(async () => {
     const user = await getCurrentUser(supabase);
     if (!user) {
       navigate("/login");
@@ -38,7 +34,11 @@ function Profile() {
 
     setLibraryCount(count || 0);
     setHistoryCount(readList(userKey(user.id, "history")).length);
-  }
+  }, [navigate]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   async function saveProfile() {
     if (!user) return;

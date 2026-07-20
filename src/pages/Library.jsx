@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import defaultCover from "../assets/default-cover.svg";
@@ -10,11 +10,7 @@ function Library() {
   const [novels, setNovels] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadLibrary();
-  }, []);
-
-  async function loadLibrary() {
+  const loadLibrary = useCallback(async () => {
     setLoading(true);
 
     const {
@@ -50,7 +46,11 @@ function Library() {
 
     setNovels(data || []);
     setLoading(false);
-  }
+  }, [navigate]);
+
+  useEffect(() => {
+    loadLibrary();
+  }, [loadLibrary]);
 
   async function removeFromLibrary(id) {
     const { error } = await supabase
