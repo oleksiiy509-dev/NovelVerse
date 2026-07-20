@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { getCurrentUser, readList, userKey } from "../lib/userFeatures";
@@ -14,31 +14,38 @@ function Profile() {
   const [historyCount, setHistoryCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
 
-  const loadProfile = useCallback(async () => {
-    const user = await getCurrentUser(supabase);
-    if (!user) {
-      navigate("/login");
-      return;
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadProfile() {
+      const user = await getCurrentUser(supabase);
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+
+      const { count } = user.app_metadata?.provider === "telegram" ? { count: readList(userKey(user.id, "library")).length } : await supabase
+        .from("library")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      if (ignore) return;
+
+      setUser(user);
+      setProfile({
+        username: user.user_metadata?.username || user.email?.split("@")[0] || "Reader",
+        avatar_url: user.user_metadata?.avatar_url || "",
+      });
+      setLibraryCount(count || 0);
+      setHistoryCount(readList(userKey(user.id, "history")).length);
     }
 
-    setUser(user);
-    setProfile({
-      username: user.user_metadata?.username || user.email?.split("@")[0] || "Reader",
-      avatar_url: user.user_metadata?.avatar_url || "",
-    });
-
-    const { count } = user.app_metadata?.provider === "telegram" ? { count: readList(userKey(user.id, "library")).length } : await supabase
-      .from("library")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id);
-
-    setLibraryCount(count || 0);
-    setHistoryCount(readList(userKey(user.id, "history")).length);
-  }, [navigate]);
-
-  useEffect(() => {
     loadProfile();
-  }, [loadProfile]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [navigate]);
 
   async function saveProfile() {
     if (!user) return;

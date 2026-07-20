@@ -148,9 +148,8 @@ function Novel() {
 
   useTelegramMainButton(mainButtonConfig);
 
-  useEffect(() => {
-    init();
-  }, [id]);
+  const initRef = useRef(null);
+  const loadCommentsRef = useRef(null);
 
   async function init() {
     setRecommendationsLoading(true);
@@ -250,14 +249,29 @@ function Novel() {
     setRecommendationsLoading(false);
   }
 
+  initRef.current = init;
+  loadCommentsRef.current = loadComments;
+
   useEffect(() => {
-    loadComments({ page: 0, reset: true });
+    const timeoutId = window.setTimeout(() => {
+      initRef.current?.();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [id]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      loadCommentsRef.current?.({ page: 0, reset: true });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [commentSort]);
 
   useEffect(() => {
     if (!loadMoreRef.current || !hasMoreComments) return undefined;
     const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting && !commentsLoading) loadComments({ page: commentPage + 1 });
+      if (entries[0]?.isIntersecting && !commentsLoading) loadCommentsRef.current?.({ page: commentPage + 1 });
     }, { rootMargin: "240px" });
     observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
