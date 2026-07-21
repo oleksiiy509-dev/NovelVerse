@@ -108,3 +108,7 @@ body.telegram-webapp .reader__narration-player {
   bottom: calc(86px + var(--safe-bottom) + var(--tg-keyboard-height, 0px));
 }
 .reader__offline-message{position:fixed;left:50%;top:calc(64px + env(safe-area-inset-top));z-index:21;max-width:min(92vw,520px);transform:translateX(-50%);border:1px solid rgba(248,231,173,.35);border-radius:999px;background:rgba(8,17,31,.94);color:#f8e7ad;padding:10px 14px;font-weight:900;box-shadow:0 14px 36px rgba(2,6,23,.35)}
+.reader__sentence { border-radius: 8px; transition: background .16s ease, box-shadow .16s ease; }
+.reader__sentence--speaking { background: color-mix(in srgb, var(--primary) 26%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent); }
+.reader__player-settings button { min-height: 40px; }
+@media (max-width: 640px) { .reader__narration-player--mini { max-height: 224px; } .reader__media-controls button { min-height: 50px; } }
