@@ -51,3 +51,7 @@ Browser SpeechSynthesis can approximate pitch and rate only. It cannot create re
 ## Director usage
 
 Persistent cast assignments are reused by the Voice Director as stable `castSlot` and `voiceProfile` inputs. Manual cast locks remain authoritative. Director regeneration preserves manually edited segment performance where possible and does not replace Phase 2 cast memory.
+
+## Character memory integration
+
+Persistent cast entries can be informed by AI Brain character profiles and append-only timeline states. Alias changes are reviewed before merge when confidence is low.

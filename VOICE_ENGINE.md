@@ -98,3 +98,7 @@ See `VOICE_CAST.md` for the full architecture, slot catalog, alias handling, mer
 ## Phase 3: Voice Director
 
 Voice Engine Phase 3 adds a deterministic scene-aware Director layer after Phase 1 segment analysis and before any future audio rendering. It plans scene type, atmosphere metadata, cast slot usage, delivery style, rate, pitch, energy, volume, pauses, emphasis ranges, and optional sound cue suggestions without changing original segment text or connecting a paid TTS provider. Reader remains compatible when no director plan exists.
+
+## Phase 5 AI Brain
+
+Voice Engine now has an AI Brain abstraction for deterministic character memory, relationships, chronology, story context and voice evolution. It does not call an external LLM yet.

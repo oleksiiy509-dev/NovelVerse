@@ -8,7 +8,7 @@ type Db = { from(name: string): any; storage: any };
 type Chapter = { id: string; novel_id: string; title: string; content: string };
 type SegmentRow = { id?: string; segment_index: number; text: string; speaker_name?: string; speaker_id?: string; voice_profile?: string; emotion?: string; intensity?: number };
 type DirectorSetting = { id?: string; segment_index?: number; cast_slot?: string; voice_profile?: string; emotion?: string; intensity?: number; rate?: number; pause_before_ms?: number; pause_after_ms?: number; emphasis?: string[] };
-type CastRow = { character_id?: string; cast_slot?: string; voice_profile?: string; updated_at?: string };
+type CastRow = { character_id?: string; cast_slot?: string; voice_profile?: string; updated_at?: string; character_state_version?: string; voice_evolution_version?: string };
 type DirectorPlan = { id: string; director_version?: string; director_segment_settings?: DirectorSetting[]; segmentSettings?: DirectorSetting[] };
 
 export async function sha256(text: string) {
@@ -48,7 +48,7 @@ function castBySpeaker(cast: CastRow[]) {
 }
 
 export function castVersion(cast: CastRow[]) {
-  return cast.map((entry) => `${entry.character_id}:${entry.cast_slot}:${entry.voice_profile}:${entry.updated_at || ""}`).sort().join("|") || "cast-v0";
+  return cast.map((entry) => `${entry.character_id}:${entry.cast_slot}:${entry.voice_profile}:${entry.updated_at || ""}:${entry.character_state_version || "state-v0"}:${entry.voice_evolution_version || "evo-v0"}`).sort().join("|") || "cast-v0";
 }
 
 export function makeSegmentRequest(segment: SegmentRow, setting: DirectorSetting | undefined, cast: CastRow | undefined, language: string): AudioRenderSegmentRequest {

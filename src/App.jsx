@@ -24,6 +24,7 @@ const AddChapter = lazy(() => import("./pages/AddChapter.jsx"));
 const EditChapter = lazy(() => import("./pages/EditChapter.jsx"));
 const AdminTaxonomy = lazy(() => import("./pages/AdminTaxonomy.jsx"));
 const AdminCharacters = lazy(() => import("./pages/AdminCharacters.jsx"));
+const AiBrainStudio = lazy(() => import("./pages/AiBrainStudio.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 
 function AppRoutes() {
@@ -50,6 +51,7 @@ function AppRoutes() {
           <Route path="/admin/chapters/edit/:id" element={<EditChapter />} />
           <Route path="/admin/taxonomy" element={<AdminTaxonomy />} />
           <Route path="/admin/characters" element={<AdminCharacters />} />
+          <Route path="/admin/ai-brain" element={<AiBrainStudio />} />
           <Route path="/admin/novels/:novelId/characters" element={<AdminCharacters />} />
         </Route>
         <Route path="*" element={<NotFound />} />
