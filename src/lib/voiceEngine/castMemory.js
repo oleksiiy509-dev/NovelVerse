@@ -1,7 +1,7 @@
 import { voiceCastSlots, voiceCastSlotMap } from "./castSlots.js";
 
 const riskySingleTokens = new Set(["лін", "линь", "пан", "пані", "містер", "міс", "фань"]);
-const norm = (value = "") => String(value).toLowerCase().normalize("NFKC").replace(/[’'`ʼ]/g, "").replace(/[.,!?;:()\[\]{}«»“”„\-—–]/g, " ").replace(/\s+/g, " ").trim();
+const norm = (value = "") => String(value).toLowerCase().normalize("NFKC").replace(/[’'`ʼ]/g, "").replace(/[.,!?;:()[\]{}«»“”„—–-]/g, " ").replace(/\s+/g, " ").trim();
 const stripTitles = (value) => norm(value).replace(/^(молодий|старий|пан|пані|лорд|леді|майстер|містер|міс|панич)\s+/iu, "").trim();
 const tokens = (value) => stripTitles(value).split(" ").filter(Boolean);
 export function normalizeCharacterName(value) { return stripTitles(value).replace(/и/g, "і").replace(/ь/g, ""); }
