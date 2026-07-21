@@ -9,3 +9,7 @@ No external LLM is connected. The local provider is deterministic and uses trans
 chapter text → entity detection → speaker/alias resolution → state extraction → relationship extraction → timeline update → cast update → Director input.
 
 Low-confidence identity matches are written to a review queue instead of being merged automatically.
+
+## Phase 6 audio use
+
+AI Brain voice evolution metadata can flow into Director performance settings and then into server-side provider instructions. The local brain remains deterministic and no external LLM calls are required for tests.

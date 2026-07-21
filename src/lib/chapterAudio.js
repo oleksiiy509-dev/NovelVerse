@@ -48,8 +48,8 @@ export async function getChapterAudioMetadata(chapterId, language = defaultAudio
   return { audio: data, playbackUrl: publicUrl.data.publicUrl || "", error: null };
 }
 
-export async function callChapterAudioGeneration(chapterId, language = defaultAudioLanguage, voiceId = defaultAudioVoice) {
-  const { data, error } = await supabase.functions.invoke("generate-chapter-audio", { body: { chapter_id: chapterId, language, voice_id: voiceId } });
+export async function callChapterAudioGeneration(chapterId, language = defaultAudioLanguage, provider = defaultAudioVoice, preview = null) {
+  const { data, error } = await supabase.functions.invoke("generate-chapter-audio", { body: { chapter_id: chapterId, language, provider, preview } });
   if (error) throw error;
   return data;
 }

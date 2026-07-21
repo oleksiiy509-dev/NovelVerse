@@ -55,3 +55,7 @@ Persistent cast assignments are reused by the Voice Director as stable `castSlot
 ## Character memory integration
 
 Persistent cast entries can be informed by AI Brain character profiles and append-only timeline states. Alias changes are reviewed before merge when confidence is low.
+
+## Phase 6 provider voice mapping
+
+OpenAI voice IDs are resolved server-side from configurable profile mappings. If a cast slot has no exact provider voice, the closest configured fallback is used and a non-sensitive warning preserves speaker identity without leaking chapter text or secrets.

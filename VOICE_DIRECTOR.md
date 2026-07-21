@@ -57,3 +57,7 @@ Browser SpeechSynthesis cannot reproduce real timbre, roughness, or emotional ac
 ## AI Brain input
 
 Director planning accepts story context, current character states and voice evolution modifiers so delivery reflects emotional history, relationships and recent events.
+
+## Phase 6 provider instructions
+
+Director emotion, intensity, pace, confidence, breathiness, roughness, voice age, scene mood and emphasis are now consumed by the real provider adapter as style instructions. Provider-specific prompt construction remains outside the frontend.

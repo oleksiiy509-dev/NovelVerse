@@ -102,3 +102,7 @@ Voice Engine Phase 3 adds a deterministic scene-aware Director layer after Phase
 ## Phase 5 AI Brain
 
 Voice Engine now has an AI Brain abstraction for deterministic character memory, relationships, chronology, story context and voice evolution. It does not call an external LLM yet.
+
+## Phase 6: OpenAI TTS adapter
+
+The first real TTS adapter lives in the secure Supabase Edge Function layer. Voice Engine remains provider-independent: cast profiles and Director plans are converted to OpenAI voices and instructions only inside the adapter, and Device Voice/mock paths remain available.
