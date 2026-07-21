@@ -44,12 +44,43 @@ export async function getChapterAudioMetadata(chapterId, language = defaultAudio
   if (!data?.storage_path || data.status !== "ready") return { audio: data || null, playbackUrl: "", error: null };
   const signed = await supabase.storage.from("chapter-audio").createSignedUrl(data.storage_path, 60 * 60);
   if (!signed.error) return { audio: data, playbackUrl: signed.data.signedUrl, error: null };
-  const publicUrl = supabase.storage.from("chapter-audio").getPublicUrl(data.storage_path);
-  return { audio: data, playbackUrl: publicUrl.data.publicUrl || "", error: null };
+  return { audio: data, playbackUrl: "", error: signed.error };
 }
 
 export async function callChapterAudioGeneration(chapterId, language = defaultAudioLanguage, provider = defaultAudioVoice, preview = null) {
-  const { data, error } = await supabase.functions.invoke("generate-chapter-audio", { body: { chapter_id: chapterId, language, provider, preview } });
+  return callTtsFunction({ chapter_id: chapterId, language, provider, preview });
+}
+
+export const ttsUserMessages = {
+  TTS_PROVIDER_NOT_CONFIGURED: "TTS provider is not configured on the server.",
+  TTS_API_KEY_MISSING: "Server TTS credentials are missing.",
+  TTS_RATE_LIMITED: "The provider is rate limited. Try again later.",
+  TTS_PROVIDER_UNAVAILABLE: "The TTS provider is temporarily unavailable.",
+  TEXT_TOO_LONG: "Preview text is too long.",
+  UNSUPPORTED_TTS_VOICE: "Selected voice is not supported.",
+  STORAGE_UPLOAD_FAILED: "Audio upload failed.",
+  SIGNED_URL_FAILED: "Signed playback URL could not be created.",
+  UNAUTHORIZED: "Please sign in again.",
+  ADMIN_REQUIRED: "Admin permission is required.",
+};
+
+export function ttsErrorMessage(error) {
+  const code = error?.code || error?.error?.code || error?.message;
+  return ttsUserMessages[code] || error?.error?.message || error?.message || "TTS request failed.";
+}
+
+export async function callTtsFunction(body) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const { data, error } = await supabase.functions.invoke("generate-chapter-audio", { body, headers: sessionData?.session?.access_token ? { Authorization: ["Bearer", sessionData.session.access_token].join(" ") } : undefined });
   if (error) throw error;
+  if (data?.error) throw data.error;
   return data;
+}
+
+export function getTtsHealth(diagnostics = true) {
+  return callTtsFunction({ action: "health", diagnostics });
+}
+
+export function generateTtsPreview({ text, voice, language = defaultAudioLanguage }) {
+  return callTtsFunction({ action: "preview", text, voice, language });
 }

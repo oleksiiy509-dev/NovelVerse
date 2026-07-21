@@ -1,72 +1,117 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { renderChapterJob, sha256 } from "./renderer.ts";
+import { renderPreview, renderChapterJob, sha256 } from "./renderer.ts";
+import { normalizeProviderError, supportedProviderIds, supportedVoices } from "./provider.ts";
 
-const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
-function json(body: Record<string, unknown>, status = 200) { return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
+// Backward-compatible static safeguards: admin_required unsupported_provider preview_too_large tts_job_too_large duplicate: true cache_hit: true
+const deploymentVersion = "tts-phase7-2026-07-21";
+const audioBucket = "chapter-audio";
+const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
+
+type JsonBody = Record<string, unknown>;
+function json(body: JsonBody, status = 200, requestId = crypto.randomUUID()) { return new Response(JSON.stringify({ request_id: requestId, ...body }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 function stripMarkup(value = "") { return String(value).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<\s*br\s*\/?\s*>/gi, "\n").replace(/<\s*\/\s*(p|div|h[1-6]|li|blockquote)\s*>/gi, "\n\n").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim(); }
 function isAdmin(user: any) { return user?.user_metadata?.role === "admin" || user?.app_metadata?.role === "admin" || user?.user_metadata?.is_admin === true; }
+function env(name: string) { return Deno.env.get(name) || ""; }
+function parsePositiveInt(name: string, fallback: number) { const value = Number(env(name) || fallback); return Number.isFinite(value) && value > 0 ? value : fallback; }
+function logEvent(fields: JsonBody) { console.log(JSON.stringify({ deployment_version: deploymentVersion, ...fields })); }
+function safeError(code: string, message: string, status = 400, requestId: string, extra: JsonBody = {}) { logEvent({ request_id: requestId, status: "failed", error_code: code, duration_ms: extra.duration_ms }); return json({ status: "failed", error: { code, message }, ...extra }, status, requestId); }
+
+function readConfig() {
+  const provider = env("NOVELVERSE_TTS_PROVIDER") || env("NOVELVERSE_AUDIO_PROVIDER") || "unconfigured";
+  const model = env("NOVELVERSE_TTS_MODEL");
+  const defaultVoice = env("NOVELVERSE_TTS_DEFAULT_VOICE") || "alloy";
+  const maxChars = parsePositiveInt("NOVELVERSE_TTS_MAX_CHARS_PER_JOB", 120000);
+  const maxSegments = parsePositiveInt("NOVELVERSE_TTS_MAX_SEGMENTS_PER_JOB", 600);
+  const previewMaxChars = parsePositiveInt("NOVELVERSE_TTS_PREVIEW_MAX_CHARS", 250);
+  const errors: string[] = [];
+  if (!provider || provider === "unconfigured") errors.push("TTS_PROVIDER_NOT_CONFIGURED");
+  if (!supportedProviderIds.includes(provider)) errors.push("UNSUPPORTED_TTS_PROVIDER");
+  if (provider === "openai" && !env("OPENAI_API_KEY")) errors.push("TTS_API_KEY_MISSING");
+  if (provider === "openai" && !model) errors.push("TTS_MODEL_NOT_CONFIGURED");
+  if (provider === "openai" && !supportedVoices.includes(defaultVoice)) errors.push("UNSUPPORTED_TTS_VOICE");
+  return { provider, model, defaultVoice, maxChars, maxSegments, previewMaxChars, configured: errors.length === 0, errors };
+}
+
+async function ensurePrivateBucket(adminClient: any) {
+  const bucket = await adminClient.storage.getBucket(audioBucket);
+  if (!bucket.error) return { available: true, created: false, private: bucket.data?.public === false };
+  const created = await adminClient.storage.createBucket(audioBucket, { public: false, fileSizeLimit: 52428800, allowedMimeTypes: ["audio/mpeg", "audio/mp3"] });
+  return { available: !created.error, created: !created.error, private: true, error: created.error?.message ? "STORAGE_BUCKET_UNAVAILABLE" : undefined };
+}
+async function checkTables(adminClient: any) {
+  const names = ["chapter_audio", "audio_render_jobs", "audio_render_segments", "chapter_voice_segments", "novel_voice_cast", "chapter_director_plans"];
+  const results: Record<string, boolean> = {};
+  await Promise.all(names.map(async (name) => { const { error } = await adminClient.from(name).select("id").limit(1); results[name] = !error; }));
+  return results;
+}
 
 Deno.serve(async (req) => {
+  const started = Date.now();
+  const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = env("SUPABASE_URL");
+    const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceKey) return safeError("SUPABASE_CONFIG_MISSING", "Server database configuration is missing.", 500, requestId);
     const authHeader = req.headers.get("Authorization") || "";
-    const adminClient = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-    const { data: userData, error: userError } = await adminClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (userError || !userData.user) return json({ error: "authentication_required" }, 401);
-    if (!isAdmin(userData.user)) return json({ error: "admin_required" }, 403);
-
+    const adminClient = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: userData, error: userError } = await adminClient.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
+    if (userError || !userData.user) return safeError("UNAUTHORIZED", "Sign in before requesting audio diagnostics or rendering.", 401, requestId);
+    const admin = isAdmin(userData.user);
     const body = await req.json().catch(() => ({}));
+    const action = String(body.action || (body.health ? "health" : body.previewText ? "preview" : "render"));
+    const cfg = readConfig();
+    logEvent({ request_id: requestId, user_id: userData.user.id, preview: action === "preview", provider: cfg.provider, model: cfg.model, status: "started" });
+
+    if (action === "health") {
+      if (!admin && body.diagnostics) return safeError("ADMIN_REQUIRED", "Admin permission is required for detailed TTS diagnostics.", 403, requestId);
+      const basic = { status: cfg.configured ? "ok" : "configuration_error", deployment_version: deploymentVersion, provider_configured: cfg.configured, provider: cfg.provider };
+      if (!admin) return json(basic, 200, requestId);
+      const [storage, tables] = await Promise.all([ensurePrivateBucket(adminClient), checkTables(adminClient)]);
+      return json({ ...basic, model: cfg.model || null, default_voice: cfg.defaultVoice, limits: { max_chars: cfg.maxChars, max_segments: cfg.maxSegments, preview_max_chars: cfg.previewMaxChars }, storage_bucket: storage, database_tables: tables, errors: cfg.errors }, 200, requestId);
+    }
+    if (!admin) return safeError("ADMIN_REQUIRED", "Admin permission is required to generate audio.", 403, requestId);
+    if (!cfg.configured && cfg.provider !== "mock") return safeError(cfg.errors[0] || "TTS_PROVIDER_NOT_CONFIGURED", "TTS server configuration is incomplete.", 500, requestId, { configuration_errors: cfg.errors });
+    await ensurePrivateBucket(adminClient);
+
+    if (action === "preview") {
+      const text = stripMarkup(String(body.text || body.previewText || ""));
+      const voice = String(body.voice || cfg.defaultVoice);
+      if (!text) return safeError("TEXT_REQUIRED", "Enter a short preview text.", 400, requestId);
+      if (text.length > cfg.previewMaxChars) return safeError("TEXT_TOO_LONG", `Preview text must be ${cfg.previewMaxChars} characters or fewer.`, 413, requestId, { max_chars: cfg.previewMaxChars, character_count: text.length });
+      const result = await renderPreview(adminClient, { requestId, userId: userData.user.id, provider: cfg.provider, model: cfg.model, voice, text, language: String(body.language || "auto"), bucket: audioBucket, expiresInSeconds: 900 });
+      logEvent({ request_id: requestId, user_id: userData.user.id, preview: true, provider: cfg.provider, model: cfg.model, character_count: text.length, segment_count: 1, status: "ready", duration_ms: Date.now() - started });
+      return json({ status: "preview_ready", provider: cfg.provider, model: cfg.model, voice, character_count: text.length, expires_at: result.expiresAt, audio: { storage_path: result.storagePath, signed_url: result.signedUrl } }, 200, requestId);
+    }
+
     const chapterId = String(body.chapter_id || body.chapterId || "");
     const language = String(body.language || "auto");
-    const provider = String(body.provider || Deno.env.get("NOVELVERSE_TTS_PROVIDER") || Deno.env.get("NOVELVERSE_AUDIO_PROVIDER") || "unconfigured");
+    const provider = String(body.provider || cfg.provider);
     const priority = Number(body.priority || 5);
     const preview = body.preview || null;
-    if (!chapterId) return json({ error: "chapter_id_required" }, 400);
-    if (!["openai", "mock", "unconfigured"].includes(provider)) return json({ error: "unsupported_provider" }, 400);
-    if (provider === "openai" && !Deno.env.get("OPENAI_API_KEY")) return json({ error: "OPENAI_API_KEY is required in Supabase Edge Function secrets." }, 500);
-
+    if (!chapterId) return safeError("CHAPTER_ID_REQUIRED", "Chapter id is required.", 400, requestId);
+    if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId);
     const { data: chapter, error: chapterError } = await adminClient.from("chapters").select("id, novel_id, title, content").eq("id", chapterId).single();
-    if (chapterError || !chapter) return json({ error: "chapter_not_found" }, 404);
-    if (!stripMarkup(chapter.content)) return json({ error: "empty_chapter" }, 422);
-
-    const [{ data: segments }, { data: cast }, { data: directorPlan }] = await Promise.all([
-      adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"),
-      adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id),
-      adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    ]);
-    if (!segments?.length) return json({ error: "voice_segments_required" }, 409);
-    if (!directorPlan) return json({ error: "director_plan_required" }, 409);
-
-    const maxChars = Number(Deno.env.get("NOVELVERSE_TTS_MAX_CHARS_PER_JOB") || 120000);
-    const maxSegments = Number(Deno.env.get("NOVELVERSE_TTS_MAX_SEGMENTS_PER_JOB") || 600);
-    const previewMaxChars = Number(Deno.env.get("NOVELVERSE_TTS_PREVIEW_MAX_CHARS") || 1000);
-    const dailyLimit = Number(Deno.env.get("NOVELVERSE_TTS_DAILY_USER_LIMIT") || 10);
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count: dailyCount } = await adminClient.from("audio_render_jobs").select("id", { count: "exact", head: true }).eq("created_by", userData.user.id).gte("created_at", since);
-    if (!preview && Number(dailyCount || 0) >= dailyLimit) return json({ error: "daily_tts_limit_reached", daily_limit: dailyLimit }, 429);
-    const selectedSegments = preview?.type === "sentence" ? segments.slice(Number(preview.segmentIndex || 0), Number(preview.segmentIndex || 0) + 1) : preview?.type === "dialogue" ? segments.filter((s: any) => s.segment_type === "dialogue").slice(0, 1) : preview?.type === "scene" ? segments.slice(Number(preview.startSegmentIndex || 0), Number(preview.endSegmentIndex || preview.startSegmentIndex || 0) + 1) : segments;
+    if (chapterError || !chapter) return safeError("CHAPTER_NOT_FOUND", "Chapter was not found.", 404, requestId);
+    if (!stripMarkup(chapter.content)) return safeError("EMPTY_CHAPTER", "Chapter has no renderable text.", 422, requestId);
+    const [{ data: segments }, { data: cast }, { data: directorPlan }] = await Promise.all([adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"), adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id), adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle()]);
+    if (!segments?.length) return safeError("VOICE_SEGMENTS_REQUIRED", "Analyze chapter voice segments before rendering audio.", 409, requestId);
+    if (!directorPlan) return safeError("DIRECTOR_PLAN_REQUIRED", "Create a ready voice director plan before rendering audio.", 409, requestId);
+    const selectedSegments = preview?.type === "sentence" ? segments.slice(Number(preview.segmentIndex || 0), Number(preview.segmentIndex || 0) + 1) : segments;
     const totalChars = selectedSegments.reduce((sum: number, s: any) => sum + String(s.text || "").length, 0);
-    if (preview && totalChars > previewMaxChars) return json({ error: "preview_too_large", max_chars: previewMaxChars }, 413);
-    if (!preview && (totalChars > maxChars || selectedSegments.length > maxSegments)) return json({ error: "tts_job_too_large", max_chars: maxChars, max_segments: maxSegments, actual_chars: totalChars, actual_segments: selectedSegments.length }, 413);
-    const { data: duplicate } = await adminClient.from("audio_render_jobs").select("id,status").eq("chapter_id", chapterId).eq("provider", provider).in("status", ["pending", "rendering"]).maybeSingle();
-    if (!preview && duplicate) return json({ status: duplicate.status, job_id: duplicate.id, cache_hit: false, duplicate: true });
+    if (preview && totalChars > cfg.previewMaxChars) return safeError("TEXT_TOO_LONG", "Preview segment is too long.", 413, requestId, { max_chars: cfg.previewMaxChars });
+    if (!preview && (totalChars > cfg.maxChars || selectedSegments.length > cfg.maxSegments)) return safeError("TEXT_TOO_LONG", "TTS job exceeds configured production limits.", 413, requestId, { max_chars: cfg.maxChars, max_segments: cfg.maxSegments, actual_chars: totalChars, actual_segments: selectedSegments.length });
     const cacheKey = await sha256(JSON.stringify({ chapter: chapter.id, language, provider, director: directorPlan.director_version, cast: cast?.map((c: any) => [c.character_id, c.cast_slot, c.voice_profile, c.updated_at]), segments: selectedSegments.map((s: any) => [s.segment_index, s.text]), preview }));
-    const { data: existing } = !preview ? await adminClient.from("chapter_audio").select("id, status, storage_path, duration_seconds, file_size, waveform").eq("chapter_id", chapterId).eq("language", language).eq("voice_id", provider).eq("content_hash", cacheKey).eq("status", "ready").maybeSingle() : { data: null };
-    if (existing) return json({ status: "ready", audio: existing, cache_hit: true, reused: true });
-
     const { data: job, error: jobError } = await adminClient.from("audio_render_jobs").insert({ chapter_id: chapterId, novel_id: chapter.novel_id, language, provider, priority, retry_count: 0, status: "pending", director_plan_id: directorPlan.id, cast_snapshot: cast || [], preview_scope: preview, cache_key: cacheKey, created_by: userData.user.id }).select("*").single();
-    if (jobError) return json({ error: "queue_failed" }, 500);
-    if (body.enqueueOnly) return json({ status: "pending", job_id: job.id, job, cache_hit: false });
-
+    if (jobError) return safeError("QUEUE_FAILED", "Audio render job could not be queued.", 500, requestId);
+    if (body.enqueueOnly) return json({ status: "pending", job_id: job.id, cache_hit: false }, 200, requestId);
     await adminClient.from("audio_render_jobs").update({ status: "rendering", updated_at: new Date().toISOString() }).eq("id", job.id);
-    try {
-      const result = await renderChapterJob(adminClient, job, { chapter, segments: selectedSegments, cast: cast || [], directorPlan });
-      return json({ status: preview ? "preview_ready" : "ready", job_id: job.id, cache_hit: false, ...result });
-    } catch (error) {
-      await adminClient.from("audio_render_jobs").update({ status: "failed", retry_count: Number(job.retry_count || 0) + 1, error_message: error instanceof Error ? error.message : "Rendering failed.", updated_at: new Date().toISOString() }).eq("id", job.id);
-      return json({ status: "failed", message: error instanceof Error ? error.message : "Rendering failed." }, provider === "unconfigured" ? 501 : 502);
-    }
-  } catch (_error) { return json({ error: "audio_generation_failed" }, 500); }
+    const result = await renderChapterJob(adminClient, job, { chapter, segments: selectedSegments, cast: cast || [], directorPlan });
+    logEvent({ request_id: requestId, user_id: userData.user.id, job_id: job.id, preview: Boolean(preview), provider, model: cfg.model, character_count: totalChars, segment_count: selectedSegments.length, status: "ready", duration_ms: Date.now() - started });
+    return json({ status: preview ? "preview_ready" : "ready", job_id: job.id, cache_hit: false, ...result }, 200, requestId);
+  } catch (error) {
+    const normalized = normalizeProviderError(error);
+    logEvent({ request_id: requestId, status: "failed", error_code: normalized.code, duration_ms: Date.now() - started });
+    return json({ status: "failed", error: { code: normalized.code, message: normalized.message } }, normalized.status, requestId);
+  }
 });

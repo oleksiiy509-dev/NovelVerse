@@ -73,3 +73,7 @@
 .admin-audio-cell { display: grid; gap: 4px; min-width: 190px; }
 .admin-audio-cell span { color: var(--text-secondary); font-size: .78rem; }
 .admin-audio-cell button { min-height: 34px; padding: 6px 10px; }
+.admin-tts-panel label { display: grid; gap: 0.35rem; margin: 0.75rem 0; }
+.admin-tts-panel select, .admin-tts-panel textarea { width: 100%; border: 1px solid var(--border-color, #ddd); border-radius: 12px; padding: 0.75rem; background: var(--surface, #fff); color: inherit; }
+.admin-tts-panel textarea { min-height: 110px; resize: vertical; }
+.admin-tts-panel audio { width: 100%; margin-top: 1rem; }
