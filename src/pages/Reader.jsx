@@ -264,20 +264,18 @@ function Reader() {
   }
 
   async function loadAdjacentChapters(activeChapter) {
-    let previous = null;
-    let next = null;
-    let prevError = null;
-    let nextError = null;
     try {
-      [{ data: previous, error: prevError }, { data: next, error: nextError }] = await Promise.all([
+      const [previousResult, nextResult] = await Promise.all([
         supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
       ]);
-    } catch (requestError) {
-      prevError = requestError;
-      nextError = requestError;
+      if (!previousResult.error && !nextResult.error) {
+        setAdjacentChapters({ previous: previousResult.data, next: nextResult.data });
+        return;
+      }
+    } catch {
+      // Fall back to downloaded chapters when online navigation lookup fails.
     }
-    if (!prevError && !nextError) { setAdjacentChapters({ previous, next }); return; }
     const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
     const index = offline.findIndex((item) => item.chapter_id === activeChapter.id);
     setAdjacentChapters({ previous: index > 0 ? { id: offline[index - 1].chapter_id } : null, next: index >= 0 && index < offline.length - 1 ? { id: offline[index + 1].chapter_id } : null });

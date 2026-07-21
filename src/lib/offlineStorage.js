@@ -92,7 +92,7 @@ function stripTags(value = "") {
 
 export function sanitizeOfflineContent(content = "") {
   const textarea = typeof document !== "undefined" ? document.createElement("textarea") : null;
-  const stripped = stripTags(content).replace(/\u0000/g, "");
+  const stripped = stripTags(content).split(String.fromCharCode(0)).join("");
   if (!textarea) return stripped;
   textarea.innerHTML = stripped;
   return textarea.value;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import defaultCover from "../assets/default-cover.svg";
 import { clearDownloads, deleteDownloadedNovel, estimateStorageUsage, formatBytes, getDownloadedNovels } from "../lib/offlineStorage";
@@ -17,15 +17,28 @@ function Downloads() {
   const [busyId, setBusyId] = useState("");
   const totalSize = useMemo(() => items.reduce((sum, item) => sum + item.size, 0), [items]);
 
-  async function load() {
-    setLoading(true);
+  const load = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
     const [novels, storage] = await Promise.all([getDownloadedNovels().catch(() => []), estimateStorageUsage().catch(() => ({ used: 0, quota: 0, offlineBytes: 0 }))]);
     setItems(novels);
     setUsage(storage);
     setLoading(false);
-  }
+  }, []);
 
-  useEffect(() => { let active = true; load().finally(() => { if (!active) return; }); return () => { active = false; }; }, []);
+  useEffect(() => {
+    let active = true;
+
+    async function loadInitialDownloads() {
+      const [novels, storage] = await Promise.all([getDownloadedNovels().catch(() => []), estimateStorageUsage().catch(() => ({ used: 0, quota: 0, offlineBytes: 0 }))]);
+      if (!active) return;
+      setItems(novels);
+      setUsage(storage);
+      setLoading(false);
+    }
+
+    loadInitialDownloads();
+    return () => { active = false; };
+  }, []);
 
   async function removeNovel(item) {
     if (busyId || !window.confirm(`Видалити офлайн-копію «${item.title}»?`)) return;
