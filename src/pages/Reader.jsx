@@ -5,7 +5,7 @@ import { audioModes, defaultAudioLanguage, defaultAudioVoice, formatFileSize, ge
 import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
 import { deleteDownloadedChapter, getDownloadedChapter, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
-import { fetchChapterVoiceSegments } from "../lib/voiceEngine/client";
+import { fetchChapterVoiceSegments, fetchNovelVoiceCast } from "../lib/voiceEngine/client";
 import { getPreviewSettings } from "../lib/voiceEngine/voiceProfiles";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
@@ -165,6 +165,8 @@ function Reader() {
   const [audioReady, setAudioReady] = useState(false);
   const [structuredPreview, setStructuredPreview] = useState(false);
   const [voiceSegments, setVoiceSegments] = useState([]);
+  const [voiceCast, setVoiceCast] = useState([]);
+  const castVoiceMapRef = useRef(new Map());
   const [playerExpanded, setPlayerExpanded] = useState(false);
   const pendingAutoplayRef = useRef(false);
   const aiAudioRef = useRef(null);
@@ -199,7 +201,8 @@ function Reader() {
   const chapterNumber = Number(chapter?.number) || 0;
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapterContent), [chapterContent]);
   const plainSentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex, voiceProfile: "narrator_neutral" }))), [paragraphs]);
-  const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: segment.emotion }))), [voiceSegments]);
+  const castByCharacter = useMemo(() => new Map(voiceCast.map((entry) => [String(entry.character_id), entry])), [voiceCast]);
+  const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => { const castEntry = castByCharacter.get(String(segment.speaker_id)); return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: castEntry?.voice_profile || segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: segment.emotion, castSlot: castEntry?.cast_slot || (segment.segment_type === "narration" ? "narrator_main" : "unknown_01"), pitchOffset: Number(castEntry?.pitch_offset || 0), rateOffset: Number(castEntry?.rate_offset || 0) })); }), [voiceSegments, castByCharacter]);
   const sentences = useMemo(() => (structuredPreview && structuredSentences.length ? structuredSentences : plainSentences), [plainSentences, structuredPreview, structuredSentences]);
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const estimatedTotalSeconds = useMemo(() => Math.max(1, Math.round(sentences.map((sentence) => sentence.text).join(" ").split(/\s+/).filter(Boolean).length / (165 * narrationSettings.rate) * 60)), [sentences, narrationSettings.rate]);
@@ -284,15 +287,18 @@ function Reader() {
     setAiAudio(null);
     setAiAudioUrl("");
     setVoiceSegments([]);
+    setVoiceCast(activeChapter.voice_cast || []);
     setAiAudioDownloaded(localStorage.getItem(getAudioDownloadKey(activeChapter.id)) === "true");
     setAiAudioTime(Number(localStorage.getItem(getAudioPositionKey(activeChapter.id))) || 0);
     setChapter(activeChapter);
-    const [loadedVoiceSegments] = await Promise.all([
+    const [loadedVoiceSegments, loadedCast] = await Promise.all([
       data ? fetchChapterVoiceSegments(activeChapter.id) : Promise.resolve([]),
+      data ? fetchNovelVoiceCast(activeChapter.novel_id) : Promise.resolve(activeChapter.voice_cast || []),
       loadAdjacentChapters(activeChapter),
       loadChapterMetadata(activeChapter),
     ]);
     setVoiceSegments(loadedVoiceSegments);
+    setVoiceCast(loadedCast || []);
     setStructuredPreview((enabled) => enabled && loadedVoiceSegments.length > 0);
     setOfflineReady(!!cached);
     setDownloadState(cached ? "downloaded" : "idle");
@@ -490,7 +496,7 @@ function Reader() {
     }
     setDownloadState("loading");
     try {
-      await saveDownloadedChapter(chapter, chapter.novel || { id: chapter.novel_id });
+      await saveDownloadedChapter({ ...chapter, voice_cast: voiceCast.map((entry) => ({ character_id: entry.character_id, cast_slot: entry.cast_slot, voice_profile: entry.voice_profile, pitch_offset: entry.pitch_offset, rate_offset: entry.rate_offset, energy: entry.energy, roughness: entry.roughness, brightness: entry.brightness, stability: entry.stability, style_strength: entry.style_strength })) }, chapter.novel || { id: chapter.novel_id });
       setOfflineReady(true);
       setDownloadState("downloaded");
       await loadChapterMetadata(chapter);
@@ -542,10 +548,19 @@ function Reader() {
     manuallyStoppingRef.current = false;
     const utterance = new SpeechSynthesisUtterance(sentences[safeIndex].text);
     utterance.lang = selectedVoice?.lang || getVoiceLanguage(sentences[safeIndex].text);
-    utterance.voice = selectedVoice;
+    let stableVoice = selectedVoice;
+    if (structuredPreview && sentences[safeIndex].castSlot && rankedVoices.length) {
+      const key = sentences[safeIndex].castSlot;
+      if (!castVoiceMapRef.current.has(key) || !rankedVoices.some((voice) => voice.voiceURI === castVoiceMapRef.current.get(key)?.voiceURI)) {
+        const offset = Math.abs([...key].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % rankedVoices.length;
+        castVoiceMapRef.current.set(key, rankedVoices[offset]);
+      }
+      stableVoice = castVoiceMapRef.current.get(key) || selectedVoice;
+    }
+    utterance.voice = stableVoice;
     const profileSettings = structuredPreview ? getPreviewSettings(sentences[safeIndex].voiceProfile) : { pitch: nextSettings.pitch, rate: nextSettings.rate };
-    utterance.rate = Math.min(3, Math.max(0.5, profileSettings.rate * nextSettings.rate));
-    utterance.pitch = Math.min(2, Math.max(0, profileSettings.pitch));
+    utterance.rate = Math.min(3, Math.max(0.5, (profileSettings.rate + Number(sentences[safeIndex].rateOffset || 0)) * nextSettings.rate));
+    utterance.pitch = Math.min(2, Math.max(0, profileSettings.pitch + Number(sentences[safeIndex].pitchOffset || 0)));
     utterance.volume = nextSettings.volume;
     utterance.onend = () => {
       if (manuallyStoppingRef.current || speechTokenRef.current !== token) return;
@@ -568,7 +583,7 @@ function Reader() {
     setTtsPaused(false);
     setAudioAnnouncement(`Озвучення: ${sentenceProgress}% глави.`);
     window.speechSynthesis.speak(utterance);
-  }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, selectedVoice, sentenceProgress, sentences, structuredPreview, handleChapterFinished]);
+  }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, rankedVoices, selectedVoice, sentenceProgress, sentences, structuredPreview, handleChapterFinished]);
 
   const pauseNarration = useCallback(() => {
     if (!narrationSupported) return;

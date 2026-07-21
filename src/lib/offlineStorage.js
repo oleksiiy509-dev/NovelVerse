@@ -1,10 +1,11 @@
 const DB_NAME = "novelverse-offline";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const CHAPTERS = "chapters";
 const PROGRESS = "progressQueue";
 const FALLBACK_CHAPTERS_KEY = "novelverse:offline:fallback:chapters";
 const FALLBACK_PROGRESS_KEY = "novelverse:offline:fallback:progress";
-export const OFFLINE_RECORD_VERSION = 2;
+export const OFFLINE_RECORD_VERSION = 3;
+export const OFFLINE_CAST_CACHE_VERSION = 1;
 
 let dbPromise;
 let idbBroken = false;
@@ -117,6 +118,19 @@ function normalizeChapter(chapter = {}, novel = {}) {
     content: sanitizeOfflineContent(chapter.content || ""),
     downloaded_at: chapter.downloaded_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    cast_cache_version: OFFLINE_CAST_CACHE_VERSION,
+    voice_cast: Array.isArray(chapter.voice_cast) ? chapter.voice_cast.map((entry) => ({
+      character_id: String(entry.character_id || ""),
+      cast_slot: String(entry.cast_slot || "unknown_01"),
+      voice_profile: String(entry.voice_profile || "unknown_neutral"),
+      pitch_offset: Number(entry.pitch_offset || 0),
+      rate_offset: Number(entry.rate_offset || 0),
+      energy: Number(entry.energy ?? 0.5),
+      roughness: Number(entry.roughness || 0),
+      brightness: Number(entry.brightness ?? 0.5),
+      stability: Number(entry.stability ?? 0.5),
+      style_strength: Number(entry.style_strength ?? 0.5),
+    })) : [],
   };
 }
 
