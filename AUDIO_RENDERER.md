@@ -97,3 +97,7 @@ When a user downloads a chapter, Reader stores chapter text, voice cast, Directo
 - The default provider is intentionally `unconfigured`; real adapters must be registered server-side.
 - The byte-level merger is provider-independent but assumes segment outputs are MP3-compatible for concatenation. Production deployments should replace this with an ffmpeg-based safe merge worker when available.
 - Browser offline audio persistence depends on available storage and URL cache behavior unless future work stores audio blobs directly in IndexedDB.
+
+## Evolution-aware cache identity
+
+Segment cache identity includes cast hash data for `character_state_version` and `voice_evolution_version`, invalidating only segments affected by character evolution changes.

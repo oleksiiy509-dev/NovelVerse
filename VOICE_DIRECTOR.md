@@ -53,3 +53,7 @@ Validation warns about invalid numeric values, negative/excessive pauses, missin
 ## Limitations and future work
 
 Browser SpeechSynthesis cannot reproduce real timbre, roughness, or emotional acting. Future phases can render provider-based multi-voice audio, map abstract ambience/cue metadata to licensed assets, and produce downloadable audio manifests without exposing provider secrets.
+
+## AI Brain input
+
+Director planning accepts story context, current character states and voice evolution modifiers so delivery reflects emotional history, relationships and recent events.
