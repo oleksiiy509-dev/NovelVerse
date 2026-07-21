@@ -9,7 +9,8 @@ import "../styles/Reader.css";
 
 const defaultSettings = { fontSize: 20, lineHeight: 1.9, textWidth: 760, theme: "dark", fontFamily: "serif" };
 const fontFamilies = { serif: "Georgia, \"Times New Roman\", serif", sans: "Inter, system-ui, -apple-system, sans-serif", dyslexic: "Verdana, Arial, sans-serif", mono: "\"Courier New\", monospace" };
-const defaultNarrationSettings = { rate: 1, pitch: 1, volume: 1, voiceURI: "", autoScroll: true };
+const defaultNarrationSettings = { rate: 1, pitch: 1, volume: 1, voiceURI: "", autoNextChapter: false };
+const chapterRangeSize = 20;
 const supportedRates = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
 const readerPanelKey = "readerSettingsPanelOpen";
 const narrationSettingsKey = "readerNarrationSettings";
@@ -39,7 +40,7 @@ function getNarrationSettings() {
     rate: Math.min(3, Math.max(0.5, Number(saved?.rate) || defaultNarrationSettings.rate)),
     pitch: Math.min(2, Math.max(0, Number(saved?.pitch) || defaultNarrationSettings.pitch)),
     volume: Math.min(1, Math.max(0, Number(saved?.volume ?? defaultNarrationSettings.volume))),
-    autoScroll: saved?.autoScroll !== false,
+    autoNextChapter: saved?.autoNextChapter === true,
   };
 }
 
@@ -95,6 +96,25 @@ function formatClock(seconds) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
+function getVoiceScore(voice, chapterLanguage) {
+  const name = voice.name.toLowerCase();
+  const lang = voice.lang.toLowerCase();
+  let score = lang.startsWith(chapterLanguage) ? 100 : 0;
+  if (["natural", "neural", "online", "enhanced", "premium", "google", "microsoft"].some((term) => name.includes(term))) score += 35;
+  if (voice.localService) score += 6;
+  if (["default", "compact", "basic", "legacy", "espeak", "festival"].some((term) => name.includes(term))) score -= 25;
+  return score;
+}
+
+function getChapterRanges(chapters = []) {
+  const highest = chapters.reduce((max, item) => Math.max(max, Number(item.number) || 0), 0);
+  return Array.from({ length: Math.ceil(highest / chapterRangeSize) }, (_, index) => {
+    const start = index * chapterRangeSize + 1;
+    const end = start + chapterRangeSize - 1;
+    return { key: `${start}-${end}`, start, end, chapters: chapters.filter((item) => item.number >= start && item.number <= end) };
+  }).filter((range) => range.chapters.length);
+}
+
 function Reader() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -119,10 +139,11 @@ function Reader() {
   const [audioAnnouncement, setAudioAnnouncement] = useState("");
   const [navigatingChapter, setNavigatingChapter] = useState(false);
   const [adjacentChapters, setAdjacentChapters] = useState({ previous: null, next: null });
+  const [chapterList, setChapterList] = useState([]);
+  const [selectedRangeKey, setSelectedRangeKey] = useState(localStorage.getItem("readerSelectedChapterRange") || "");
   const sleepTimerRef = useRef(null);
   const sleepTimerEndsAtRef = useRef(0);
   const speechTokenRef = useRef(0);
-  const manualScrollUntilRef = useRef(0);
   const [voices, setVoices] = useState([]);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(() => getSavedNarrationPosition(id));
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -132,6 +153,7 @@ function Reader() {
   const manuallyStoppingRef = useRef(false);
   const [audioReady, setAudioReady] = useState(false);
   const [playerExpanded, setPlayerExpanded] = useState(false);
+  const pendingAutoplayRef = useRef(false);
 
   const toggleBookmark = useCallback(async () => {
     if (!chapter) return;
@@ -165,6 +187,16 @@ function Reader() {
   const estimatedTotalSeconds = useMemo(() => Math.max(1, Math.round(sentences.map((sentence) => sentence.text).join(" ").split(/\s+/).filter(Boolean).length / (165 * narrationSettings.rate) * 60)), [sentences, narrationSettings.rate]);
   const elapsedSeconds = useMemo(() => Math.round((currentSentenceIndex / Math.max(1, sentences.length)) * estimatedTotalSeconds), [currentSentenceIndex, estimatedTotalSeconds, sentences.length]);
   const sentenceProgress = sentences.length ? Math.round(((currentSentenceIndex + (ttsActive ? 1 : 0)) / sentences.length) * 100) : 0;
+  const chapterLanguage = useMemo(() => getVoiceLanguage(chapter?.content), [chapter?.content]);
+  const rankedVoices = useMemo(() => [...voices].sort((a, b) => getVoiceScore(b, chapterLanguage) - getVoiceScore(a, chapterLanguage) || a.name.localeCompare(b.name)), [voices, chapterLanguage]);
+  const selectedVoice = useMemo(() => rankedVoices.find((voice) => voice.voiceURI === narrationSettings.voiceURI) || rankedVoices[0] || null, [rankedVoices, narrationSettings.voiceURI]);
+  const chapterRanges = useMemo(() => getChapterRanges(chapterList), [chapterList]);
+  const currentRangeKey = useMemo(() => {
+    const currentNumber = Number(chapter?.number) || 0;
+    return chapterRanges.find((range) => currentNumber >= range.start && currentNumber <= range.end)?.key || "";
+  }, [chapter?.number, chapterRanges]);
+  const selectedRangeExists = chapterRanges.some((range) => range.key === selectedRangeKey);
+  const openRangeKey = selectedRangeExists ? selectedRangeKey : currentRangeKey;
 
   const loadChapterRef = useRef(null);
   loadChapterRef.current = loadChapter;
@@ -245,20 +277,6 @@ function Reader() {
   }, [chapter, currentSentenceIndex, sentenceProgress, readingProgress, user]);
 
   useEffect(() => {
-    function markManualScroll() {
-      manualScrollUntilRef.current = Date.now() + 5000;
-    }
-    window.addEventListener("wheel", markManualScroll, { passive: true });
-    window.addEventListener("touchmove", markManualScroll, { passive: true });
-    return () => { window.removeEventListener("wheel", markManualScroll); window.removeEventListener("touchmove", markManualScroll); };
-  }, []);
-
-  useEffect(() => {
-    const activeSentence = document.getElementById(`reader-sentence-${currentSentenceIndex}`);
-    if (ttsActive && narrationSettings.autoScroll && activeSentence && Date.now() > manualScrollUntilRef.current) activeSentence.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [currentSentenceIndex, narrationSettings.autoScroll, ttsActive]);
-
-  useEffect(() => {
     if (sleepTimerMode === "off" || !sleepTimerEndsAtRef.current) { setSleepRemainingSeconds(0); return undefined; }
     const intervalId = window.setInterval(() => setSleepRemainingSeconds(Math.max(0, Math.ceil((sleepTimerEndsAtRef.current - Date.now()) / 1000))), 1000);
     return () => window.clearInterval(intervalId);
@@ -293,7 +311,7 @@ function Reader() {
     setCurrentSentenceIndex(Math.min(Math.max(Number(savedAudio?.audio_sentence_index ?? savedAudio?.audio_paragraph_index ?? getSavedNarrationPosition(activeChapter.id)) || 0, 0), Math.max(splitChapterIntoParagraphs(activeChapter.content).flatMap(splitParagraphIntoSentences).length - 1, 0)));
     setAudioCacheState(localStorage.getItem(getChapterAudioCacheKey(activeChapter.id)) ? "cached" : "idle");
     setChapter(activeChapter);
-    await loadAdjacentChapters(activeChapter);
+    await Promise.all([loadAdjacentChapters(activeChapter), loadChapterMetadata(activeChapter)]);
     setOfflineReady(!!cached);
     setDownloadState(cached ? "downloaded" : "idle");
     const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
@@ -332,6 +350,21 @@ function Reader() {
     setAdjacentChapters({ previous: index > 0 ? { id: offline[index - 1].chapter_id } : null, next: index >= 0 && index < offline.length - 1 ? { id: offline[index + 1].chapter_id } : null });
   }
 
+  async function loadChapterMetadata(activeChapter) {
+    const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
+    const offlineIds = new Set(offline.map((item) => String(item.chapter_id)));
+    try {
+      const result = await supabase.from("chapters").select("id, number, title").eq("novel_id", activeChapter.novel_id).order("number", { ascending: true });
+      if (!result.error && result.data?.length) {
+        setChapterList(result.data.map((item) => ({ id: String(item.id), number: Number(item.number), title: item.title, availableOffline: offlineIds.has(String(item.id)), downloaded: offlineIds.has(String(item.id)) })));
+        return;
+      }
+    } catch {
+      // Use downloaded metadata when online chapter metadata is unavailable.
+    }
+    setChapterList(offline.map((item) => ({ id: String(item.chapter_id), number: Number(item.chapter_number), title: item.chapter_title, availableOffline: true, downloaded: true })));
+  }
+
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
     const target = direction < 0 ? adjacentChapters.previous : adjacentChapters.next;
@@ -341,12 +374,36 @@ function Reader() {
       return;
     }
     setNavigatingChapter(true);
+    stopNarration();
     navigate(`/reader/${target.id}`, { preventScrollReset: true });
   }
 
   function previousChapter() { goToAdjacentChapter(-1); }
 
   function nextChapter() { goToAdjacentChapter(1); }
+
+  function chooseChapter(targetChapter, playWhenLoaded = true) {
+    if (!targetChapter || navigatingChapter) return;
+    if (!targetChapter.downloaded && offlineMode) {
+      setNavMessage("Ця глава недоступна офлайн.");
+      window.setTimeout(() => setNavMessage(""), 3500);
+      return;
+    }
+    pendingAutoplayRef.current = playWhenLoaded;
+    const range = chapterRanges.find((item) => targetChapter.number >= item.start && targetChapter.number <= item.end);
+    if (range) {
+      setSelectedRangeKey(range.key);
+      localStorage.setItem("readerSelectedChapterRange", range.key);
+    }
+    stopNarration();
+    if (String(targetChapter.id) === String(chapter?.id)) {
+      setCurrentSentenceIndex(0);
+      if (playWhenLoaded) window.setTimeout(() => speakSentence(0), 0);
+      return;
+    }
+    setNavigatingChapter(true);
+    navigate(`/reader/${targetChapter.id}`, { preventScrollReset: true });
+  }
 
 
 
@@ -364,6 +421,7 @@ function Reader() {
       await saveDownloadedChapter(chapter, chapter.novel || { id: chapter.novel_id });
       setOfflineReady(true);
       setDownloadState("downloaded");
+      await loadChapterMetadata(chapter);
     } catch (error) {
       alert(error.message || "Не вдалося зберегти главу.");
       setDownloadState("error");
@@ -387,10 +445,6 @@ function Reader() {
     setControlsVisible((visible) => !visible);
   }
 
-  function getSelectedVoice() {
-    return voices.find((voice) => voice.voiceURI === narrationSettings.voiceURI) || voices.find((voice) => voice.lang.toLowerCase().startsWith(getVoiceLanguage(chapter?.content))) || null;
-  }
-
   function speakSentence(index = currentSentenceIndex, nextSettings = narrationSettings) {
     if (!chapter || !narrationSupported || !sentences.length) return;
     const safeIndex = Math.min(Math.max(index, 0), sentences.length - 1);
@@ -400,8 +454,8 @@ function Reader() {
     window.speechSynthesis.cancel();
     manuallyStoppingRef.current = false;
     const utterance = new SpeechSynthesisUtterance(sentences[safeIndex].text);
-    utterance.lang = getSelectedVoice()?.lang || getVoiceLanguage(sentences[safeIndex].text);
-    utterance.voice = getSelectedVoice();
+    utterance.lang = selectedVoice?.lang || getVoiceLanguage(sentences[safeIndex].text);
+    utterance.voice = selectedVoice;
     utterance.rate = nextSettings.rate;
     utterance.pitch = nextSettings.pitch;
     utterance.volume = nextSettings.volume;
@@ -411,7 +465,7 @@ function Reader() {
       else {
         setTtsActive(false);
         setTtsPaused(false);
-        setAudioAnnouncement("Озвучення глави завершено.");
+        handleChapterFinished();
       }
     };
     utterance.onerror = () => {
@@ -424,8 +478,23 @@ function Reader() {
     setCurrentSentenceIndex(safeIndex);
     setTtsActive(true);
     setTtsPaused(false);
-    setAudioAnnouncement(`Озвучується речення ${safeIndex + 1}.`);
+    setAudioAnnouncement(`Озвучення: ${sentenceProgress}% глави.`);
     window.speechSynthesis.speak(utterance);
+  }
+
+  function handleChapterFinished() {
+    setAudioAnnouncement("Озвучення глави завершено.");
+    if (narrationSettings.autoNextChapter) {
+      const next = adjacentChapters.next;
+      if (next) {
+        pendingAutoplayRef.current = true;
+        setNavigatingChapter(true);
+        navigate(`/reader/${next.id}`, { preventScrollReset: true });
+      } else {
+        setNavMessage("Наступна глава недоступна офлайн.");
+        window.setTimeout(() => setNavMessage(""), 3500);
+      }
+    }
   }
 
   function stopNarration() {
@@ -467,6 +536,7 @@ function Reader() {
     stopNarration();
     if (chapter) localStorage.removeItem(getNarrationPositionKey(chapter.id));
     setCurrentSentenceIndex(0);
+    if (sentences.length) speakSentence(0);
   }
 
   function scrubNarration(value) {
@@ -493,6 +563,15 @@ function Reader() {
     } else setSleepRemainingSeconds(0);
   }
 
+
+  useEffect(() => {
+    if (!pendingAutoplayRef.current || loading || !chapter || !sentences.length || !narrationSupported) return;
+    pendingAutoplayRef.current = false;
+    setAudioReady(true);
+    setNarrationOpen(true);
+    speakSentence(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapter, loading, narrationSupported, sentences.length]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator) || !chapter) return;
@@ -550,14 +629,9 @@ function Reader() {
           onPointerDown={handleReadingPointerDown}
           onPointerUp={handleReadingPointerUp}
         >
-          {paragraphs.map((paragraph, paragraphIndex) => {
-            const paragraphSentences = sentences.map((sentence, sentenceIndex) => ({ ...sentence, sentenceIndex })).filter((sentence) => sentence.paragraphIndex === paragraphIndex);
-            return (
-              <p id={`reader-paragraph-${paragraphIndex}`} className="reader__paragraph" key={`${chapter.id}-${paragraphIndex}`}>
-                {paragraphSentences.map((sentence) => <span id={`reader-sentence-${sentence.sentenceIndex}`} className={sentence.sentenceIndex === currentSentenceIndex && (ttsActive || ttsPaused) ? "reader__sentence reader__sentence--speaking" : "reader__sentence"} key={`${chapter.id}-${sentence.sentenceIndex}`}>{sentence.text} </span>)}
-              </p>
-            );
-          })}
+          {paragraphs.map((paragraph, paragraphIndex) => (
+            <p className="reader__paragraph" key={`${chapter.id}-${paragraphIndex}`}>{paragraph}</p>
+          ))}
         </article>
       </div>
       <nav className="reader__controls reader__controls--bottom reader__chapter-nav" aria-label="Chapter navigation">
@@ -583,13 +657,13 @@ function Reader() {
       </section>
       <section id="reader-narration-panel" className={`reader__narration-player ${narrationOpen ? "reader__narration-player--open" : ""} ${playerExpanded ? "reader__narration-player--expanded" : "reader__narration-player--mini"}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
         <button className="reader__player-grip" onClick={() => setPlayerExpanded((expanded) => !expanded)} aria-label={playerExpanded ? "Згорнути аудіоплеєр" : "Розгорнути аудіоплеєр"} />
-        <div className="reader__player-header"><button className="reader__player-collapse" onClick={() => setPlayerExpanded((expanded) => !expanded)}>{playerExpanded ? "⌄" : "⌃"}</button><div><p>AI Audio Player v3</p><strong>{chapter.title}</strong></div><button onClick={() => { stopNarration(); setNarrationOpen(false); }} aria-label="Закрити озвучення">✕</button></div>
+        <div className="reader__player-header"><button className="reader__player-collapse" onClick={() => setPlayerExpanded((expanded) => !expanded)}>{playerExpanded ? "⌄" : "⌃"}</button><div><p>{chapter.novel?.title || chapter.novel_title || "NovelVerse"}</p><strong>Глава {chapter.number}: {chapter.title}</strong></div><button onClick={() => { stopNarration(); setNarrationOpen(false); }} aria-label="Закрити озвучення">✕</button></div>
         {!narrationSupported ? (
           <p className="reader__narration-warning">Озвучення недоступне у цьому браузері. Відкрийте NovelVerse у середовищі зі SpeechSynthesis, щоб слухати глави.</p>
         ) : (
           <>
             <input className="reader__progress-slider" type="range" min="0" max={Math.max(sentences.length - 1, 0)} value={currentSentenceIndex} onChange={(e) => scrubNarration(e.target.value)} disabled={!sentences.length} aria-label="Прогрес озвучення" />
-            <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{sentenceProgress}% · sentence {currentSentenceIndex + 1}/{sentences.length || 1}</span><span>{formatClock(estimatedTotalSeconds)}</span></div>
+            <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{sentenceProgress}% · {ttsActive && !ttsPaused ? "Playing" : ttsPaused ? "Paused" : "Ready"}</span><span>{formatClock(estimatedTotalSeconds)}</span></div><div className="reader__player-meta"><span>Voice: {selectedVoice ? `${selectedVoice.name} (${selectedVoice.lang})` : "Best available voice"}</span><span>Speed: {narrationSettings.rate}x</span></div>
             <div className="reader__media-controls">
               <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous} aria-label="Попередня глава">⏪</button>
               <button onClick={() => moveSentence(-1)} disabled={!sentences.length || currentSentenceIndex === 0} aria-label="Попереднє речення">⏮</button>
@@ -601,7 +675,36 @@ function Reader() {
               <button onClick={restartNarration} disabled={!sentences.length} aria-label="Почати главу спочатку">↻</button>
             </div>
             <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateNarrationSetting("rate", Number(e.target.value))}><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="2.5">2.5x</option><option value="3">3x</option></select></label></div>
-            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label><input type="checkbox" checked={narrationSettings.autoScroll} onChange={(e) => updateNarrationSetting("autoScroll", e.target.checked)} /> Автопрокрутка до активного речення</label><label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Авто: Українська / Русский / English</option>{voices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
+            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
+            <div className="reader__chapter-selector" aria-label="Chapter selector">
+              <div className="reader__range-tabs">
+                {chapterRanges.map((range) => (
+                  <button
+                    type="button"
+                    className={`${range.key === openRangeKey ? "reader__range-tab reader__range-tab--open" : "reader__range-tab"} ${range.key === currentRangeKey ? "reader__range-tab--current" : ""}`}
+                    key={range.key}
+                    onClick={() => { setSelectedRangeKey(range.key); localStorage.setItem("readerSelectedChapterRange", range.key); }}
+                  >
+                    {range.start}–{range.end}
+                  </button>
+                ))}
+              </div>
+              {chapterRanges.filter((range) => range.key === openRangeKey).map((range) => (
+                <div className="reader__chapter-list" key={range.key}>
+                  {range.chapters.map((item) => {
+                    const isCurrent = String(item.id) === String(chapter.id);
+                    const unavailable = offlineMode && !item.downloaded;
+                    return (
+                      <button type="button" className={`${isCurrent ? "reader__chapter-choice reader__chapter-choice--current" : "reader__chapter-choice"} ${unavailable ? "reader__chapter-choice--unavailable" : ""}`} key={item.id} disabled={unavailable || navigatingChapter} onClick={() => chooseChapter(item, true)}>
+                        <span>Глава {item.number}</span>
+                        <strong>{item.title}</strong>
+                        <em>{isCurrent ? "Playing" : item.downloaded ? "Downloaded" : unavailable ? "Unavailable offline" : "Stream"}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </>
         )}
       </section>
