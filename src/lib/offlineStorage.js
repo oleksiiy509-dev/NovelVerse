@@ -4,8 +4,9 @@ const CHAPTERS = "chapters";
 const PROGRESS = "progressQueue";
 const FALLBACK_CHAPTERS_KEY = "novelverse:offline:fallback:chapters";
 const FALLBACK_PROGRESS_KEY = "novelverse:offline:fallback:progress";
-export const OFFLINE_RECORD_VERSION = 3;
+export const OFFLINE_RECORD_VERSION = 4;
 export const OFFLINE_CAST_CACHE_VERSION = 1;
+export const OFFLINE_DIRECTOR_CACHE_VERSION = 1;
 
 let dbPromise;
 let idbBroken = false;
@@ -119,6 +120,9 @@ function normalizeChapter(chapter = {}, novel = {}) {
     downloaded_at: chapter.downloaded_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
     cast_cache_version: OFFLINE_CAST_CACHE_VERSION,
+    director_cache_version: OFFLINE_DIRECTOR_CACHE_VERSION,
+    director_plan: chapter.director_plan ? { ...chapter.director_plan, audio_assets: [] } : null,
+    voice_segments: Array.isArray(chapter.voice_segments) ? chapter.voice_segments : [],
     voice_cast: Array.isArray(chapter.voice_cast) ? chapter.voice_cast.map((entry) => ({
       character_id: String(entry.character_id || ""),
       cast_slot: String(entry.cast_slot || "unknown_01"),

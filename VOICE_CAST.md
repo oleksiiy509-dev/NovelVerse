@@ -47,3 +47,7 @@ Voice cloning is not implemented. Future support must require owner consent, rec
 ## Limitations
 
 Browser SpeechSynthesis can approximate pitch and rate only. It cannot create real timbre, roughness, cloned voices or actor-level emotional performance.
+
+## Director usage
+
+Persistent cast assignments are reused by the Voice Director as stable `castSlot` and `voiceProfile` inputs. Manual cast locks remain authoritative. Director regeneration preserves manually edited segment performance where possible and does not replace Phase 2 cast memory.

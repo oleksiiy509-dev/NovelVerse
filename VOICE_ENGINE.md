@@ -94,3 +94,7 @@ Reading a chapter never requires analysis. Standard narration still works with p
 Voice Engine Phase 2 adds a novel-level cast memory. Chapter analysis can continue to produce narration, dialogue, thought and system segments, but recurring characters now resolve through `novel_voice_cast` so the same canonical character keeps the same abstract cast slot across chapters. Manual locks and existing assignments are preserved during re-analysis.
 
 See `VOICE_CAST.md` for the full architecture, slot catalog, alias handling, merge workflow and validation rules.
+
+## Phase 3: Voice Director
+
+Voice Engine Phase 3 adds a deterministic scene-aware Director layer after Phase 1 segment analysis and before any future audio rendering. It plans scene type, atmosphere metadata, cast slot usage, delivery style, rate, pitch, energy, volume, pauses, emphasis ranges, and optional sound cue suggestions without changing original segment text or connecting a paid TTS provider. Reader remains compatible when no director plan exists.
