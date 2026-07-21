@@ -69,7 +69,7 @@ export function isTelegramMiniApp() {
 
 export async function loadTelegramSdk() {
   if (!sdkModulePromise) sdkModulePromise = import(/* @vite-ignore */ "@telegram-apps/sdk").catch((error) => {
-    console.warn("Telegram SDK could not be loaded; falling back to window.Telegram.WebApp", error);
+    console.error("Telegram SDK could not be loaded; using browser fallback.", error);
     return null;
   });
   return sdkModulePromise;

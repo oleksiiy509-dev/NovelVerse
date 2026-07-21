@@ -30,6 +30,19 @@ body.telegram-webapp button {
   touch-action: manipulation;
 }
 a { color: inherit; }
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+#root {
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+body {
+  overflow-x: hidden;
+}
 img { max-width: 100%; display: block; }
 button, input, textarea, select { font: inherit; }
 button {

@@ -68,7 +68,7 @@ function Home() {
   async function loadNovels() {
     setLoading(true); setErrorMessage("");
     const { data, error } = await supabase.from("novels").select("*").order("id");
-    if (error) { console.log(error); setErrorMessage(error.message || "Перевірте підключення."); setLoading(false); return; }
+    if (error) { setErrorMessage("Не вдалося завантажити новели. Перевірте підключення і спробуйте ще раз."); setLoading(false); return; }
     setNovels(data || []); setLoading(false);
   }
   const categories = useMemo(() => { const values = new Set(["Усі"]); novels.forEach((novel) => [novel.status, ...(novel.genres || "").split(",")].map((item) => item?.trim()).filter(Boolean).forEach((item) => values.add(item))); return [...values]; }, [novels]);

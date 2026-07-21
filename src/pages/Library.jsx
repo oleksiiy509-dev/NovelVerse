@@ -42,7 +42,7 @@ function Library() {
       if (ignore) return;
 
       if (error) {
-        console.log(error);
+        console.error("Library load failed.", error);
         setLoading(false);
         return;
       }

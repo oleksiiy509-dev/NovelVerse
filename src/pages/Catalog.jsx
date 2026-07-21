@@ -99,12 +99,10 @@ function Catalog() {
     let result = await runQuery(NOVEL_COLUMNS, option);
 
     if (isMissingColumnError(result.error, "created_at")) {
-      console.warn("Catalog novels query used unavailable date metadata; retrying ordered by id.");
       result = await runQuery(FALLBACK_NOVEL_COLUMNS, { column: "id", ascending: false, fallback: "id" });
     }
 
     if (result.error) {
-      console.error("Catalog novels query failed.");
       setError(CATALOG_ERROR_MESSAGE);
       setHasMore(false);
     } else {
@@ -134,7 +132,6 @@ function Catalog() {
 
       let result = await buildSuggestionsQuery("created_at");
       if (isMissingColumnError(result.error, "created_at")) {
-        console.warn("Catalog suggestions query used unavailable date metadata; retrying ordered by id.");
         result = await buildSuggestionsQuery("id");
       }
 
@@ -150,7 +147,7 @@ function Catalog() {
   return <main className="catalog page-shell">
     <header className="catalog__hero"><p className="home__eyebrow">Catalog v1</p><h1>Explore every NovelVerse story</h1><p>Fast Supabase-backed discovery with live search, filters, sorting, and infinite scrolling for Telegram Mini Apps.</p></header>
     <section className="catalog__panel" aria-label="Catalog filters">
-      <div className="catalog__search-wrap"><input className="catalog__search" value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="🔍 Instant search by title, author, or genre" />{visibleSuggestions.length > 0 && <div className="catalog__suggestions">{visibleSuggestions.map((item)=><button key={item.id} onClick={()=>setSearch(item.title)}><strong>{item.title}</strong><span>{item.author} • {splitGenres(item.genres).slice(0,2).join(", ")}</span></button>)}</div>}</div>
+      <div className="catalog__search-wrap"><input className="catalog__search" aria-label="Пошук у каталозі" value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="🔍 Instant search by title, author, or genre" />{visibleSuggestions.length > 0 && <div className="catalog__suggestions">{visibleSuggestions.map((item)=><button key={item.id} onClick={()=>setSearch(item.title)}><strong>{item.title}</strong><span>{item.author} • {splitGenres(item.genres).slice(0,2).join(", ")}</span></button>)}</div>}</div>
       <div className="catalog__filters">
         <label>Genre<select value={filters.genre} onChange={(e)=>setFilters((v)=>({ ...v, genre:e.target.value }))}><option value="all">All genres</option>{facets.genres.map((genre)=><option key={genre}>{genre}</option>)}</select></label>
         <label>Status<select value={filters.status} onChange={(e)=>setFilters((v)=>({ ...v, status:e.target.value }))}><option value="all">All statuses</option><option>Ongoing</option><option>Completed</option></select></label>
