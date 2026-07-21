@@ -5,6 +5,7 @@ import { markdownToText, splitIntoChapters, stripMarkup } from "../lib/admin";
 import { duplicateChapterNumberExists, safeWrite } from "../lib/adminContent";
 import { htmlToPlainText, sanitizeRichText } from "../lib/richText";
 import RichTextEditor from "./RichTextEditor";
+import VoiceStudio from "./VoiceStudio";
 
 const empty = { novel_id: "", title: "", number: "", content: "", status: "Published" };
 function readFile(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || "")); reader.onerror = () => reject(reader.error); reader.readAsText(file); }); }
@@ -63,6 +64,7 @@ function ChapterForm({ initialChapter, chapterId }) {
     </div>
     <div className="admin-actions"><button type="button" className="admin-secondary" disabled={saving} onClick={(e) => save(e, "Draft")}>Save draft</button><button disabled={saving}>{saving ? "Saving..." : "💾 Save"}</button><button type="button" className="admin-secondary" onClick={() => navigate("/admin/chapters")}>Cancel</button></div>
     <p className="admin-muted">Publication status is skipped automatically if the chapters table does not support it.</p>
+    {chapterId && <VoiceStudio chapter={{ ...form, id: chapterId }} />}
   </form>;
 }
 export default ChapterForm;

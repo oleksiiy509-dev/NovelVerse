@@ -5,6 +5,8 @@ import { audioModes, defaultAudioLanguage, defaultAudioVoice, formatFileSize, ge
 import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
 import { deleteDownloadedChapter, getDownloadedChapter, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
+import { fetchChapterVoiceSegments } from "../lib/voiceEngine/client";
+import { getPreviewSettings } from "../lib/voiceEngine/voiceProfiles";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
 
@@ -161,6 +163,8 @@ function Reader() {
   const utteranceRef = useRef(null);
   const manuallyStoppingRef = useRef(false);
   const [audioReady, setAudioReady] = useState(false);
+  const [structuredPreview, setStructuredPreview] = useState(false);
+  const [voiceSegments, setVoiceSegments] = useState([]);
   const [playerExpanded, setPlayerExpanded] = useState(false);
   const pendingAutoplayRef = useRef(false);
   const aiAudioRef = useRef(null);
@@ -194,7 +198,9 @@ function Reader() {
   const chapterContent = chapter?.content ?? "";
   const chapterNumber = Number(chapter?.number) || 0;
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapterContent), [chapterContent]);
-  const sentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex }))), [paragraphs]);
+  const plainSentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex, voiceProfile: "narrator_neutral" }))), [paragraphs]);
+  const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: segment.emotion }))), [voiceSegments]);
+  const sentences = structuredPreview && structuredSentences.length ? structuredSentences : plainSentences;
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const estimatedTotalSeconds = useMemo(() => Math.max(1, Math.round(sentences.map((sentence) => sentence.text).join(" ").split(/\s+/).filter(Boolean).length / (165 * narrationSettings.rate) * 60)), [sentences, narrationSettings.rate]);
   const elapsedSeconds = useMemo(() => Math.round((currentSentenceIndex / Math.max(1, sentences.length)) * estimatedTotalSeconds), [currentSentenceIndex, estimatedTotalSeconds, sentences.length]);
@@ -530,8 +536,9 @@ function Reader() {
     const utterance = new SpeechSynthesisUtterance(sentences[safeIndex].text);
     utterance.lang = selectedVoice?.lang || getVoiceLanguage(sentences[safeIndex].text);
     utterance.voice = selectedVoice;
-    utterance.rate = nextSettings.rate;
-    utterance.pitch = nextSettings.pitch;
+    const profileSettings = structuredPreview ? getPreviewSettings(sentences[safeIndex].voiceProfile) : { pitch: nextSettings.pitch, rate: nextSettings.rate };
+    utterance.rate = Math.min(3, Math.max(0.5, profileSettings.rate * nextSettings.rate));
+    utterance.pitch = Math.min(2, Math.max(0, profileSettings.pitch));
     utterance.volume = nextSettings.volume;
     utterance.onend = () => {
       if (manuallyStoppingRef.current || speechTokenRef.current !== token) return;
@@ -796,7 +803,7 @@ function Reader() {
               <button onClick={restartNarration} disabled={!sentences.length} aria-label="Почати главу спочатку">↻</button>
             </div>
             <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateNarrationSetting("rate", Number(e.target.value))}><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="2.5">2.5x</option><option value="3">3x</option></select></label></div>
-            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
+            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={structuredPreview} onChange={(e) => setStructuredPreview(e.target.checked)} disabled={!voiceSegments.length} /> Structured Voice Engine preview ({voiceSegments.length || "no"} segments)</label><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser. Structured preview only approximates profile pitch and rate, not custom timbre.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
             <div className="reader__chapter-selector" aria-label="Chapter selector">
               <div className="reader__range-tabs">
                 {chapterRanges.map((range) => (
