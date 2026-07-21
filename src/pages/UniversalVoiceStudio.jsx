@@ -16,7 +16,7 @@ function loadState() {
 }
 
 export default function UniversalVoiceStudio() {
-  const initial = useMemo(loadState, []);
+  const initial = useMemo(() => loadState(), []);
   const [profiles, setProfiles] = useState(initial.profiles);
   const [assignments, setAssignments] = useState(initial.assignments);
   const [novelId, setNovelId] = useState("");
