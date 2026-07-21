@@ -1,5 +1,15 @@
 # NovelVerse Local Voice Worker
 
-Self-hosted optional worker for free/local TTS experimentation. Set `VOICE_WORKER_TOKEN` for bearer authentication and never hardcode secrets. Endpoints: `GET /health`, `GET /voices`, `POST /synthesize`, `POST /transform`, `POST /preview`.
+Production-ready local TTS worker with Express endpoints for health checks, voice discovery, previews, synthesis, and voice transformation experiments.
 
-Providers report unavailable unless their runtime/model configuration is present. The included mock processor is deterministic and does not clone real voices.
+## Quick start
+
+```bash
+cd voice-worker
+npm install
+cp .env.example .env
+npm start
+curl http://127.0.0.1:8787/health
+```
+
+Set `TOKEN` in `.env` to require `Authorization: Bearer <TOKEN>` for all endpoints except `/health`.
