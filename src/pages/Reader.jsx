@@ -219,8 +219,8 @@ function Reader() {
     setErrorMessage("");
     const currentUser = await getCurrentUser(supabase);
     setUser(currentUser);
-    let data = null;
-    let error = null;
+    let data;
+    let error;
     try {
       const result = await supabase.from("chapters").select("*").eq("id", id).single();
       data = result.data;
