@@ -26,6 +26,7 @@ const AdminTaxonomy = lazy(() => import("./pages/AdminTaxonomy.jsx"));
 const AdminCharacters = lazy(() => import("./pages/AdminCharacters.jsx"));
 const AiBrainStudio = lazy(() => import("./pages/AiBrainStudio.jsx"));
 const UniversalVoiceStudio = lazy(() => import("./pages/UniversalVoiceStudio.jsx"));
+const AdminSceneStudio = lazy(() => import("./pages/AdminSceneStudio.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 
 function AppRoutes() {
@@ -54,6 +55,7 @@ function AppRoutes() {
           <Route path="/admin/characters" element={<AdminCharacters />} />
           <Route path="/admin/ai-brain" element={<AiBrainStudio />} />
           <Route path="/admin/voice-studio" element={<UniversalVoiceStudio />} />
+          <Route path="/admin/scene-studio" element={<AdminSceneStudio />} />
           <Route path="/admin/novels/:novelId/characters" element={<AdminCharacters />} />
         </Route>
         <Route path="*" element={<NotFound />} />

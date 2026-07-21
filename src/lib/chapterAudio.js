@@ -1,16 +1,19 @@
 import { supabase } from "./supabase";
 
-export const audioModes = { ai: "ai", device: "device" };
+export const audioModes = { cinematic: "cinematic", ai: "ai", device: "device" };
 export const audioModeStorageKey = "novelverse:narrationMode";
 export const defaultAudioLanguage = "auto";
 export const defaultAudioVoice = "default";
 
 export function getSavedAudioMode() {
-  return localStorage.getItem(audioModeStorageKey) === audioModes.device ? audioModes.device : audioModes.ai;
+  const saved = localStorage.getItem(audioModeStorageKey);
+  if (saved === audioModes.device) return audioModes.device;
+  if (saved === audioModes.ai) return audioModes.ai;
+  return audioModes.cinematic;
 }
 
 export function saveAudioMode(mode) {
-  localStorage.setItem(audioModeStorageKey, mode === audioModes.device ? audioModes.device : audioModes.ai);
+  localStorage.setItem(audioModeStorageKey, Object.values(audioModes).includes(mode) ? mode : audioModes.cinematic);
 }
 
 export function getAudioPositionKey(chapterId) {
