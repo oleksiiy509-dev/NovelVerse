@@ -20,6 +20,7 @@ function NovelCard({
 
   const [user, setUser] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -54,52 +55,48 @@ function NovelCard({
   }, [id]);
 
   async function toggleLibrary() {
+    if (saving) return;
     if (!user) {
       navigate("/login");
       return;
     }
 
-    if (saved) {
-      await supabase
-        .from("library")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("novel_id", id);
-        const { data } = await supabase
-  .from("novels")
-  .select("bookmarks")
-  .eq("id", id)
-  .single();
+    setSaving(true);
 
-await supabase
-  .from("novels")
-  .update({
-    bookmarks: Math.max((data.bookmarks || 1) - 1, 0),
-  })
-  .eq("id", id);
+    try {
+      const { data } = await supabase
+        .from("novels")
+        .select("bookmarks")
+        .eq("id", id)
+        .single();
 
-      setSaved(false);
-    } else {
-      await supabase
-        .from("library")
-        .insert({
-          user_id: user.id,
-          novel_id: id,
-        });
-        const { data } = await supabase
-  .from("novels")
-  .select("bookmarks")
-  .eq("id", id)
-  .single();
+      if (saved) {
+        await supabase
+          .from("library")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("novel_id", id);
 
-await supabase
-  .from("novels")
-  .update({
-    bookmarks: (data.bookmarks || 0) + 1,
-  })
-  .eq("id", id);
+        await supabase
+          .from("novels")
+          .update({ bookmarks: Math.max((data?.bookmarks || 1) - 1, 0) })
+          .eq("id", id);
 
-      setSaved(true);
+        setSaved(false);
+      } else {
+        await supabase
+          .from("library")
+          .insert({ user_id: user.id, novel_id: id });
+
+        await supabase
+          .from("novels")
+          .update({ bookmarks: (data?.bookmarks || 0) + 1 })
+          .eq("id", id);
+
+        setSaved(true);
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -147,6 +144,9 @@ await supabase
           <button
             className="fav-btn"
             onClick={toggleLibrary}
+            disabled={saving}
+            aria-label={saved ? "Видалити з бібліотеки" : "Додати до бібліотеки"}
+            aria-pressed={saved}
           >
             {saved ? "💖" : "🤍"}
           </button>

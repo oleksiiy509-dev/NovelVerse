@@ -1,0 +1,49 @@
+.not-found {
+  display: grid;
+  min-height: min(72vh, 720px);
+  place-items: center;
+}
+
+.not-found__card,
+.error-boundary {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, rgba(15, 27, 45, .94), rgba(22, 36, 58, .78));
+  box-shadow: var(--shadow-elevated);
+  max-width: 620px;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  text-align: center;
+}
+
+.not-found__card h1,
+.error-boundary h1 {
+  margin: .25rem 0 .75rem;
+}
+
+.not-found__card p,
+.error-boundary p {
+  color: var(--text-secondary);
+}
+
+.not-found__actions,
+.error-boundary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.not-found__actions a,
+.error-boundary__actions a {
+  align-items: center;
+  background: rgba(96, 165, 250, .12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  display: inline-flex;
+  font-weight: 800;
+  min-height: 44px;
+  padding: .75rem 1rem;
+  text-decoration: none;
+}
