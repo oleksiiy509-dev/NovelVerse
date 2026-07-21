@@ -1,0 +1,12 @@
+services:
+  voice-worker:
+    build: .
+    env_file: .env
+    ports:
+      - "8787:8787"
+    volumes:
+      - voice-worker-cache:/app/.cache/audio
+      # - /opt/piper:/opt/piper:ro
+    restart: unless-stopped
+volumes:
+  voice-worker-cache:
