@@ -4,7 +4,7 @@ import { exportVoicePreset, importVoicePreset, inferUniversalProfile, resolveCha
 
 test("Universal Voice Studio includes required provider-neutral profiles", () => {
   const ids = universalVoiceProfiles.map((profile) => profile.id);
-  assert.deepEqual(ids, ["narrator", "young_male", "mature_male", "elderly_male", "young_female", "mature_female", "elderly_female", "child", "monster", "robot", "custom"]);
+  assert.deepEqual(ids, ["narrator", "young_male", "mature_male", "elderly_male", "young_female", "mature_female", "elderly_female", "child", "villain", "monster", "spirit", "robot", "custom"]);
   for (const profile of universalVoiceProfiles) {
     assert.ok(profile.provider);
     assert.ok(profile.model);

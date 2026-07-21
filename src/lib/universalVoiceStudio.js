@@ -1,4 +1,5 @@
 export const voiceProviderAdapters = [
+  { id: "local-worker", label: "Local Voice Worker", models: ["piper", "generic-http", "kokoro-future", "custom-future"], voices: ["configured-local"], freeLocal: true },
   { id: "openai", label: "OpenAI TTS", models: ["gpt-4o-mini-tts", "tts-1-hd", "tts-1"], voices: ["alloy", "ash", "coral", "echo", "nova", "onyx", "shimmer"] },
   { id: "browser", label: "Browser SpeechSynthesis", models: ["device-default"], voices: ["system-default"] },
   { id: "elevenlabs", label: "ElevenLabs", models: ["multilingual-v2", "turbo-v2.5"], voices: ["provider-default"] },
@@ -17,7 +18,9 @@ export const universalVoiceProfiles = [
   ["mature_female", "Mature Female", "openai", "gpt-4o-mini-tts", "coral", 1.04, 0.96, 0.57, ["neutral", "calm"], "browser"],
   ["elderly_female", "Elderly Female", "openai", "gpt-4o-mini-tts", "shimmer", 0.98, 0.84, 0.36, ["calm", "sad"], "browser"],
   ["child", "Child", "openai", "gpt-4o-mini-tts", "shimmer", 1.32, 1.08, 0.72, ["happy", "afraid"], "browser"],
+  ["villain", "Villain", "openai", "gpt-4o-mini-tts", "onyx", 0.88, 0.94, 0.62, ["mysterious", "angry"], "browser"],
   ["monster", "Monster", "openai", "gpt-4o-mini-tts", "onyx", 0.62, 0.78, 0.82, ["angry", "mysterious"], "browser"],
+  ["spirit", "Spirit", "openai", "gpt-4o-mini-tts", "shimmer", 1.08, 0.96, 0.38, ["mysterious", "calm"], "browser"],
   ["robot", "Robot", "openai", "gpt-4o-mini-tts", "ash", 0.88, 0.9, 0.28, ["neutral"], "browser"],
   ["custom", "Custom", "browser", "device-default", "system-default", 1, 1, 0.5, ["neutral"], "openai"],
 ].map(([id, label, provider, model, voice, pitchModifier, speedModifier, energyModifier, emotionDefaults, fallbackProvider]) => ({ id, label, provider, model, voice, pitchModifier, speedModifier, energyModifier, emotionDefaults, fallbackProvider }));
@@ -30,6 +33,8 @@ export function inferUniversalProfile(character = {}) {
   const age = character.age_group || character.ageGroup;
   if (role === "narrator") return "narrator";
   if (role === "creature") return "monster";
+  if (role === "villain" || character.archetype === "villain") return "villain";
+  if (role === "spirit") return "spirit";
   if (role === "system") return "robot";
   if (age === "child") return "child";
   if (gender === "male" && age === "elderly") return "elderly_male";
