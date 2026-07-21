@@ -63,7 +63,7 @@
 .reader__player-header button { background: rgba(255,255,255,.08); min-height: 36px; min-width: 36px; padding: 0; border-radius: 999px; }
 .reader__progress-slider { accent-color: #d4af37; padding: 0; }
 .reader__player-time { color: var(--muted); display: flex; font-size: .78rem; font-weight: 850; justify-content: space-between; }
-.reader__media-controls { align-items: center; display: grid; grid-template-columns: repeat(3, 1fr) 68px repeat(3, 1fr); gap: 8px; }
+.reader__media-controls { align-items: center; display: grid; grid-template-columns: repeat(4, 1fr) 68px repeat(3, 1fr); gap: 8px; }
 .reader__media-controls button { background: rgba(255,255,255,.08); border: 1px solid rgba(148,163,184,.2); border-radius: 16px; min-height: 46px; padding: 0; }
 .reader__media-controls .reader__play-button { background: linear-gradient(135deg, #d4af37, #b8860b); border-color: rgba(248,231,173,.45); border-radius: 999px; color: #111827; font-size: 1.45rem; min-height: 62px; }
 .reader__speed-row label, .reader__player-settings label { color: var(--text-secondary); display: grid; gap: 6px; font-size: .82rem; font-weight: 850; }
@@ -72,7 +72,7 @@
 .reader__player-settings summary { color: #f8e7ad; cursor: pointer; font-weight: 900; margin-bottom: 8px; }
 .reader__player-settings[open] { display: grid; gap: 10px; }
 .reader__narration-warning { background: rgba(127,29,29,.28); border: 1px solid rgba(248,113,113,.3); border-radius: 16px; color: #fecaca; margin: 0; padding: 12px; }
-@media (max-width: 640px) { .reader__narration-player { bottom: calc(78px + var(--safe-bottom)); width: auto; } .reader__media-controls { grid-template-columns: repeat(3, 1fr) 64px repeat(3, 1fr); gap: 6px; } }
+@media (max-width: 640px) { .reader__narration-player { bottom: calc(78px + var(--safe-bottom)); width: auto; } .reader__media-controls { grid-template-columns: repeat(4, 1fr) 64px repeat(3, 1fr); gap: 6px; } }
 .reader__reading-progress { position: fixed; top: 0; left: 0; right: 0; z-index: 20; height: 4px; background: rgba(148,163,184,.14); }
 .reader__reading-progress span { display: block; height: 100%; border-radius: 0 999px 999px 0; background: linear-gradient(90deg, #60a5fa, #d4af37, #f8e7ad); box-shadow: 0 0 18px rgba(212,175,55,.45); transition: width .18s ease-out; }
 .reader__back--compact { border-radius: 999px; font-size: .82rem; height: 44px; min-height: 42px; margin-bottom: 6px; padding: 0 14px; white-space: nowrap; }
