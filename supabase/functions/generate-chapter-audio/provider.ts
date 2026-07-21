@@ -1,64 +1,26 @@
 export type AudioProviderId = string;
 export type AudioFormat = "mp3";
 
-export type AudioRenderSegmentRequest = {
-  segmentId: string;
-  text: string;
-  language: string;
-  speaker: string;
-  castSlot: string;
-  voiceProfile: string;
-  emotion: string;
-  intensity: number;
-  pace: number;
-  pauses: { beforeMs: number; afterMs: number };
-  emphasis: string[];
-  format: AudioFormat;
-};
-
-export type AudioProvider = {
-  id: AudioProviderId;
-  version: string;
-  contentType: string;
-  renderSegment(request: AudioRenderSegmentRequest): Promise<Uint8Array>;
-  estimateDurationSeconds?(request: AudioRenderSegmentRequest, audio: Uint8Array): number;
-};
-
+export type DirectorPerformance = { confidence?: number; breathiness?: number; roughness?: number; voiceAge?: string; sceneMood?: string; deliveryStyle?: string };
+export type AudioRenderSegmentRequest = { segmentId: string; text: string; language: string; speaker: string; castSlot: string; voiceProfile: string; emotion: string; intensity: number; pace: number; pauses: { beforeMs: number; afterMs: number }; emphasis: string[]; format: AudioFormat; performance?: DirectorPerformance };
+export type AudioProvider = { id: AudioProviderId; version: string; contentType: string; maxInputChars: number; renderSegment(request: AudioRenderSegmentRequest): Promise<Uint8Array>; estimateDurationSeconds?(request: AudioRenderSegmentRequest, audio: Uint8Array): number; };
 export type SpeechRequest = { text: string; language: string; voice: string; format: AudioFormat };
-export type SpeechResult = { ok: true; audio: Uint8Array; contentType: string; durationSeconds?: number } | { ok: false; code: "provider_not_configured" | "provider_error"; message: string };
+export type SpeechResult = { ok: true; audio: Uint8Array; contentType: string; durationSeconds?: number } | { ok: false; code: "provider_not_configured" | "provider_auth_missing" | "provider_timeout" | "provider_rate_limited" | "provider_bad_request" | "provider_error"; message: string };
 
-class UnconfiguredAudioProvider implements AudioProvider {
-  id = "unconfigured";
-  version = "provider-abstraction-v1";
-  contentType = "audio/mpeg";
-  async renderSegment() {
-    throw new Error("No server-side TTS provider is configured for NovelVerse Voice Engine Phase 4.");
-  }
-}
+const OPENAI_TTS_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"]);
+const DEFAULT_OPENAI_VOICE_MAP: Record<string, string> = { narrator: "alloy", narrator_neutral: "alloy", young_male: "echo", mature_male: "onyx", elderly_male: "onyx", young_female: "nova", mature_female: "shimmer", elderly_female: "sage", child: "fable", monster: "onyx", unknown: "alloy", unknown_neutral: "alloy" };
 
-const providers = new Map<string, AudioProvider>();
-providers.set("unconfigured", new UnconfiguredAudioProvider());
+function env(name: string, fallback = "") { return Deno.env.get(name) || fallback; }
+function parseVoiceMap(provider: string) { try { return { ...DEFAULT_OPENAI_VOICE_MAP, ...JSON.parse(env(`NOVELVERSE_TTS_${provider.toUpperCase()}_VOICE_MAP`, "{}")) }; } catch { console.warn(`NovelVerse TTS ${provider} voice map is invalid JSON; using defaults.`); return DEFAULT_OPENAI_VOICE_MAP; } }
+export function resolveOpenAiVoice(request: Pick<AudioRenderSegmentRequest, "castSlot" | "voiceProfile">, configuredDefault = env("NOVELVERSE_TTS_DEFAULT_VOICE", "alloy")) { const map = parseVoiceMap("openai"); const candidates = [request.castSlot, request.voiceProfile, String(request.voiceProfile || "").replace(/_neutral$/, ""), "unknown", configuredDefault].filter(Boolean); const selected = candidates.map((key) => map[key] || key).find((voice) => OPENAI_TTS_VOICES.has(voice)); if (!selected) throw new Error("No supported OpenAI TTS voice is configured."); const exact = Boolean(map[request.castSlot] || map[request.voiceProfile] || OPENAI_TTS_VOICES.has(request.castSlot) || OPENAI_TTS_VOICES.has(request.voiceProfile)); if (!exact) console.warn(`NovelVerse TTS voice fallback used for cast slot ${request.castSlot || "unknown"}.`); return { voice: selected, fallback: !exact }; }
+export function buildOpenAiInstructions(request: AudioRenderSegmentRequest) { const p = request.performance || {}; return [`Language: ${request.language || "auto"}.`, `Speaker identity: ${request.speaker || "Narrator"}; keep it consistent for cast slot ${request.castSlot || "unknown"}.`, `Emotion: ${request.emotion || "neutral"}; intensity ${Math.max(0, Math.min(1, Number(request.intensity) || 0)).toFixed(2)}.`, `Pace multiplier: ${Math.max(0.25, Math.min(4, Number(request.pace) || 1)).toFixed(2)}.`, p.confidence !== undefined ? `Confidence: ${p.confidence}.` : "", p.breathiness !== undefined ? `Breathiness: ${p.breathiness}.` : "", p.roughness !== undefined ? `Roughness: ${p.roughness}.` : "", p.voiceAge ? `Voice age: ${p.voiceAge}.` : "", p.sceneMood ? `Scene mood: ${p.sceneMood}.` : "", request.emphasis?.length ? `Emphasize without spelling out markup: ${request.emphasis.join(", ")}.` : ""].filter(Boolean).join(" "); }
 
-export function registerAudioProvider(provider: AudioProvider) {
-  if (!provider?.id || !provider?.version || typeof provider.renderSegment !== "function") throw new Error("Invalid audio provider adapter.");
-  providers.set(provider.id, provider);
-}
+class UnconfiguredAudioProvider implements AudioProvider { id = "unconfigured"; version = "mock-deterministic-v1"; contentType = "audio/mpeg"; maxInputChars = 4096; async renderSegment(request: AudioRenderSegmentRequest) { const seed = new TextEncoder().encode(`NovelVerse mock MP3 ${request.segmentId}:${request.text}`); return seed.byteLength ? seed : new Uint8Array([73, 68, 51]); } estimateDurationSeconds(request: AudioRenderSegmentRequest) { return Math.max(1, Math.round((request.text.split(/\s+/).filter(Boolean).length / 155) * 60)); } }
 
-export function getAudioProvider(providerId = Deno.env.get("NOVELVERSE_AUDIO_PROVIDER") || "unconfigured") {
-  return providers.get(providerId) || providers.get("unconfigured")!;
-}
+class OpenAiTtsProvider implements AudioProvider { id = "openai"; version = "openai-tts-v1"; contentType = "audio/mpeg"; maxInputChars = Number(env("NOVELVERSE_TTS_PROVIDER_MAX_INPUT_CHARS", "4096")); async renderSegment(request: AudioRenderSegmentRequest) { const apiKey = env("OPENAI_API_KEY"); if (!apiKey) throw Object.assign(new Error("OPENAI_API_KEY is required in Supabase Edge Function secrets."), { code: "provider_auth_missing" }); const model = env("NOVELVERSE_TTS_MODEL", "gpt-4o-mini-tts"); const { voice } = resolveOpenAiVoice(request); const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), Number(env("NOVELVERSE_TTS_TIMEOUT_MS", "45000"))); const payload = { model, voice, input: request.text, response_format: request.format || "mp3", speed: Math.max(0.25, Math.min(4, Number(request.pace) || 1)), instructions: buildOpenAiInstructions(request) }; try { const attempts = Math.max(1, Number(env("NOVELVERSE_TTS_RETRY_COUNT", "2")) + 1); let last: Error | null = null; for (let attempt = 1; attempt <= attempts; attempt += 1) { const res = await fetch("https://api.openai.com/v1/audio/speech", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal }); if (res.ok) return new Uint8Array(await res.arrayBuffer()); const body = await res.text().catch(() => ""); const code = res.status === 429 ? "provider_rate_limited" : res.status === 400 ? "provider_bad_request" : "provider_error"; last = Object.assign(new Error(`${code}: OpenAI TTS request failed with HTTP ${res.status}${body ? ` (${body.slice(0, 120)})` : ""}`), { code }); if (res.status < 500 && res.status !== 429) break; await new Promise((r) => setTimeout(r, 250 * attempt)); } throw last || new Error("provider_error: OpenAI TTS failed."); } catch (error) { if (error instanceof DOMException && error.name === "AbortError") throw Object.assign(new Error("provider_timeout: OpenAI TTS request timed out."), { code: "provider_timeout" }); throw error; } finally { clearTimeout(timeout); } } estimateDurationSeconds(request: AudioRenderSegmentRequest) { return Math.max(1, Math.round((request.text.split(/\s+/).filter(Boolean).length / (155 * (Number(request.pace) || 1))) * 60)); } }
 
-export async function renderAudioSegment(providerId: string, request: AudioRenderSegmentRequest): Promise<SpeechResult & { provider: string; providerVersion: string }> {
-  const provider = getAudioProvider(providerId);
-  try {
-    const audio = await provider.renderSegment(request);
-    return { ok: true, audio, contentType: provider.contentType, durationSeconds: provider.estimateDurationSeconds?.(request, audio), provider: provider.id, providerVersion: provider.version };
-  } catch (error) {
-    const configured = provider.id !== "unconfigured";
-    return { ok: false, code: configured ? "provider_error" : "provider_not_configured", message: error instanceof Error ? error.message : "Audio provider failed.", provider: provider.id, providerVersion: provider.version };
-  }
-}
-
-export async function generateSpeech(request: SpeechRequest): Promise<SpeechResult> {
-  return renderAudioSegment("unconfigured", { segmentId: "legacy", text: request.text, language: request.language, speaker: "Narrator", castSlot: request.voice, voiceProfile: request.voice, emotion: "neutral", intensity: 0.5, pace: 1, pauses: { beforeMs: 0, afterMs: 0 }, emphasis: [], format: request.format });
-}
+const providers = new Map<string, AudioProvider>(); providers.set("unconfigured", new UnconfiguredAudioProvider()); providers.set("mock", providers.get("unconfigured")!); providers.set("openai", new OpenAiTtsProvider());
+export function registerAudioProvider(provider: AudioProvider) { if (!provider?.id || !provider?.version || typeof provider.renderSegment !== "function") throw new Error("Invalid audio provider adapter."); providers.set(provider.id, provider); }
+export function getAudioProvider(providerId = env("NOVELVERSE_TTS_PROVIDER", env("NOVELVERSE_AUDIO_PROVIDER", "unconfigured"))) { return providers.get(providerId) || providers.get("unconfigured")!; }
+export async function renderAudioSegment(providerId: string, request: AudioRenderSegmentRequest): Promise<SpeechResult & { provider: string; providerVersion: string }> { const provider = getAudioProvider(providerId); try { const audio = await provider.renderSegment(request); return { ok: true, audio, contentType: provider.contentType, durationSeconds: provider.estimateDurationSeconds?.(request, audio), provider: provider.id, providerVersion: provider.version }; } catch (error) { const code = (error as any)?.code || (provider.id === "unconfigured" ? "provider_not_configured" : "provider_error"); return { ok: false, code, message: error instanceof Error ? error.message.replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]") : "Audio provider failed.", provider: provider.id, providerVersion: provider.version }; } }
+export async function generateSpeech(request: SpeechRequest): Promise<SpeechResult> { return renderAudioSegment(env("NOVELVERSE_TTS_PROVIDER", "unconfigured"), { segmentId: "legacy", text: request.text, language: request.language, speaker: "Narrator", castSlot: request.voice, voiceProfile: request.voice, emotion: "neutral", intensity: 0.5, pace: 1, pauses: { beforeMs: 0, afterMs: 0 }, emphasis: [], format: request.format }); }

@@ -20,10 +20,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const chapterId = String(body.chapter_id || body.chapterId || "");
     const language = String(body.language || "auto");
-    const provider = String(body.provider || Deno.env.get("NOVELVERSE_AUDIO_PROVIDER") || "unconfigured");
+    const provider = String(body.provider || Deno.env.get("NOVELVERSE_TTS_PROVIDER") || Deno.env.get("NOVELVERSE_AUDIO_PROVIDER") || "unconfigured");
     const priority = Number(body.priority || 5);
     const preview = body.preview || null;
     if (!chapterId) return json({ error: "chapter_id_required" }, 400);
+    if (!["openai", "mock", "unconfigured"].includes(provider)) return json({ error: "unsupported_provider" }, 400);
+    if (provider === "openai" && !Deno.env.get("OPENAI_API_KEY")) return json({ error: "OPENAI_API_KEY is required in Supabase Edge Function secrets." }, 500);
 
     const { data: chapter, error: chapterError } = await adminClient.from("chapters").select("id, novel_id, title, content").eq("id", chapterId).single();
     if (chapterError || !chapter) return json({ error: "chapter_not_found" }, 404);
@@ -37,19 +39,31 @@ Deno.serve(async (req) => {
     if (!segments?.length) return json({ error: "voice_segments_required" }, 409);
     if (!directorPlan) return json({ error: "director_plan_required" }, 409);
 
+    const maxChars = Number(Deno.env.get("NOVELVERSE_TTS_MAX_CHARS_PER_JOB") || 120000);
+    const maxSegments = Number(Deno.env.get("NOVELVERSE_TTS_MAX_SEGMENTS_PER_JOB") || 600);
+    const previewMaxChars = Number(Deno.env.get("NOVELVERSE_TTS_PREVIEW_MAX_CHARS") || 1000);
+    const dailyLimit = Number(Deno.env.get("NOVELVERSE_TTS_DAILY_USER_LIMIT") || 10);
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count: dailyCount } = await adminClient.from("audio_render_jobs").select("id", { count: "exact", head: true }).eq("created_by", userData.user.id).gte("created_at", since);
+    if (!preview && Number(dailyCount || 0) >= dailyLimit) return json({ error: "daily_tts_limit_reached", daily_limit: dailyLimit }, 429);
     const selectedSegments = preview?.type === "sentence" ? segments.slice(Number(preview.segmentIndex || 0), Number(preview.segmentIndex || 0) + 1) : preview?.type === "dialogue" ? segments.filter((s: any) => s.segment_type === "dialogue").slice(0, 1) : preview?.type === "scene" ? segments.slice(Number(preview.startSegmentIndex || 0), Number(preview.endSegmentIndex || preview.startSegmentIndex || 0) + 1) : segments;
+    const totalChars = selectedSegments.reduce((sum: number, s: any) => sum + String(s.text || "").length, 0);
+    if (preview && totalChars > previewMaxChars) return json({ error: "preview_too_large", max_chars: previewMaxChars }, 413);
+    if (!preview && (totalChars > maxChars || selectedSegments.length > maxSegments)) return json({ error: "tts_job_too_large", max_chars: maxChars, max_segments: maxSegments, actual_chars: totalChars, actual_segments: selectedSegments.length }, 413);
+    const { data: duplicate } = await adminClient.from("audio_render_jobs").select("id,status").eq("chapter_id", chapterId).eq("provider", provider).in("status", ["pending", "rendering"]).maybeSingle();
+    if (!preview && duplicate) return json({ status: duplicate.status, job_id: duplicate.id, cache_hit: false, duplicate: true });
     const cacheKey = await sha256(JSON.stringify({ chapter: chapter.id, language, provider, director: directorPlan.director_version, cast: cast?.map((c: any) => [c.character_id, c.cast_slot, c.voice_profile, c.updated_at]), segments: selectedSegments.map((s: any) => [s.segment_index, s.text]), preview }));
     const { data: existing } = !preview ? await adminClient.from("chapter_audio").select("id, status, storage_path, duration_seconds, file_size, waveform").eq("chapter_id", chapterId).eq("language", language).eq("voice_id", provider).eq("content_hash", cacheKey).eq("status", "ready").maybeSingle() : { data: null };
-    if (existing) return json({ status: "ready", audio: existing, reused: true });
+    if (existing) return json({ status: "ready", audio: existing, cache_hit: true, reused: true });
 
     const { data: job, error: jobError } = await adminClient.from("audio_render_jobs").insert({ chapter_id: chapterId, novel_id: chapter.novel_id, language, provider, priority, retry_count: 0, status: "pending", director_plan_id: directorPlan.id, cast_snapshot: cast || [], preview_scope: preview, cache_key: cacheKey, created_by: userData.user.id }).select("*").single();
     if (jobError) return json({ error: "queue_failed" }, 500);
-    if (body.enqueueOnly) return json({ status: "pending", job });
+    if (body.enqueueOnly) return json({ status: "pending", job_id: job.id, job, cache_hit: false });
 
     await adminClient.from("audio_render_jobs").update({ status: "rendering", updated_at: new Date().toISOString() }).eq("id", job.id);
     try {
       const result = await renderChapterJob(adminClient, job, { chapter, segments: selectedSegments, cast: cast || [], directorPlan });
-      return json({ status: preview ? "preview_ready" : "ready", job_id: job.id, ...result });
+      return json({ status: preview ? "preview_ready" : "ready", job_id: job.id, cache_hit: false, ...result });
     } catch (error) {
       await adminClient.from("audio_render_jobs").update({ status: "failed", retry_count: Number(job.retry_count || 0) + 1, error_message: error instanceof Error ? error.message : "Rendering failed.", updated_at: new Date().toISOString() }).eq("id", job.id);
       return json({ status: "failed", message: error instanceof Error ? error.message : "Rendering failed." }, provider === "unconfigured" ? 501 : 502);

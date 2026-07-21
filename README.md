@@ -14,3 +14,7 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## Voice Engine Phase 6: real TTS
+
+NovelVerse can render chapter audio through a server-side OpenAI TTS adapter. Configure only Supabase Edge Function secrets (`OPENAI_API_KEY`, `NOVELVERSE_TTS_PROVIDER=openai`, `NOVELVERSE_TTS_MODEL`, `NOVELVERSE_TTS_DEFAULT_VOICE`) and deploy `generate-chapter-audio`. The frontend receives only job metadata and signed playback URLs; when rendered AI audio is missing, Reader falls back to Device Voice.

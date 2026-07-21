@@ -101,3 +101,7 @@ When a user downloads a chapter, Reader stores chapter text, voice cast, Directo
 ## Evolution-aware cache identity
 
 Segment cache identity includes cast hash data for `character_state_version` and `voice_evolution_version`, invalidating only segments affected by character evolution changes.
+
+## Phase 6 real-provider update
+
+Phase 6 registers the first real provider adapter, `openai`, while keeping the deterministic mock/unconfigured provider. Server rendering validates provider limits, prevents duplicate active jobs, retries failed segment chunks, records progress and never exposes provider secrets to React. Production MP3 merging is explicit: use an ffmpeg-compatible worker or a deliberately configured compatible strategy; NovelVerse will not mark invalid byte concatenation as a completed chapter MP3 by default.
