@@ -200,7 +200,7 @@ function Reader() {
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapterContent), [chapterContent]);
   const plainSentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex, voiceProfile: "narrator_neutral" }))), [paragraphs]);
   const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: segment.emotion }))), [voiceSegments]);
-  const sentences = structuredPreview && structuredSentences.length ? structuredSentences : plainSentences;
+  const sentences = useMemo(() => (structuredPreview && structuredSentences.length ? structuredSentences : plainSentences), [plainSentences, structuredPreview, structuredSentences]);
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const estimatedTotalSeconds = useMemo(() => Math.max(1, Math.round(sentences.map((sentence) => sentence.text).join(" ").split(/\s+/).filter(Boolean).length / (165 * narrationSettings.rate) * 60)), [sentences, narrationSettings.rate]);
   const elapsedSeconds = useMemo(() => Math.round((currentSentenceIndex / Math.max(1, sentences.length)) * estimatedTotalSeconds), [currentSentenceIndex, estimatedTotalSeconds, sentences.length]);
@@ -283,10 +283,17 @@ function Reader() {
     setAudioCacheState(localStorage.getItem(getChapterAudioCacheKey(activeChapter.id)) ? "cached" : "idle");
     setAiAudio(null);
     setAiAudioUrl("");
+    setVoiceSegments([]);
     setAiAudioDownloaded(localStorage.getItem(getAudioDownloadKey(activeChapter.id)) === "true");
     setAiAudioTime(Number(localStorage.getItem(getAudioPositionKey(activeChapter.id))) || 0);
     setChapter(activeChapter);
-    await Promise.all([loadAdjacentChapters(activeChapter), loadChapterMetadata(activeChapter)]);
+    const [loadedVoiceSegments] = await Promise.all([
+      data ? fetchChapterVoiceSegments(activeChapter.id) : Promise.resolve([]),
+      loadAdjacentChapters(activeChapter),
+      loadChapterMetadata(activeChapter),
+    ]);
+    setVoiceSegments(loadedVoiceSegments);
+    setStructuredPreview((enabled) => enabled && loadedVoiceSegments.length > 0);
     setOfflineReady(!!cached);
     setDownloadState(cached ? "downloaded" : "idle");
     const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
@@ -561,7 +568,7 @@ function Reader() {
     setTtsPaused(false);
     setAudioAnnouncement(`Озвучення: ${sentenceProgress}% глави.`);
     window.speechSynthesis.speak(utterance);
-  }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, selectedVoice, sentenceProgress, sentences, handleChapterFinished]);
+  }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, selectedVoice, sentenceProgress, sentences, structuredPreview, handleChapterFinished]);
 
   const pauseNarration = useCallback(() => {
     if (!narrationSupported) return;
