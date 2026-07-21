@@ -220,7 +220,7 @@ function Reader() {
     return chapterRanges.find((range) => chapterNumber >= range.start && chapterNumber <= range.end)?.key || "";
   }, [chapterNumber, chapterRanges]);
   const aiAudioReady = aiAudio?.status === "ready" && Boolean(aiAudioUrl);
-  const effectiveNarrationMode = narrationMode === audioModes.ai && aiAudioReady ? audioModes.ai : audioModes.device;
+  const effectiveNarrationMode = [audioModes.cinematic, audioModes.ai].includes(narrationMode) && aiAudioReady ? audioModes.ai : audioModes.device;
   const aiAudioStatus = aiAudioLoading ? "loading" : aiAudio?.status || "unavailable";
   const aiWaveform = Array.isArray(aiAudio?.waveform) ? aiAudio.waveform : [];
   const selectedRangeExists = chapterRanges.some((range) => range.key === selectedRangeKey);
@@ -374,7 +374,7 @@ function Reader() {
       setAiAudio(result.audio);
       setAiAudioUrl(result.playbackUrl);
       setAiAudioLoading(false);
-      if (!result.playbackUrl && narrationMode === audioModes.ai) setAudioAnnouncement("AI Audio unavailable. Device Voice fallback is ready.");
+      if (!result.playbackUrl && [audioModes.cinematic, audioModes.ai].includes(narrationMode)) setAudioAnnouncement("Cinematic/Classic Audio unavailable. Device Voice fallback is ready.");
     }
     loadAudioMetadata();
     return () => { cancelled = true; };
@@ -810,13 +810,13 @@ function Reader() {
       </section>
       <section id="reader-narration-panel" className={`reader__narration-player ${narrationOpen ? "reader__narration-player--open" : ""} ${playerExpanded ? "reader__narration-player--expanded" : "reader__narration-player--mini"}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
         <button className="reader__player-grip" onClick={() => setPlayerExpanded((expanded) => !expanded)} aria-label={playerExpanded ? "Згорнути аудіоплеєр" : "Розгорнути аудіоплеєр"} />
-        <div className="reader__player-header"><button className="reader__player-collapse" onClick={() => setPlayerExpanded((expanded) => !expanded)}>{playerExpanded ? "⌄" : "⌃"}</button><div><p>{chapter.novel?.title || chapter.novel_title || "NovelVerse"}</p><strong>Глава {chapter.number}: {chapter.title}</strong><div className="reader__mode-tabs"><button className={narrationMode === audioModes.ai ? "reader__mode-tab reader__mode-tab--active" : "reader__mode-tab"} onClick={() => setNarrationMode(audioModes.ai)}>AI Audio</button><button className={narrationMode === audioModes.device ? "reader__mode-tab reader__mode-tab--active" : "reader__mode-tab"} onClick={() => setNarrationMode(audioModes.device)}>Device Voice</button></div></div><button onClick={() => { stopNarration(); setNarrationOpen(false); }} aria-label="Закрити озвучення">✕</button></div>
+        <div className="reader__player-header"><button className="reader__player-collapse" onClick={() => setPlayerExpanded((expanded) => !expanded)}>{playerExpanded ? "⌄" : "⌃"}</button><div><p>{chapter.novel?.title || chapter.novel_title || "NovelVerse"}</p><strong>Глава {chapter.number}: {chapter.title}</strong><div className="reader__mode-tabs"><button className={narrationMode === audioModes.cinematic ? "reader__mode-tab reader__mode-tab--active" : "reader__mode-tab"} onClick={() => setNarrationMode(audioModes.cinematic)}>Cinematic Audio</button><button className={narrationMode === audioModes.ai ? "reader__mode-tab reader__mode-tab--active" : "reader__mode-tab"} onClick={() => setNarrationMode(audioModes.ai)}>Classic Audio</button><button className={narrationMode === audioModes.device ? "reader__mode-tab reader__mode-tab--active" : "reader__mode-tab"} onClick={() => setNarrationMode(audioModes.device)}>Device Voice</button></div></div><button onClick={() => { stopNarration(); setNarrationOpen(false); }} aria-label="Закрити озвучення">✕</button></div>
         {effectiveNarrationMode === audioModes.ai && aiAudioReady ? (
           <>
             <audio ref={aiAudioRef} src={aiAudioUrl} preload="metadata" />
             <div className="reader__waveform" aria-label="AI Audio waveform">{aiWaveform.length ? aiWaveform.map((value, index) => <button key={`${index}-${value}`} type="button" style={{ height: `${Math.max(10, Math.round(Number(value) * 42))}px` }} onClick={() => seekAiAudio(((aiAudioDuration || aiAudio?.duration_seconds || 0) * index) / Math.max(1, aiWaveform.length - 1))} aria-label={`Seek to waveform point ${index + 1}`} />) : <span>No waveform available</span>}</div>
             <input className="reader__progress-slider" type="range" min="0" max={Math.max(aiAudioDuration || aiAudio?.duration_seconds || 0, 0)} step="0.1" value={Math.min(aiAudioTime, aiAudioDuration || aiAudio?.duration_seconds || 0)} onChange={(e) => seekAiAudio(e.target.value)} aria-label="AI Audio progress" />
-            <div className="reader__player-time"><span>{formatClock(aiAudioTime)}</span><span>AI Audio · {aiAudioPlaying ? "Playing" : "Ready"} {aiAudioDownloaded ? "· Downloaded" : ""}</span><span>{formatClock(aiAudioDuration || aiAudio?.duration_seconds)}</span></div>
+            <div className="reader__player-time"><span>{formatClock(aiAudioTime)}</span><span>{narrationMode === audioModes.cinematic ? "Cinematic Audio" : "Classic Audio"} · {aiAudioPlaying ? "Playing" : "Ready"} {aiAudioDownloaded ? "· Downloaded" : ""}</span><span>{formatClock(aiAudioDuration || aiAudio?.duration_seconds)}</span></div>
             <div className="reader__player-meta"><span>Status: ready</span><span>Voice: {aiAudio.voice_id}</span><span>Language: {aiAudio.language}</span><span>Provider: {aiAudio.provider}</span><span>Render: {aiAudio.render_version || "legacy"}</span><span>{aiAudio.sample_rate ? `${aiAudio.sample_rate} Hz` : "Sample rate —"}</span><span>{aiAudio.bitrate ? `${Math.round(aiAudio.bitrate / 1000)} kbps` : "Bitrate —"}</span><span>Size: {formatFileSize(aiAudio.file_size)}</span></div>
             <div className="reader__media-controls">
               <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous} aria-label="Попередня глава">⏪</button>
@@ -825,13 +825,13 @@ function Reader() {
               <button onClick={stopAiAudio} disabled={!aiAudioPlaying} aria-label="Зупинити">⏹</button>
             </div>
             <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateAiAudioRate(e.target.value)}>{supportedRates.map((rate) => <option value={rate} key={rate}>{rate}x</option>)}</select></label></div>
-            <details className="reader__player-settings" open={playerExpanded}><summary>AI Audio options</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><button type="button" onClick={aiAudioDownloaded ? removeAiAudioDownload : downloadAiAudio}>{aiAudioDownloaded ? "Remove downloaded AI audio" : `Download AI audio (${formatFileSize(aiAudio.file_size)})`}</button><p className="reader__narration-status">AI Audio uses stored MP3 files. Device Voice remains the fallback when the file is unavailable or offline.</p></details>
+            <details className="reader__player-settings" open={playerExpanded}><summary>AI Audio options</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><button type="button" onClick={aiAudioDownloaded ? removeAiAudioDownload : downloadAiAudio}>{aiAudioDownloaded ? "Remove downloaded AI audio" : `Download AI audio (${formatFileSize(aiAudio.file_size)})`}</button><p className="reader__narration-status">Cinematic Audio uses layered scene mixes when available. Classic Audio uses stored narration MP3 files. Device Voice remains the fallback when files are unavailable or offline.</p></details>
           </>
         ) : !narrationSupported ? (
           <p className="reader__narration-warning">Озвучення недоступне у цьому браузері. AI Audio: {aiAudioStatus}. Device Voice requires SpeechSynthesis.</p>
         ) : (
           <>
-            <p className="reader__narration-status">AI Audio: {offlineMode ? "offline unavailable" : aiAudioStatus === "ready" ? "ready" : aiAudioStatus}. {narrationMode === audioModes.ai ? "Using Device Voice fallback." : "Device Voice selected."}</p>
+            <p className="reader__narration-status">Cinematic/Classic Audio: {offlineMode ? "offline unavailable" : aiAudioStatus === "ready" ? "ready" : aiAudioStatus}. {narrationMode !== audioModes.device ? "Using Device Voice fallback." : "Device Voice selected."}</p>
             <input className="reader__progress-slider" type="range" min="0" max={Math.max(sentences.length - 1, 0)} value={currentSentenceIndex} onChange={(e) => scrubNarration(e.target.value)} disabled={!sentences.length} aria-label="Прогрес озвучення" />
             <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{sentenceProgress}% · {ttsActive && !ttsPaused ? "Playing" : ttsPaused ? "Paused" : "Ready"}</span><span>{formatClock(estimatedTotalSeconds)}</span></div><div className="reader__player-meta"><span>Voice: {selectedVoice ? `${selectedVoice.name} (${selectedVoice.lang})` : "Best available voice"}</span><span>Speed: {narrationSettings.rate}x</span></div>
             <div className="reader__media-controls">

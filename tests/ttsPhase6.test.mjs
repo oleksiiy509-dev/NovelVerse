@@ -75,7 +75,7 @@ test("frontend admin test panel has no API key field and keeps device fallback",
   assert.match(admin, /Generate test preview/);
   assert.match(admin, /audio controls/);
   assert.doesNotMatch(admin, /OPENAI_API_KEY|api key/i);
-  assert.match(audio, /audioModes = \{ ai: "ai", device: "device" \}/);
+  assert.match(audio, /audioModes = \{ cinematic: "cinematic", ai: "ai", device: "device" \}/);
   assert.doesNotMatch(audio, /getPublicUrl\(data\.storage_path\)/);
 });
 
