@@ -123,3 +123,7 @@ body.telegram-webapp .reader__narration-player {
 .reader__chapter-choice--current { background: rgba(212,175,55,.2); border-color: rgba(248,231,173,.42); }
 .reader__chapter-choice--unavailable { opacity: .52; }
 @media (max-width: 640px) { .reader__chapter-choice { grid-template-columns: 1fr auto; } .reader__chapter-choice span { grid-column: 1 / -1; } .reader__chapter-list { max-height: 190px; } }
+.reader__mode-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.reader__mode-tab { min-height: 32px; padding: 0 10px; border-radius: 999px; background: rgba(255,255,255,.08); color: #f8fafc; border: 1px solid rgba(148,163,184,.24); font-size: .74rem; font-weight: 900; }
+.reader__mode-tab--active { background: rgba(212,175,55,.24); border-color: rgba(248,231,173,.5); color: #f8e7ad; }
+@media (max-width: 640px) { .reader__mode-tabs { max-width: 74vw; } }
