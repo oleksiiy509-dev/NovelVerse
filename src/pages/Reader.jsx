@@ -5,7 +5,8 @@ import { audioModes, defaultAudioLanguage, defaultAudioVoice, formatFileSize, ge
 import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
 import { deleteDownloadedChapter, getDownloadedChapter, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
-import { fetchChapterVoiceSegments, fetchNovelVoiceCast } from "../lib/voiceEngine/client";
+import { fetchChapterVoiceSegments, fetchNovelVoiceCast, fetchReadyDirectorPlan } from "../lib/voiceEngine/client";
+import { hashDirectorContent } from "../lib/voiceDirector/director";
 import { getPreviewSettings } from "../lib/voiceEngine/voiceProfiles";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
@@ -164,6 +165,8 @@ function Reader() {
   const manuallyStoppingRef = useRef(false);
   const [audioReady, setAudioReady] = useState(false);
   const [structuredPreview, setStructuredPreview] = useState(false);
+  const [directorPreview, setDirectorPreview] = useState(false);
+  const [directorPlan, setDirectorPlan] = useState(null);
   const [voiceSegments, setVoiceSegments] = useState([]);
   const [voiceCast, setVoiceCast] = useState([]);
   const castVoiceMapRef = useRef(new Map());
@@ -203,7 +206,8 @@ function Reader() {
   const plainSentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex, voiceProfile: "narrator_neutral" }))), [paragraphs]);
   const castByCharacter = useMemo(() => new Map(voiceCast.map((entry) => [String(entry.character_id), entry])), [voiceCast]);
   const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => { const castEntry = castByCharacter.get(String(segment.speaker_id)); return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: castEntry?.voice_profile || segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: segment.emotion, castSlot: castEntry?.cast_slot || (segment.segment_type === "narration" ? "narrator_main" : "unknown_01"), pitchOffset: Number(castEntry?.pitch_offset || 0), rateOffset: Number(castEntry?.rate_offset || 0) })); }), [voiceSegments, castByCharacter]);
-  const sentences = useMemo(() => (structuredPreview && structuredSentences.length ? structuredSentences : plainSentences), [plainSentences, structuredPreview, structuredSentences]);
+  const directorSentences = useMemo(() => (directorPlan?.director_segment_settings || directorPlan?.segmentSettings || []).sort((a,b)=>Number(a.segment_index ?? a.segmentIndex)-Number(b.segment_index ?? b.segmentIndex)).flatMap((setting) => { const segment = voiceSegments.find((row) => Number(row.segment_index) === Number(setting.segment_index ?? setting.segmentIndex)); if (!segment) return []; return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: Number(setting.segment_index ?? setting.segmentIndex), voiceProfile: setting.voice_profile || setting.voiceProfile || segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: setting.emotion, castSlot: setting.cast_slot || setting.castSlot || "unknown_01", pitchOffset: Number(setting.pitch ?? 0), rateOffset: Number(setting.rate ?? 1) - 1, pauseAfterMs: Number(setting.pause_after_ms ?? setting.pauseAfterMs ?? 0), sceneTitle: (directorPlan?.director_scenes || directorPlan?.scenes || []).find((scene) => Number(setting.segment_index ?? setting.segmentIndex) >= Number(scene.start_segment_index ?? scene.startSegmentIndex) && Number(setting.segment_index ?? setting.segmentIndex) <= Number(scene.end_segment_index ?? scene.endSegmentIndex))?.title })); }), [directorPlan, voiceSegments]);
+  const sentences = useMemo(() => (directorPreview && directorSentences.length ? directorSentences : structuredPreview && structuredSentences.length ? structuredSentences : plainSentences), [directorPreview, directorSentences, plainSentences, structuredPreview, structuredSentences]);
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const estimatedTotalSeconds = useMemo(() => Math.max(1, Math.round(sentences.map((sentence) => sentence.text).join(" ").split(/\s+/).filter(Boolean).length / (165 * narrationSettings.rate) * 60)), [sentences, narrationSettings.rate]);
   const elapsedSeconds = useMemo(() => Math.round((currentSentenceIndex / Math.max(1, sentences.length)) * estimatedTotalSeconds), [currentSentenceIndex, estimatedTotalSeconds, sentences.length]);
@@ -287,19 +291,23 @@ function Reader() {
     setAiAudio(null);
     setAiAudioUrl("");
     setVoiceSegments([]);
+    setDirectorPlan(activeChapter.director_plan || null);
     setVoiceCast(activeChapter.voice_cast || []);
     setAiAudioDownloaded(localStorage.getItem(getAudioDownloadKey(activeChapter.id)) === "true");
     setAiAudioTime(Number(localStorage.getItem(getAudioPositionKey(activeChapter.id))) || 0);
     setChapter(activeChapter);
     const [loadedVoiceSegments, loadedCast] = await Promise.all([
-      data ? fetchChapterVoiceSegments(activeChapter.id) : Promise.resolve([]),
+      data ? fetchChapterVoiceSegments(activeChapter.id) : Promise.resolve(activeChapter.voice_segments || []),
       data ? fetchNovelVoiceCast(activeChapter.novel_id) : Promise.resolve(activeChapter.voice_cast || []),
       loadAdjacentChapters(activeChapter),
       loadChapterMetadata(activeChapter),
     ]);
     setVoiceSegments(loadedVoiceSegments);
     setVoiceCast(loadedCast || []);
+    const loadedDirectorPlan = data && loadedVoiceSegments.length ? await fetchReadyDirectorPlan(activeChapter.id, hashDirectorContent(loadedVoiceSegments)).catch(() => null) : activeChapter.director_plan || null;
+    setDirectorPlan(loadedDirectorPlan);
     setStructuredPreview((enabled) => enabled && loadedVoiceSegments.length > 0);
+    setDirectorPreview((enabled) => enabled && Boolean(loadedDirectorPlan));
     setOfflineReady(!!cached);
     setDownloadState(cached ? "downloaded" : "idle");
     const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
@@ -496,7 +504,7 @@ function Reader() {
     }
     setDownloadState("loading");
     try {
-      await saveDownloadedChapter({ ...chapter, voice_cast: voiceCast.map((entry) => ({ character_id: entry.character_id, cast_slot: entry.cast_slot, voice_profile: entry.voice_profile, pitch_offset: entry.pitch_offset, rate_offset: entry.rate_offset, energy: entry.energy, roughness: entry.roughness, brightness: entry.brightness, stability: entry.stability, style_strength: entry.style_strength })) }, chapter.novel || { id: chapter.novel_id });
+      await saveDownloadedChapter({ ...chapter, voice_cast: voiceCast.map((entry) => ({ character_id: entry.character_id, cast_slot: entry.cast_slot, voice_profile: entry.voice_profile, pitch_offset: entry.pitch_offset, rate_offset: entry.rate_offset, energy: entry.energy, roughness: entry.roughness, brightness: entry.brightness, stability: entry.stability, style_strength: entry.style_strength })), voice_segments: voiceSegments, director_plan: directorPlan }, chapter.novel || { id: chapter.novel_id });
       setOfflineReady(true);
       setDownloadState("downloaded");
       await loadChapterMetadata(chapter);
@@ -558,13 +566,14 @@ function Reader() {
       stableVoice = castVoiceMapRef.current.get(key) || selectedVoice;
     }
     utterance.voice = stableVoice;
-    const profileSettings = structuredPreview ? getPreviewSettings(sentences[safeIndex].voiceProfile) : { pitch: nextSettings.pitch, rate: nextSettings.rate };
+    const profileSettings = (structuredPreview || directorPreview) ? getPreviewSettings(sentences[safeIndex].voiceProfile) : { pitch: nextSettings.pitch, rate: nextSettings.rate };
     utterance.rate = Math.min(3, Math.max(0.5, (profileSettings.rate + Number(sentences[safeIndex].rateOffset || 0)) * nextSettings.rate));
     utterance.pitch = Math.min(2, Math.max(0, profileSettings.pitch + Number(sentences[safeIndex].pitchOffset || 0)));
-    utterance.volume = nextSettings.volume;
+    utterance.volume = Math.min(1, Math.max(0, Number(sentences[safeIndex].volume || nextSettings.volume)));
     utterance.onend = () => {
       if (manuallyStoppingRef.current || speechTokenRef.current !== token) return;
-      if (safeIndex < sentences.length - 1) speakSentenceCallback(safeIndex + 1, nextSettings);
+      if (safeIndex < sentences.length - 1 && sentences[safeIndex].pauseAfterMs) window.setTimeout(() => speakSentenceCallback(safeIndex + 1, nextSettings), Math.min(1800, sentences[safeIndex].pauseAfterMs));
+      else if (safeIndex < sentences.length - 1) speakSentenceCallback(safeIndex + 1, nextSettings);
       else {
         setTtsActive(false);
         setTtsPaused(false);
@@ -583,7 +592,7 @@ function Reader() {
     setTtsPaused(false);
     setAudioAnnouncement(`Озвучення: ${sentenceProgress}% глави.`);
     window.speechSynthesis.speak(utterance);
-  }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, rankedVoices, selectedVoice, sentenceProgress, sentences, structuredPreview, handleChapterFinished]);
+  }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, rankedVoices, selectedVoice, sentenceProgress, sentences, structuredPreview, directorPreview, handleChapterFinished]);
 
   const pauseNarration = useCallback(() => {
     if (!narrationSupported) return;
@@ -825,7 +834,7 @@ function Reader() {
               <button onClick={restartNarration} disabled={!sentences.length} aria-label="Почати главу спочатку">↻</button>
             </div>
             <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateNarrationSetting("rate", Number(e.target.value))}><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="2.5">2.5x</option><option value="3">3x</option></select></label></div>
-            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={structuredPreview} onChange={(e) => setStructuredPreview(e.target.checked)} disabled={!voiceSegments.length} /> Structured Voice Engine preview ({voiceSegments.length || "no"} segments)</label><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser. Structured preview only approximates profile pitch and rate, not custom timbre.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
+            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={structuredPreview} onChange={(e) => setStructuredPreview(e.target.checked)} disabled={!voiceSegments.length} /> Structured Voice Engine preview ({voiceSegments.length || "no"} segments)</label><label><input type="checkbox" checked={directorPreview} onChange={(e) => setDirectorPreview(e.target.checked)} disabled={!directorPlan} /> Director Preview timing plan {directorPlan ? "ready" : "missing"}</label><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser. Structured preview only approximates profile pitch and rate, not custom timbre.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
             <div className="reader__chapter-selector" aria-label="Chapter selector">
               <div className="reader__range-tabs">
                 {chapterRanges.map((range) => (

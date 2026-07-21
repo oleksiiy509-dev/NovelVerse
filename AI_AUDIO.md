@@ -59,3 +59,7 @@ Never commit real TTS keys. Never expose provider secrets via `VITE_`. React use
 ## Voice cast provider preparation
 
 AI Audio remains provider-neutral. Phase 2 stores abstract cast slots and future provider mapping fields (`provider_voice_id`, provider mapping JSON and `cloned_voice_id`) without calling paid TTS services. Real multi-voice generation should resolve each cast entry through `resolveProviderVoice`, validate consent and rights for any cloned voice, and fail safely when provider voice configuration is missing.
+
+## Voice Director planning metadata
+
+Phase 3 stores scene-aware performance plans for future AI audio rendering. The data model includes ready/draft/outdated director plans, scenes, and per-segment settings. This phase deliberately avoids provider credentials, provider calls, MP3 generation, voice cloning, copyrighted music assets, and real sound files. Device Voice preview is only a timing and role approximation.
