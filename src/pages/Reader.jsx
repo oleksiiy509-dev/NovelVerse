@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { audioModes, defaultAudioLanguage, defaultAudioVoice, formatFileSize, getAudioDownloadKey, getAudioPositionKey, getChapterAudioMetadata, getSavedAudioMode, saveAudioMode } from "../lib/chapterAudio";
 import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
 import { deleteDownloadedChapter, getDownloadedChapter, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../lib/telegram";
@@ -137,6 +138,14 @@ function Reader() {
   const [sleepTimerMode, setSleepTimerMode] = useState("off");
   const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0);
   const [audioAnnouncement, setAudioAnnouncement] = useState("");
+  const [narrationMode, setNarrationMode] = useState(getSavedAudioMode);
+  const [aiAudio, setAiAudio] = useState(null);
+  const [aiAudioUrl, setAiAudioUrl] = useState("");
+  const [aiAudioLoading, setAiAudioLoading] = useState(false);
+  const [aiAudioDownloaded, setAiAudioDownloaded] = useState(false);
+  const [aiAudioPlaying, setAiAudioPlaying] = useState(false);
+  const [aiAudioTime, setAiAudioTime] = useState(0);
+  const [aiAudioDuration, setAiAudioDuration] = useState(0);
   const [navigatingChapter, setNavigatingChapter] = useState(false);
   const [adjacentChapters, setAdjacentChapters] = useState({ previous: null, next: null });
   const [chapterList, setChapterList] = useState([]);
@@ -154,6 +163,7 @@ function Reader() {
   const [audioReady, setAudioReady] = useState(false);
   const [playerExpanded, setPlayerExpanded] = useState(false);
   const pendingAutoplayRef = useRef(false);
+  const aiAudioRef = useRef(null);
 
   const toggleBookmark = useCallback(async () => {
     if (!chapter) return;
@@ -196,6 +206,9 @@ function Reader() {
   const currentRangeKey = useMemo(() => {
     return chapterRanges.find((range) => chapterNumber >= range.start && chapterNumber <= range.end)?.key || "";
   }, [chapterNumber, chapterRanges]);
+  const aiAudioReady = aiAudio?.status === "ready" && Boolean(aiAudioUrl);
+  const effectiveNarrationMode = narrationMode === audioModes.ai && aiAudioReady ? audioModes.ai : audioModes.device;
+  const aiAudioStatus = aiAudioLoading ? "loading" : aiAudio?.status || "unavailable";
   const selectedRangeExists = chapterRanges.some((range) => range.key === selectedRangeKey);
   const openRangeKey = selectedRangeExists ? selectedRangeKey : currentRangeKey;
 
@@ -262,6 +275,10 @@ function Reader() {
     const savedAudio = (await readCloudBackedList(audioKey, telegramCloudGetItem)).find((item) => item.chapter_id === activeChapter.id);
     setCurrentSentenceIndex(Math.min(Math.max(Number(savedAudio?.audio_sentence_index ?? savedAudio?.audio_paragraph_index ?? getSavedNarrationPosition(activeChapter.id)) || 0, 0), Math.max(splitChapterIntoParagraphs(activeChapter.content).flatMap(splitParagraphIntoSentences).length - 1, 0)));
     setAudioCacheState(localStorage.getItem(getChapterAudioCacheKey(activeChapter.id)) ? "cached" : "idle");
+    setAiAudio(null);
+    setAiAudioUrl("");
+    setAiAudioDownloaded(localStorage.getItem(getAudioDownloadKey(activeChapter.id)) === "true");
+    setAiAudioTime(Number(localStorage.getItem(getAudioPositionKey(activeChapter.id))) || 0);
     setChapter(activeChapter);
     await Promise.all([loadAdjacentChapters(activeChapter), loadChapterMetadata(activeChapter)]);
     setOfflineReady(!!cached);
@@ -306,6 +323,26 @@ function Reader() {
   useEffect(() => {
     localStorage.setItem(narrationSettingsKey, JSON.stringify(narrationSettings));
   }, [narrationSettings]);
+
+  useEffect(() => {
+    saveAudioMode(narrationMode);
+  }, [narrationMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAudioMetadata() {
+      if (!chapter || offlineMode) return;
+      setAiAudioLoading(true);
+      const result = await getChapterAudioMetadata(chapter.id, defaultAudioLanguage, defaultAudioVoice);
+      if (cancelled) return;
+      setAiAudio(result.audio);
+      setAiAudioUrl(result.playbackUrl);
+      setAiAudioLoading(false);
+      if (!result.playbackUrl && narrationMode === audioModes.ai) setAudioAnnouncement("AI Audio unavailable. Device Voice fallback is ready.");
+    }
+    loadAudioMetadata();
+    return () => { cancelled = true; };
+  }, [chapter, offlineMode, narrationMode]);
 
   useEffect(() => {
     localStorage.setItem(readerPanelKey, settingsOpen);
@@ -369,6 +406,12 @@ function Reader() {
     return () => window.clearInterval(intervalId);
   }, [sleepTimerMode]);
 
+  const stopAiAudio = useCallback(() => {
+    const audio = aiAudioRef.current;
+    if (audio) audio.pause();
+    setAiAudioPlaying(false);
+  }, []);
+
   const stopNarration = useCallback(() => {
     if (narrationSupported) { manuallyStoppingRef.current = true; window.speechSynthesis.cancel(); manuallyStoppingRef.current = false; }
     utteranceRef.current = null;
@@ -377,8 +420,9 @@ function Reader() {
     setSleepTimerMode("off");
     clearTimeout(sleepTimerRef.current);
     sleepTimerEndsAtRef.current = 0;
+    stopAiAudio();
     setAudioAnnouncement("Озвучення зупинено.");
-  }, [narrationSupported]);
+  }, [narrationSupported, stopAiAudio]);
 
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
@@ -568,6 +612,65 @@ function Reader() {
   }, [stopNarration]);
 
 
+
+  useEffect(() => {
+    const audio = aiAudioRef.current;
+    if (!audio || !chapter) return undefined;
+    function saveTime() {
+      setAiAudioTime(audio.currentTime || 0);
+      setAiAudioDuration(audio.duration || aiAudio?.duration_seconds || 0);
+      localStorage.setItem(getAudioPositionKey(chapter.id), String(audio.currentTime || 0));
+    }
+    function onPlay() { setAiAudioPlaying(true); }
+    function onPause() { setAiAudioPlaying(false); saveTime(); }
+    function onEnded() { setAiAudioPlaying(false); localStorage.removeItem(getAudioPositionKey(chapter.id)); handleChapterFinished(); }
+    audio.addEventListener("timeupdate", saveTime);
+    audio.addEventListener("loadedmetadata", saveTime);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
+    if (aiAudioTime > 0 && Math.abs(audio.currentTime - aiAudioTime) > 2) audio.currentTime = aiAudioTime;
+    return () => { audio.pause(); audio.removeEventListener("timeupdate", saveTime); audio.removeEventListener("loadedmetadata", saveTime); audio.removeEventListener("play", onPlay); audio.removeEventListener("pause", onPause); audio.removeEventListener("ended", onEnded); };
+  }, [aiAudio?.duration_seconds, aiAudioTime, chapter, handleChapterFinished]);
+
+  function toggleAiAudio() {
+    const audio = aiAudioRef.current;
+    if (!audio || !aiAudioReady) {
+      setNarrationMode(audioModes.device);
+      setAudioAnnouncement("AI Audio unavailable. Switched to Device Voice.");
+      return;
+    }
+    if (narrationSupported) window.speechSynthesis.cancel();
+    if (audio.paused) audio.play().catch(() => setAudioAnnouncement("AI Audio playback was blocked. Tap play again or use Device Voice."));
+    else audio.pause();
+  }
+
+  function seekAiAudio(value) {
+    const audio = aiAudioRef.current;
+    if (!audio) return;
+    audio.currentTime = Number(value) || 0;
+    setAiAudioTime(audio.currentTime);
+  }
+
+  function updateAiAudioRate(value) {
+    const rate = supportedRates.includes(Number(value)) ? Number(value) : 1;
+    updateNarrationSetting("rate", rate);
+    if (aiAudioRef.current) aiAudioRef.current.playbackRate = rate;
+  }
+
+  async function downloadAiAudio() {
+    if (!aiAudioReady) { setAudioAnnouncement("AI Audio is unavailable for download."); return; }
+    localStorage.setItem(getAudioDownloadKey(chapter.id), "true");
+    setAiAudioDownloaded(true);
+    setAudioAnnouncement("AI Audio marked for offline use. Large MP3 files are only downloaded when the browser permits caching.");
+  }
+
+  function removeAiAudioDownload() {
+    localStorage.removeItem(getAudioDownloadKey(chapter.id));
+    setAiAudioDownloaded(false);
+    setAudioAnnouncement("Downloaded AI Audio removed from this device.");
+  }
+
   useEffect(() => {
     if (!pendingAutoplayRef.current || loading || !chapter || !sentences.length || !narrationSupported) return;
     pendingAutoplayRef.current = false;
@@ -659,11 +762,27 @@ function Reader() {
       </section>
       <section id="reader-narration-panel" className={`reader__narration-player ${narrationOpen ? "reader__narration-player--open" : ""} ${playerExpanded ? "reader__narration-player--expanded" : "reader__narration-player--mini"}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
         <button className="reader__player-grip" onClick={() => setPlayerExpanded((expanded) => !expanded)} aria-label={playerExpanded ? "Згорнути аудіоплеєр" : "Розгорнути аудіоплеєр"} />
-        <div className="reader__player-header"><button className="reader__player-collapse" onClick={() => setPlayerExpanded((expanded) => !expanded)}>{playerExpanded ? "⌄" : "⌃"}</button><div><p>{chapter.novel?.title || chapter.novel_title || "NovelVerse"}</p><strong>Глава {chapter.number}: {chapter.title}</strong></div><button onClick={() => { stopNarration(); setNarrationOpen(false); }} aria-label="Закрити озвучення">✕</button></div>
-        {!narrationSupported ? (
-          <p className="reader__narration-warning">Озвучення недоступне у цьому браузері. Відкрийте NovelVerse у середовищі зі SpeechSynthesis, щоб слухати глави.</p>
+        <div className="reader__player-header"><button className="reader__player-collapse" onClick={() => setPlayerExpanded((expanded) => !expanded)}>{playerExpanded ? "⌄" : "⌃"}</button><div><p>{chapter.novel?.title || chapter.novel_title || "NovelVerse"}</p><strong>Глава {chapter.number}: {chapter.title}</strong><div className="reader__mode-tabs"><button className={narrationMode === audioModes.ai ? "reader__mode-tab reader__mode-tab--active" : "reader__mode-tab"} onClick={() => setNarrationMode(audioModes.ai)}>AI Audio</button><button className={narrationMode === audioModes.device ? "reader__mode-tab reader__mode-tab--active" : "reader__mode-tab"} onClick={() => setNarrationMode(audioModes.device)}>Device Voice</button></div></div><button onClick={() => { stopNarration(); setNarrationOpen(false); }} aria-label="Закрити озвучення">✕</button></div>
+        {effectiveNarrationMode === audioModes.ai && aiAudioReady ? (
+          <>
+            <audio ref={aiAudioRef} src={aiAudioUrl} preload="metadata" />
+            <input className="reader__progress-slider" type="range" min="0" max={Math.max(aiAudioDuration || aiAudio?.duration_seconds || 0, 0)} step="0.1" value={Math.min(aiAudioTime, aiAudioDuration || aiAudio?.duration_seconds || 0)} onChange={(e) => seekAiAudio(e.target.value)} aria-label="AI Audio progress" />
+            <div className="reader__player-time"><span>{formatClock(aiAudioTime)}</span><span>AI Audio · {aiAudioPlaying ? "Playing" : "Ready"} {aiAudioDownloaded ? "· Downloaded" : ""}</span><span>{formatClock(aiAudioDuration || aiAudio?.duration_seconds)}</span></div>
+            <div className="reader__player-meta"><span>Status: ready</span><span>Voice: {aiAudio.voice_id}</span><span>Language: {aiAudio.language}</span><span>Provider: {aiAudio.provider}</span><span>Size: {formatFileSize(aiAudio.file_size)}</span></div>
+            <div className="reader__media-controls">
+              <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous} aria-label="Попередня глава">⏪</button>
+              <button className="reader__play-button" onClick={toggleAiAudio} aria-label="Відтворити або пауза">{aiAudioPlaying ? "⏸" : "▶"}</button>
+              <button onClick={nextChapter} disabled={navigatingChapter || !adjacentChapters.next} aria-label="Наступна глава">⏩</button>
+              <button onClick={stopAiAudio} disabled={!aiAudioPlaying} aria-label="Зупинити">⏹</button>
+            </div>
+            <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateAiAudioRate(e.target.value)}>{supportedRates.map((rate) => <option value={rate} key={rate}>{rate}x</option>)}</select></label></div>
+            <details className="reader__player-settings" open={playerExpanded}><summary>AI Audio options</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><button type="button" onClick={aiAudioDownloaded ? removeAiAudioDownload : downloadAiAudio}>{aiAudioDownloaded ? "Remove downloaded AI audio" : `Download AI audio (${formatFileSize(aiAudio.file_size)})`}</button><p className="reader__narration-status">AI Audio uses stored MP3 files. Device Voice remains the fallback when the file is unavailable or offline.</p></details>
+          </>
+        ) : !narrationSupported ? (
+          <p className="reader__narration-warning">Озвучення недоступне у цьому браузері. AI Audio: {aiAudioStatus}. Device Voice requires SpeechSynthesis.</p>
         ) : (
           <>
+            <p className="reader__narration-status">AI Audio: {offlineMode ? "offline unavailable" : aiAudioStatus === "ready" ? "ready" : aiAudioStatus}. {narrationMode === audioModes.ai ? "Using Device Voice fallback." : "Device Voice selected."}</p>
             <input className="reader__progress-slider" type="range" min="0" max={Math.max(sentences.length - 1, 0)} value={currentSentenceIndex} onChange={(e) => scrubNarration(e.target.value)} disabled={!sentences.length} aria-label="Прогрес озвучення" />
             <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{sentenceProgress}% · {ttsActive && !ttsPaused ? "Playing" : ttsPaused ? "Paused" : "Ready"}</span><span>{formatClock(estimatedTotalSeconds)}</span></div><div className="reader__player-meta"><span>Voice: {selectedVoice ? `${selectedVoice.name} (${selectedVoice.lang})` : "Best available voice"}</span><span>Speed: {narrationSettings.rate}x</span></div>
             <div className="reader__media-controls">

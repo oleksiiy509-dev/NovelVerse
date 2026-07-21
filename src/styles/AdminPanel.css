@@ -70,3 +70,6 @@
 .admin-card > input[type="checkbox"] { align-self: start; height: 20px; width: 20px; }
 @media (min-width: 701px) { .admin-list .admin-card { grid-template-columns: 28px 92px 1fr; } }
 @media (max-width: 700px) { .admin-import-row { grid-template-columns: 1fr; } .admin-table-wrap { background: transparent; border: 0; box-shadow: none; } .admin-table, .admin-table thead, .admin-table tbody, .admin-table tr, .admin-table td { display: block; min-width: 0; width: 100%; } .admin-table thead { display: none; } .admin-table tr { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); margin-bottom: 12px; padding: 10px; } }
+.admin-audio-cell { display: grid; gap: 4px; min-width: 190px; }
+.admin-audio-cell span { color: var(--text-secondary); font-size: .78rem; }
+.admin-audio-cell button { min-height: 34px; padding: 6px 10px; }
