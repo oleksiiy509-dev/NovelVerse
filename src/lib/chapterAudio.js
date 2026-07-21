@@ -32,7 +32,7 @@ export async function getChapterAudioMetadata(chapterId, language = defaultAudio
   if (!chapterId) return { audio: null, playbackUrl: "", error: null };
   const query = supabase
     .from("chapter_audio")
-    .select("id, chapter_id, novel_id, language, voice_id, provider, status, storage_path, duration_seconds, file_size, content_hash, error_message, created_at, updated_at")
+    .select("id, chapter_id, novel_id, language, voice_id, provider, status, storage_path, duration_seconds, file_size, content_hash, error_message, bitrate, sample_rate, waveform, render_version, cast_version, director_version, created_at, updated_at")
     .eq("chapter_id", chapterId)
     .in("status", ["ready", "pending", "processing", "failed"])
     .order("updated_at", { ascending: false })

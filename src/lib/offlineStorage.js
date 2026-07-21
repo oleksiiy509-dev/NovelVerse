@@ -1,10 +1,11 @@
 const DB_NAME = "novelverse-offline";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const CHAPTERS = "chapters";
 const PROGRESS = "progressQueue";
 const FALLBACK_CHAPTERS_KEY = "novelverse:offline:fallback:chapters";
 const FALLBACK_PROGRESS_KEY = "novelverse:offline:fallback:progress";
-export const OFFLINE_RECORD_VERSION = 4;
+export const OFFLINE_RECORD_VERSION = 5;
+export const OFFLINE_AUDIO_CACHE_VERSION = 1;
 export const OFFLINE_CAST_CACHE_VERSION = 1;
 export const OFFLINE_DIRECTOR_CACHE_VERSION = 1;
 
@@ -122,6 +123,13 @@ function normalizeChapter(chapter = {}, novel = {}) {
     cast_cache_version: OFFLINE_CAST_CACHE_VERSION,
     director_cache_version: OFFLINE_DIRECTOR_CACHE_VERSION,
     director_plan: chapter.director_plan ? { ...chapter.director_plan, audio_assets: [] } : null,
+    audio_cache_version: OFFLINE_AUDIO_CACHE_VERSION,
+    audio: chapter.audio ? {
+      metadata: chapter.audio.metadata || null,
+      playback_url: String(chapter.audio.playback_url || ""),
+      downloaded_at: chapter.audio.downloaded_at || new Date().toISOString(),
+      waveform: Array.isArray(chapter.audio.waveform) ? chapter.audio.waveform : [],
+    } : null,
     voice_segments: Array.isArray(chapter.voice_segments) ? chapter.voice_segments : [],
     voice_cast: Array.isArray(chapter.voice_cast) ? chapter.voice_cast.map((entry) => ({
       character_id: String(entry.character_id || ""),
