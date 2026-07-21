@@ -13,6 +13,7 @@ let cachedApp;
 let backButtonHandler;
 let mainButtonHandler;
 let viewportCleanup;
+let themeCleanup;
 const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "";
 
 function getTelegramApp() {
@@ -105,6 +106,7 @@ export async function initTelegramMiniApp() {
     return null;
   }
   if (cachedApp) return cachedApp;
+  if (themeCleanup) themeCleanup();
   await loadTelegramSdk();
   webApp.ready?.();
   webApp.expand?.();
@@ -113,7 +115,9 @@ export async function initTelegramMiniApp() {
   document.body.classList.remove("browser-webapp");
   applyTheme(webApp);
   applyViewport(webApp);
-  webApp.onEvent?.("themeChanged", () => applyTheme(webApp));
+  const refreshTheme = () => applyTheme(webApp);
+  webApp.onEvent?.("themeChanged", refreshTheme);
+  themeCleanup = () => webApp.offEvent?.("themeChanged", refreshTheme);
   bindViewportListeners(webApp);
   cachedApp = webApp;
   return webApp;
