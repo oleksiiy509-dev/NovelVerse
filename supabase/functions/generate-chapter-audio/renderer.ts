@@ -1,6 +1,7 @@
 import { renderAudioSegment, type AudioRenderSegmentRequest } from "./provider.ts";
 
-export const renderVersion = "audio-renderer-v2-openai";
+export const renderVersion = "audio-renderer-v3-local-voice-variation";
+export const transformationEngineVersion = "voice-transform-v1";
 export const maxSegmentRetries = 3;
 export const queueStatuses = ["pending", "rendering", "rendered", "failed", "canceled"] as const;
 export type QueueStatus = typeof queueStatuses[number];
@@ -9,7 +10,7 @@ type Db = { from(name: string): any; storage: any };
 type Chapter = { id: string; novel_id: string; title: string; content: string };
 type SegmentRow = { id?: string; segment_index: number; text: string; speaker_name?: string; speaker_id?: string; voice_profile?: string; emotion?: string; intensity?: number };
 type DirectorSetting = { id?: string; segment_index?: number; cast_slot?: string; voice_profile?: string; emotion?: string; intensity?: number; rate?: number; pause_before_ms?: number; pause_after_ms?: number; emphasis?: string[] };
-type CastRow = { character_id?: string; cast_slot?: string; voice_profile?: string; updated_at?: string; character_state_version?: string; voice_evolution_version?: string };
+type CastRow = { character_id?: string; cast_slot?: string; voice_profile?: string; provider_voice_mappings?: Record<string, unknown>; voice_variation_profile_id?: string; voice_variation_profile_version?: number; temporary_voice_state?: string; updated_at?: string; character_state_version?: string; voice_evolution_version?: string };
 type DirectorPlan = { id: string; director_version?: string; director_segment_settings?: DirectorSetting[]; segmentSettings?: DirectorSetting[] };
 
 export async function sha256(text: string) {
@@ -81,7 +82,21 @@ function castBySpeaker(cast: CastRow[]) {
 }
 
 export function castVersion(cast: CastRow[]) {
-  return cast.map((entry) => `${entry.character_id}:${entry.cast_slot}:${entry.voice_profile}:${entry.updated_at || ""}:${entry.character_state_version || "state-v0"}:${entry.voice_evolution_version || "evo-v0"}`).sort().join("|") || "cast-v0";
+  return cast.map((entry) => `${entry.character_id}:${entry.cast_slot}:${entry.voice_profile}:${entry.voice_variation_profile_id || entry.voice_profile}:${entry.voice_variation_profile_version || 1}:${entry.temporary_voice_state || "none"}:${entry.updated_at || ""}:${entry.character_state_version || "state-v0"}:${entry.voice_evolution_version || "evo-v0"}`).sort().join("|") || "cast-v0";
+}
+
+export function voiceTransformationCacheIdentity(request: AudioRenderSegmentRequest, cast: CastRow | undefined, provider: string) {
+  const mappings = (cast?.provider_voice_mappings || {}) as Record<string, any>;
+  const providerMapping = mappings[provider] || {};
+  return {
+    base_provider: provider,
+    model: providerMapping.model || "default",
+    voice: providerMapping.voice || request.castSlot,
+    profile_id: cast?.voice_variation_profile_id || request.voiceProfile,
+    profile_version: cast?.voice_variation_profile_version || 1,
+    temporary_state: cast?.temporary_voice_state || "none",
+    transformation_engine_version: transformationEngineVersion,
+  };
 }
 
 export function makeSegmentRequest(segment: SegmentRow, setting: DirectorSetting | undefined, cast: CastRow | undefined, language: string): AudioRenderSegmentRequest {
@@ -112,7 +127,8 @@ export async function renderChapterJob(db: Db, job: any, deps: { chapter: Chapte
   const renderedSegments = [];
   for (const segment of deps.segments) {
     const request = makeSegmentRequest(segment, settings.get(Number(segment.segment_index)), castMap.get(String(segment.speaker_id || "")), job.language || "auto");
-    const inputHash = await sha256(JSON.stringify({ request, chapterHash, directorVersion: deps.directorPlan.director_version, castHash, provider, renderVersion }));
+    const transformationIdentity = voiceTransformationCacheIdentity(request, castMap.get(String(segment.speaker_id || "")), provider);
+    const inputHash = await sha256(JSON.stringify({ request, chapterHash, directorVersion: deps.directorPlan.director_version, castHash, provider, renderVersion, transformationIdentity }));
     const cached = await db.from("audio_render_segments").select("storage_path,duration_seconds,waveform").eq("input_hash", inputHash).eq("status", "rendered").maybeSingle();
     if (cached.data?.storage_path) {
       completed += 1;

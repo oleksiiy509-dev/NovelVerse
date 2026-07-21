@@ -1,0 +1,1 @@
+export async function mockTransform(payload, route = "/transform") { return { audio: payload.audio || [], metadata: { route, processor: "deterministic-mock", synthetic: true, profile: payload.profile?.id, warning: "Mock metadata only; no voice cloning or heavy ML processing performed." } }; }
