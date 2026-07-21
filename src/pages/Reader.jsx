@@ -222,6 +222,7 @@ function Reader() {
   const aiAudioReady = aiAudio?.status === "ready" && Boolean(aiAudioUrl);
   const effectiveNarrationMode = narrationMode === audioModes.ai && aiAudioReady ? audioModes.ai : audioModes.device;
   const aiAudioStatus = aiAudioLoading ? "loading" : aiAudio?.status || "unavailable";
+  const aiWaveform = Array.isArray(aiAudio?.waveform) ? aiAudio.waveform : [];
   const selectedRangeExists = chapterRanges.some((range) => range.key === selectedRangeKey);
   const openRangeKey = selectedRangeExists ? selectedRangeKey : currentRangeKey;
 
@@ -358,7 +359,15 @@ function Reader() {
   useEffect(() => {
     let cancelled = false;
     async function loadAudioMetadata() {
-      if (!chapter || offlineMode) return;
+      if (!chapter) return;
+      if (offlineMode) {
+        const downloaded = await getDownloadedChapter(chapter.id);
+        if (downloaded?.audio?.metadata && downloaded?.audio?.playback_url) {
+          setAiAudio(downloaded.audio.metadata);
+          setAiAudioUrl(downloaded.audio.playback_url);
+        }
+        return;
+      }
       setAiAudioLoading(true);
       const result = await getChapterAudioMetadata(chapter.id, defaultAudioLanguage, defaultAudioVoice);
       if (cancelled) return;
@@ -504,7 +513,7 @@ function Reader() {
     }
     setDownloadState("loading");
     try {
-      await saveDownloadedChapter({ ...chapter, voice_cast: voiceCast.map((entry) => ({ character_id: entry.character_id, cast_slot: entry.cast_slot, voice_profile: entry.voice_profile, pitch_offset: entry.pitch_offset, rate_offset: entry.rate_offset, energy: entry.energy, roughness: entry.roughness, brightness: entry.brightness, stability: entry.stability, style_strength: entry.style_strength })), voice_segments: voiceSegments, director_plan: directorPlan }, chapter.novel || { id: chapter.novel_id });
+      await saveDownloadedChapter({ ...chapter, audio: aiAudioReady ? { metadata: aiAudio, playback_url: aiAudioUrl, waveform: aiWaveform } : null, voice_cast: voiceCast.map((entry) => ({ character_id: entry.character_id, cast_slot: entry.cast_slot, voice_profile: entry.voice_profile, pitch_offset: entry.pitch_offset, rate_offset: entry.rate_offset, energy: entry.energy, roughness: entry.roughness, brightness: entry.brightness, stability: entry.stability, style_strength: entry.style_strength })), voice_segments: voiceSegments, director_plan: directorPlan }, chapter.novel || { id: chapter.novel_id });
       setOfflineReady(true);
       setDownloadState("downloaded");
       await loadChapterMetadata(chapter);
@@ -698,9 +707,10 @@ function Reader() {
 
   async function downloadAiAudio() {
     if (!aiAudioReady) { setAudioAnnouncement("AI Audio is unavailable for download."); return; }
+    await saveDownloadedChapter({ ...chapter, audio: { metadata: aiAudio, playback_url: aiAudioUrl, waveform: aiWaveform }, voice_cast: voiceCast, voice_segments: voiceSegments, director_plan: directorPlan }, chapter.novel || { id: chapter.novel_id });
     localStorage.setItem(getAudioDownloadKey(chapter.id), "true");
     setAiAudioDownloaded(true);
-    setAudioAnnouncement("AI Audio marked for offline use. Large MP3 files are only downloaded when the browser permits caching.");
+    setAudioAnnouncement("AI Audio downloaded with this chapter for offline playback when browser storage permits.");
   }
 
   function removeAiAudioDownload() {
@@ -804,9 +814,10 @@ function Reader() {
         {effectiveNarrationMode === audioModes.ai && aiAudioReady ? (
           <>
             <audio ref={aiAudioRef} src={aiAudioUrl} preload="metadata" />
+            <div className="reader__waveform" aria-label="AI Audio waveform">{aiWaveform.length ? aiWaveform.map((value, index) => <button key={`${index}-${value}`} type="button" style={{ height: `${Math.max(10, Math.round(Number(value) * 42))}px` }} onClick={() => seekAiAudio(((aiAudioDuration || aiAudio?.duration_seconds || 0) * index) / Math.max(1, aiWaveform.length - 1))} aria-label={`Seek to waveform point ${index + 1}`} />) : <span>No waveform available</span>}</div>
             <input className="reader__progress-slider" type="range" min="0" max={Math.max(aiAudioDuration || aiAudio?.duration_seconds || 0, 0)} step="0.1" value={Math.min(aiAudioTime, aiAudioDuration || aiAudio?.duration_seconds || 0)} onChange={(e) => seekAiAudio(e.target.value)} aria-label="AI Audio progress" />
             <div className="reader__player-time"><span>{formatClock(aiAudioTime)}</span><span>AI Audio · {aiAudioPlaying ? "Playing" : "Ready"} {aiAudioDownloaded ? "· Downloaded" : ""}</span><span>{formatClock(aiAudioDuration || aiAudio?.duration_seconds)}</span></div>
-            <div className="reader__player-meta"><span>Status: ready</span><span>Voice: {aiAudio.voice_id}</span><span>Language: {aiAudio.language}</span><span>Provider: {aiAudio.provider}</span><span>Size: {formatFileSize(aiAudio.file_size)}</span></div>
+            <div className="reader__player-meta"><span>Status: ready</span><span>Voice: {aiAudio.voice_id}</span><span>Language: {aiAudio.language}</span><span>Provider: {aiAudio.provider}</span><span>Render: {aiAudio.render_version || "legacy"}</span><span>{aiAudio.sample_rate ? `${aiAudio.sample_rate} Hz` : "Sample rate —"}</span><span>{aiAudio.bitrate ? `${Math.round(aiAudio.bitrate / 1000)} kbps` : "Bitrate —"}</span><span>Size: {formatFileSize(aiAudio.file_size)}</span></div>
             <div className="reader__media-controls">
               <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous} aria-label="Попередня глава">⏪</button>
               <button className="reader__play-button" onClick={toggleAiAudio} aria-label="Відтворити або пауза">{aiAudioPlaying ? "⏸" : "▶"}</button>

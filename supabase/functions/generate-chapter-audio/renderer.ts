@@ -1,0 +1,100 @@
+import { renderAudioSegment, type AudioRenderSegmentRequest } from "./provider.ts";
+
+export const renderVersion = "audio-renderer-v1";
+export const queueStatuses = ["pending", "rendering", "rendered", "failed", "canceled"] as const;
+export type QueueStatus = typeof queueStatuses[number];
+
+type Db = { from(name: string): any; storage: any };
+type Chapter = { id: string; novel_id: string; title: string; content: string };
+type SegmentRow = { id?: string; segment_index: number; text: string; speaker_name?: string; speaker_id?: string; voice_profile?: string; emotion?: string; intensity?: number };
+type DirectorSetting = { id?: string; segment_index?: number; cast_slot?: string; voice_profile?: string; emotion?: string; intensity?: number; rate?: number; pause_before_ms?: number; pause_after_ms?: number; emphasis?: string[] };
+type CastRow = { character_id?: string; cast_slot?: string; voice_profile?: string; updated_at?: string };
+type DirectorPlan = { id: string; director_version?: string; director_segment_settings?: DirectorSetting[]; segmentSettings?: DirectorSetting[] };
+
+export async function sha256(text: string) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function concatBytes(parts: Uint8Array[]) {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part) => { merged.set(part, offset); offset += part.byteLength; });
+  return merged;
+}
+
+export function silentMp3Pause(ms = 0) {
+  if (ms <= 0) return new Uint8Array();
+  return new Uint8Array(Math.max(1, Math.ceil(ms / 26))).fill(0);
+}
+
+export function buildWaveform(audio: Uint8Array, buckets = 96) {
+  if (!audio.byteLength) return [];
+  const size = Math.max(1, Math.floor(audio.byteLength / buckets));
+  return Array.from({ length: Math.min(buckets, Math.ceil(audio.byteLength / size)) }, (_, index) => {
+    const slice = audio.subarray(index * size, Math.min(audio.byteLength, (index + 1) * size));
+    const peak = slice.reduce((max, value) => Math.max(max, Math.abs(value - 128)), 0);
+    return Number((peak / 128).toFixed(3));
+  });
+}
+
+function bySegmentIndex(plan: DirectorPlan) {
+  return new Map((plan.director_segment_settings || plan.segmentSettings || []).map((setting) => [Number(setting.segment_index), setting]));
+}
+
+function castBySpeaker(cast: CastRow[]) {
+  return new Map(cast.map((entry) => [String(entry.character_id || ""), entry]));
+}
+
+export function castVersion(cast: CastRow[]) {
+  return cast.map((entry) => `${entry.character_id}:${entry.cast_slot}:${entry.voice_profile}:${entry.updated_at || ""}`).sort().join("|") || "cast-v0";
+}
+
+export function makeSegmentRequest(segment: SegmentRow, setting: DirectorSetting | undefined, cast: CastRow | undefined, language: string): AudioRenderSegmentRequest {
+  return {
+    segmentId: String(segment.id || segment.segment_index),
+    text: segment.text || "",
+    language,
+    speaker: segment.speaker_name || "Narrator",
+    castSlot: setting?.cast_slot || cast?.cast_slot || (segment.speaker_id === "narrator" ? "narrator_main" : "unknown_01"),
+    voiceProfile: setting?.voice_profile || cast?.voice_profile || segment.voice_profile || "narrator_neutral",
+    emotion: setting?.emotion || segment.emotion || "neutral",
+    intensity: Number(setting?.intensity ?? segment.intensity ?? 0.5),
+    pace: Number(setting?.rate ?? 1),
+    pauses: { beforeMs: Number(setting?.pause_before_ms || 0), afterMs: Number(setting?.pause_after_ms || 0) },
+    emphasis: Array.isArray(setting?.emphasis) ? setting.emphasis : [],
+    format: "mp3",
+  };
+}
+
+export async function renderChapterJob(db: Db, job: any, deps: { chapter: Chapter; segments: SegmentRow[]; cast: CastRow[]; directorPlan: DirectorPlan }) {
+  const provider = String(job.provider || "unconfigured");
+  const settings = bySegmentIndex(deps.directorPlan);
+  const castMap = castBySpeaker(deps.cast);
+  const chapterHash = await sha256(deps.segments.map((s) => `${s.segment_index}:${s.text}`).join("\n"));
+  const castHash = await sha256(castVersion(deps.cast));
+  const renderedSegments = await Promise.all(deps.segments.map(async (segment) => {
+    const request = makeSegmentRequest(segment, settings.get(Number(segment.segment_index)), castMap.get(String(segment.speaker_id || "")), job.language || "auto");
+    const inputHash = await sha256(JSON.stringify({ request, chapterHash, directorVersion: deps.directorPlan.director_version, castHash, provider, renderVersion }));
+    const cached = await db.from("audio_render_segments").select("storage_path,duration_seconds,waveform").eq("input_hash", inputHash).eq("status", "rendered").maybeSingle();
+    if (cached.data?.storage_path) return { ...cached.data, request, reused: true };
+    const result = await renderAudioSegment(provider, request);
+    if (!result.ok) throw new Error(result.message);
+    const path = `segments/${deps.chapter.novel_id}/${deps.chapter.id}/${provider}/${inputHash}.mp3`;
+    const upload = await db.storage.from("chapter-audio").upload(path, result.audio, { contentType: result.contentType, upsert: true });
+    if (upload.error) throw new Error("Segment upload failed.");
+    const waveform = buildWaveform(result.audio);
+    await db.from("audio_render_segments").upsert({ job_id: job.id, chapter_id: deps.chapter.id, segment_index: segment.segment_index, input_hash: inputHash, provider, provider_version: result.providerVersion, status: "rendered", storage_path: path, duration_seconds: result.durationSeconds ?? null, waveform, render_version: renderVersion });
+    return { storage_path: path, duration_seconds: result.durationSeconds ?? null, waveform, request, bytes: result.audio };
+  }));
+  const parts = renderedSegments.flatMap((segment) => [silentMp3Pause(segment.request.pauses.beforeMs), segment.bytes || new Uint8Array(), silentMp3Pause(segment.request.pauses.afterMs)]);
+  const chapterAudio = concatBytes(parts);
+  const storagePath = `novels/${deps.chapter.novel_id}/chapters/${deps.chapter.id}/${job.language || "auto"}/${provider}/${chapterHash}.mp3`;
+  const upload = await db.storage.from("chapter-audio").upload(storagePath, chapterAudio, { contentType: "audio/mpeg", upsert: true });
+  if (upload.error) throw new Error("Chapter upload failed.");
+  const waveform = buildWaveform(chapterAudio);
+  await db.from("chapter_audio").upsert({ chapter_id: deps.chapter.id, novel_id: deps.chapter.novel_id, language: job.language || "auto", voice_id: provider, provider, status: "ready", storage_path: storagePath, duration_seconds: renderedSegments.reduce((sum, s) => sum + Number(s.duration_seconds || 0), 0), file_size: chapterAudio.byteLength, content_hash: chapterHash, waveform, bitrate: 128000, sample_rate: 44100, render_version: renderVersion, cast_version: castHash, director_version: deps.directorPlan.director_version || "unknown" });
+  await db.from("audio_render_jobs").update({ status: "rendered", updated_at: new Date().toISOString() }).eq("id", job.id);
+  return { storagePath, waveform, reusedSegments: renderedSegments.filter((s) => s.reused).length };
+}
