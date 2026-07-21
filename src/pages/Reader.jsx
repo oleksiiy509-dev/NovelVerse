@@ -369,6 +369,17 @@ function Reader() {
     return () => window.clearInterval(intervalId);
   }, [sleepTimerMode]);
 
+  const stopNarration = useCallback(() => {
+    if (narrationSupported) { manuallyStoppingRef.current = true; window.speechSynthesis.cancel(); manuallyStoppingRef.current = false; }
+    utteranceRef.current = null;
+    setTtsActive(false);
+    setTtsPaused(false);
+    setSleepTimerMode("off");
+    clearTimeout(sleepTimerRef.current);
+    sleepTimerEndsAtRef.current = 0;
+    setAudioAnnouncement("Озвучення зупинено.");
+  }, [narrationSupported]);
+
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
     const target = direction < 0 ? adjacentChapters.previous : adjacentChapters.next;
@@ -449,7 +460,22 @@ function Reader() {
     setControlsVisible((visible) => !visible);
   }
 
-  function speakSentence(index = currentSentenceIndex, nextSettings = narrationSettings) {
+  const handleChapterFinished = useCallback(() => {
+    setAudioAnnouncement("Озвучення глави завершено.");
+    if (narrationSettings.autoNextChapter) {
+      const next = adjacentChapters.next;
+      if (next) {
+        pendingAutoplayRef.current = true;
+        setNavigatingChapter(true);
+        navigate(`/reader/${next.id}`, { preventScrollReset: true });
+      } else {
+        setNavMessage("Наступна глава недоступна офлайн.");
+        window.setTimeout(() => setNavMessage(""), 3500);
+      }
+    }
+  }, [adjacentChapters.next, narrationSettings.autoNextChapter, navigate]);
+
+  const speakSentence = useCallback(function speakSentenceCallback(index = currentSentenceIndex, nextSettings = narrationSettings) {
     if (!chapter || !narrationSupported || !sentences.length) return;
     const safeIndex = Math.min(Math.max(index, 0), sentences.length - 1);
     const token = speechTokenRef.current + 1;
@@ -465,7 +491,7 @@ function Reader() {
     utterance.volume = nextSettings.volume;
     utterance.onend = () => {
       if (manuallyStoppingRef.current || speechTokenRef.current !== token) return;
-      if (safeIndex < sentences.length - 1) speakSentence(safeIndex + 1, nextSettings);
+      if (safeIndex < sentences.length - 1) speakSentenceCallback(safeIndex + 1, nextSettings);
       else {
         setTtsActive(false);
         setTtsPaused(false);
@@ -484,53 +510,27 @@ function Reader() {
     setTtsPaused(false);
     setAudioAnnouncement(`Озвучення: ${sentenceProgress}% глави.`);
     window.speechSynthesis.speak(utterance);
-  }
+  }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, selectedVoice, sentenceProgress, sentences, handleChapterFinished]);
 
-  function handleChapterFinished() {
-    setAudioAnnouncement("Озвучення глави завершено.");
-    if (narrationSettings.autoNextChapter) {
-      const next = adjacentChapters.next;
-      if (next) {
-        pendingAutoplayRef.current = true;
-        setNavigatingChapter(true);
-        navigate(`/reader/${next.id}`, { preventScrollReset: true });
-      } else {
-        setNavMessage("Наступна глава недоступна офлайн.");
-        window.setTimeout(() => setNavMessage(""), 3500);
-      }
-    }
-  }
-
-  function stopNarration() {
-    if (narrationSupported) { manuallyStoppingRef.current = true; window.speechSynthesis.cancel(); manuallyStoppingRef.current = false; }
-    utteranceRef.current = null;
-    setTtsActive(false);
-    setTtsPaused(false);
-    setSleepTimerMode("off");
-    clearTimeout(sleepTimerRef.current);
-    sleepTimerEndsAtRef.current = 0;
-    setAudioAnnouncement("Озвучення зупинено.");
-  }
-
-  function pauseNarration() {
+  const pauseNarration = useCallback(() => {
     if (!narrationSupported) return;
     window.speechSynthesis.pause();
     setTtsPaused(true);
     setAudioAnnouncement("Озвучення призупинено.");
-  }
+  }, [narrationSupported]);
 
-  function resumeNarration() {
+  const resumeNarration = useCallback(() => {
     if (!narrationSupported) return;
     window.speechSynthesis.resume();
     setTtsActive(true);
     setTtsPaused(false);
-  }
+  }, [narrationSupported]);
 
-  function moveSentence(direction) {
+  const moveSentence = useCallback((direction) => {
     const target = Math.min(Math.max(currentSentenceIndex + direction, 0), Math.max(sentences.length - 1, 0));
     setCurrentSentenceIndex(target);
     if (ttsActive || ttsPaused) speakSentence(target);
-  }
+  }, [currentSentenceIndex, sentences.length, speakSentence, ttsActive, ttsPaused]);
 
   function restartCurrentSentence() {
     if (ttsActive || ttsPaused) speakSentence(currentSentenceIndex);
@@ -555,17 +555,17 @@ function Reader() {
     if (ttsActive || ttsPaused) setTimeout(() => speakSentence(currentSentenceIndex, next), 0);
   }
 
-  function updateSleepTimer(mode, selectedAt = 0) {
+  const updateSleepTimer = useCallback((mode) => {
     setSleepTimerMode(mode);
     clearTimeout(sleepTimerRef.current);
     sleepTimerEndsAtRef.current = 0;
     const minutes = Number(mode);
     if (minutes > 0) {
-      sleepTimerEndsAtRef.current = selectedAt + minutes * 60 * 1000;
+      sleepTimerEndsAtRef.current = Date.now() + minutes * 60 * 1000;
       setSleepRemainingSeconds(minutes * 60);
       sleepTimerRef.current = setTimeout(() => stopNarration(), minutes * 60 * 1000);
     } else setSleepRemainingSeconds(0);
-  }
+  }, [stopNarration]);
 
 
   useEffect(() => {
@@ -574,7 +574,7 @@ function Reader() {
     setAudioReady(true);
     setNarrationOpen(true);
     speakSentence(0);
-  }, [chapter, loading, narrationSupported, sentences.length]);
+  }, [chapter, loading, narrationSupported, sentences.length, speakSentence]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator) || !chapter) return;
@@ -588,7 +588,7 @@ function Reader() {
       navigator.mediaSession.playbackState = "none";
       ["play", "pause", "previoustrack", "nexttrack"].forEach((action) => navigator.mediaSession.setActionHandler(action, null));
     };
-  }, [chapter, currentSentenceIndex, ttsActive, ttsPaused]);
+  }, [chapter, currentSentenceIndex, moveSentence, pauseNarration, resumeNarration, speakSentence, ttsActive, ttsPaused]);
 
   function cacheSpokenChapter() {
     if (!chapter || !sentences.length) return;
@@ -677,7 +677,7 @@ function Reader() {
               <button onClick={restartNarration} disabled={!sentences.length} aria-label="Почати главу спочатку">↻</button>
             </div>
             <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateNarrationSetting("rate", Number(e.target.value))}><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="2.5">2.5x</option><option value="3">3x</option></select></label></div>
-            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value, Date.now())}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
+            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
             <div className="reader__chapter-selector" aria-label="Chapter selector">
               <div className="reader__range-tabs">
                 {chapterRanges.map((range) => (
