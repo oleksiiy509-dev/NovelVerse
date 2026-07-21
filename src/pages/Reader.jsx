@@ -181,25 +181,112 @@ function Reader() {
 
   useTelegramMainButton(mainButtonConfig);
 
-  const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapter?.content), [chapter?.content]);
+  const chapterContent = chapter?.content ?? "";
+  const chapterNumber = Number(chapter?.number) || 0;
+  const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapterContent), [chapterContent]);
   const sentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex }))), [paragraphs]);
   const narrationSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const estimatedTotalSeconds = useMemo(() => Math.max(1, Math.round(sentences.map((sentence) => sentence.text).join(" ").split(/\s+/).filter(Boolean).length / (165 * narrationSettings.rate) * 60)), [sentences, narrationSettings.rate]);
   const elapsedSeconds = useMemo(() => Math.round((currentSentenceIndex / Math.max(1, sentences.length)) * estimatedTotalSeconds), [currentSentenceIndex, estimatedTotalSeconds, sentences.length]);
   const sentenceProgress = sentences.length ? Math.round(((currentSentenceIndex + (ttsActive ? 1 : 0)) / sentences.length) * 100) : 0;
-  const chapterLanguage = useMemo(() => getVoiceLanguage(chapter?.content), [chapter?.content]);
+  const chapterLanguage = useMemo(() => getVoiceLanguage(chapterContent), [chapterContent]);
   const rankedVoices = useMemo(() => [...voices].sort((a, b) => getVoiceScore(b, chapterLanguage) - getVoiceScore(a, chapterLanguage) || a.name.localeCompare(b.name)), [voices, chapterLanguage]);
   const selectedVoice = useMemo(() => rankedVoices.find((voice) => voice.voiceURI === narrationSettings.voiceURI) || rankedVoices[0] || null, [rankedVoices, narrationSettings.voiceURI]);
   const chapterRanges = useMemo(() => getChapterRanges(chapterList), [chapterList]);
   const currentRangeKey = useMemo(() => {
-    const currentNumber = Number(chapter?.number) || 0;
-    return chapterRanges.find((range) => currentNumber >= range.start && currentNumber <= range.end)?.key || "";
-  }, [chapter?.number, chapterRanges]);
+    return chapterRanges.find((range) => chapterNumber >= range.start && chapterNumber <= range.end)?.key || "";
+  }, [chapterNumber, chapterRanges]);
   const selectedRangeExists = chapterRanges.some((range) => range.key === selectedRangeKey);
   const openRangeKey = selectedRangeExists ? selectedRangeKey : currentRangeKey;
 
   const loadChapterRef = useRef(null);
-  loadChapterRef.current = loadChapter;
+
+  const loadAdjacentChapters = useCallback(async (activeChapter) => {
+    try {
+      const [previousResult, nextResult] = await Promise.all([
+        supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
+      ]);
+      if (!previousResult.error && !nextResult.error) {
+        setAdjacentChapters({ previous: previousResult.data, next: nextResult.data });
+        return;
+      }
+    } catch {
+      // Fall back to downloaded chapters when online navigation lookup fails.
+    }
+    const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
+    const index = offline.findIndex((item) => item.chapter_id === activeChapter.id);
+    setAdjacentChapters({ previous: index > 0 ? { id: offline[index - 1].chapter_id } : null, next: index >= 0 && index < offline.length - 1 ? { id: offline[index + 1].chapter_id } : null });
+  }, []);
+
+  const loadChapterMetadata = useCallback(async (activeChapter) => {
+    const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
+    const offlineIds = new Set(offline.map((item) => String(item.chapter_id)));
+    try {
+      const result = await supabase.from("chapters").select("id, number, title").eq("novel_id", activeChapter.novel_id).order("number", { ascending: true });
+      if (!result.error && result.data?.length) {
+        setChapterList(result.data.map((item) => ({ id: String(item.id), number: Number(item.number), title: item.title, availableOffline: offlineIds.has(String(item.id)), downloaded: offlineIds.has(String(item.id)) })));
+        return;
+      }
+    } catch {
+      // Use downloaded metadata when online chapter metadata is unavailable.
+    }
+    setChapterList(offline.map((item) => ({ id: String(item.chapter_id), number: Number(item.chapter_number), title: item.chapter_title, availableOffline: true, downloaded: true })));
+  }, []);
+
+  const loadChapter = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage("");
+    const currentUser = await getCurrentUser(supabase);
+    setUser(currentUser);
+    let data;
+    let error;
+    try {
+      const result = await supabase.from("chapters").select("*").eq("id", id).single();
+      data = result.data;
+      error = result.error;
+    } catch (requestError) {
+      error = requestError;
+    }
+    const cached = await getDownloadedChapter(id).catch(() => null);
+
+    if (error && !cached) {
+      setErrorMessage("Ця глава недоступна офлайн.");
+      setLoading(false);
+      return;
+    }
+
+    const activeChapter = data || { ...cached, id: cached.chapter_id, number: cached.chapter_number, title: cached.chapter_title };
+    setOfflineMode(!data && !!cached);
+    const audioKey = userKey(currentUser?.id, "audioProgress");
+    const savedAudio = (await readCloudBackedList(audioKey, telegramCloudGetItem)).find((item) => item.chapter_id === activeChapter.id);
+    setCurrentSentenceIndex(Math.min(Math.max(Number(savedAudio?.audio_sentence_index ?? savedAudio?.audio_paragraph_index ?? getSavedNarrationPosition(activeChapter.id)) || 0, 0), Math.max(splitChapterIntoParagraphs(activeChapter.content).flatMap(splitParagraphIntoSentences).length - 1, 0)));
+    setAudioCacheState(localStorage.getItem(getChapterAudioCacheKey(activeChapter.id)) ? "cached" : "idle");
+    setChapter(activeChapter);
+    await Promise.all([loadAdjacentChapters(activeChapter), loadChapterMetadata(activeChapter)]);
+    setOfflineReady(!!cached);
+    setDownloadState(cached ? "downloaded" : "idle");
+    const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
+    if (cloudSettings) {
+      try { setSettings((current) => ({ ...current, ...JSON.parse(cloudSettings) })); } catch { /* keep local settings */ }
+    }
+    const bookmarks = await readCloudBackedList(userKey(currentUser?.id, "bookmarks"), telegramCloudGetItem);
+    setBookmarked(bookmarks.some((item) => item.chapter_id === activeChapter.id));
+
+    localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
+
+    const readKey = `readChapters_${activeChapter.novel_id}`;
+    const read = await readCloudBackedList(readKey, telegramCloudGetItem);
+    if (!read.includes(activeChapter.id)) await writeCloudBackedList(readKey, [...read, activeChapter.id], telegramCloudSetItem);
+
+    await addReadingHistory(supabase, currentUser, { novel_id: activeChapter.novel_id, chapter_id: activeChapter.id, chapter_title: activeChapter.title });
+    setNavigatingChapter(false);
+    setLoading(false);
+  }, [id, loadAdjacentChapters, loadChapterMetadata]);
+
+  useEffect(() => {
+    loadChapterRef.current = loadChapter;
+  }, [loadChapter]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -281,89 +368,6 @@ function Reader() {
     const intervalId = window.setInterval(() => setSleepRemainingSeconds(Math.max(0, Math.ceil((sleepTimerEndsAtRef.current - Date.now()) / 1000))), 1000);
     return () => window.clearInterval(intervalId);
   }, [sleepTimerMode]);
-
-  async function loadChapter() {
-    setLoading(true);
-    setErrorMessage("");
-    const currentUser = await getCurrentUser(supabase);
-    setUser(currentUser);
-    let data;
-    let error;
-    try {
-      const result = await supabase.from("chapters").select("*").eq("id", id).single();
-      data = result.data;
-      error = result.error;
-    } catch (requestError) {
-      error = requestError;
-    }
-    const cached = await getDownloadedChapter(id).catch(() => null);
-
-    if (error && !cached) {
-      setErrorMessage("Ця глава недоступна офлайн.");
-      setLoading(false);
-      return;
-    }
-
-    const activeChapter = data || { ...cached, id: cached.chapter_id, number: cached.chapter_number, title: cached.chapter_title };
-    setOfflineMode(!data && !!cached);
-    const audioKey = userKey(currentUser?.id, "audioProgress");
-    const savedAudio = (await readCloudBackedList(audioKey, telegramCloudGetItem)).find((item) => item.chapter_id === activeChapter.id);
-    setCurrentSentenceIndex(Math.min(Math.max(Number(savedAudio?.audio_sentence_index ?? savedAudio?.audio_paragraph_index ?? getSavedNarrationPosition(activeChapter.id)) || 0, 0), Math.max(splitChapterIntoParagraphs(activeChapter.content).flatMap(splitParagraphIntoSentences).length - 1, 0)));
-    setAudioCacheState(localStorage.getItem(getChapterAudioCacheKey(activeChapter.id)) ? "cached" : "idle");
-    setChapter(activeChapter);
-    await Promise.all([loadAdjacentChapters(activeChapter), loadChapterMetadata(activeChapter)]);
-    setOfflineReady(!!cached);
-    setDownloadState(cached ? "downloaded" : "idle");
-    const cloudSettings = await telegramCloudGetItem("novelverse:readerSettings");
-    if (cloudSettings) {
-      try { setSettings((current) => ({ ...current, ...JSON.parse(cloudSettings) })); } catch { /* keep local settings */ }
-    }
-    const bookmarks = await readCloudBackedList(userKey(currentUser?.id, "bookmarks"), telegramCloudGetItem);
-    setBookmarked(bookmarks.some((item) => item.chapter_id === activeChapter.id));
-
-    localStorage.setItem(`lastChapter_${activeChapter.novel_id}`, activeChapter.id);
-
-    const readKey = `readChapters_${activeChapter.novel_id}`;
-    const read = await readCloudBackedList(readKey, telegramCloudGetItem);
-    if (!read.includes(activeChapter.id)) await writeCloudBackedList(readKey, [...read, activeChapter.id], telegramCloudSetItem);
-
-    await addReadingHistory(supabase, currentUser, { novel_id: activeChapter.novel_id, chapter_id: activeChapter.id, chapter_title: activeChapter.title });
-    setNavigatingChapter(false);
-    setLoading(false);
-  }
-
-  async function loadAdjacentChapters(activeChapter) {
-    try {
-      const [previousResult, nextResult] = await Promise.all([
-        supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
-      ]);
-      if (!previousResult.error && !nextResult.error) {
-        setAdjacentChapters({ previous: previousResult.data, next: nextResult.data });
-        return;
-      }
-    } catch {
-      // Fall back to downloaded chapters when online navigation lookup fails.
-    }
-    const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
-    const index = offline.findIndex((item) => item.chapter_id === activeChapter.id);
-    setAdjacentChapters({ previous: index > 0 ? { id: offline[index - 1].chapter_id } : null, next: index >= 0 && index < offline.length - 1 ? { id: offline[index + 1].chapter_id } : null });
-  }
-
-  async function loadChapterMetadata(activeChapter) {
-    const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
-    const offlineIds = new Set(offline.map((item) => String(item.chapter_id)));
-    try {
-      const result = await supabase.from("chapters").select("id, number, title").eq("novel_id", activeChapter.novel_id).order("number", { ascending: true });
-      if (!result.error && result.data?.length) {
-        setChapterList(result.data.map((item) => ({ id: String(item.id), number: Number(item.number), title: item.title, availableOffline: offlineIds.has(String(item.id)), downloaded: offlineIds.has(String(item.id)) })));
-        return;
-      }
-    } catch {
-      // Use downloaded metadata when online chapter metadata is unavailable.
-    }
-    setChapterList(offline.map((item) => ({ id: String(item.chapter_id), number: Number(item.chapter_number), title: item.chapter_title, availableOffline: true, downloaded: true })));
-  }
 
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
@@ -551,13 +555,13 @@ function Reader() {
     if (ttsActive || ttsPaused) setTimeout(() => speakSentence(currentSentenceIndex, next), 0);
   }
 
-  function updateSleepTimer(mode) {
+  function updateSleepTimer(mode, selectedAt = 0) {
     setSleepTimerMode(mode);
     clearTimeout(sleepTimerRef.current);
     sleepTimerEndsAtRef.current = 0;
     const minutes = Number(mode);
     if (minutes > 0) {
-      sleepTimerEndsAtRef.current = Date.now() + minutes * 60 * 1000;
+      sleepTimerEndsAtRef.current = selectedAt + minutes * 60 * 1000;
       setSleepRemainingSeconds(minutes * 60);
       sleepTimerRef.current = setTimeout(() => stopNarration(), minutes * 60 * 1000);
     } else setSleepRemainingSeconds(0);
@@ -570,7 +574,6 @@ function Reader() {
     setAudioReady(true);
     setNarrationOpen(true);
     speakSentence(0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapter, loading, narrationSupported, sentences.length]);
 
   useEffect(() => {
@@ -585,7 +588,6 @@ function Reader() {
       navigator.mediaSession.playbackState = "none";
       ["play", "pause", "previoustrack", "nexttrack"].forEach((action) => navigator.mediaSession.setActionHandler(action, null));
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapter, currentSentenceIndex, ttsActive, ttsPaused]);
 
   function cacheSpokenChapter() {
@@ -675,7 +677,7 @@ function Reader() {
               <button onClick={restartNarration} disabled={!sentences.length} aria-label="Почати главу спочатку">↻</button>
             </div>
             <div className="reader__speed-row"><label>Speed<select value={narrationSettings.rate} onChange={(e) => updateNarrationSetting("rate", Number(e.target.value))}><option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option><option value="2.5">2.5x</option><option value="3">3x</option></select></label></div>
-            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value)}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
+            <details className="reader__player-settings" open={playerExpanded}><summary>Voice & sleep timer</summary><label><input type="checkbox" checked={narrationSettings.autoNextChapter} onChange={(e) => updateNarrationSetting("autoNextChapter", e.target.checked)} /> Auto next chapter</label><label>Sleep timer <select value={sleepTimerMode} onChange={(e) => updateSleepTimer(e.target.value, Date.now())}><option value="off">Вимкнено</option><option value="15">15 хв</option><option value="30">30 хв</option><option value="60">60 хв</option></select></label>{sleepRemainingSeconds > 0 && <p className="reader__narration-status">Таймер сну: {formatClock(sleepRemainingSeconds)}</p>}<label>Голос <select value={narrationSettings.voiceURI} onChange={(e) => updateNarrationSetting("voiceURI", e.target.value)}><option value="">Best available voice</option>{rankedVoices.map((voice) => <option value={voice.voiceURI} key={voice.voiceURI}>{voice.name} ({voice.lang})</option>)}</select></label><p className="reader__narration-status">Voice quality depends on voices installed on your device and browser.</p><p className="reader__narration-status">{offlineMode ? "Офлайн: озвучення працює з завантаженим текстом, якщо WebView підтримує SpeechSynthesis." : "Онлайн: використовується браузерний SpeechSynthesis без платних TTS API."}</p><button type="button" onClick={cacheSpokenChapter}>{audioCacheState === "cached" ? "Аудіо-кеш готовий" : audioCacheState === "error" ? "Кеш недоступний" : "Кешувати озвучення"}</button><label>Pitch <input type="range" min="0" max="2" step="0.1" value={narrationSettings.pitch} onChange={(e) => updateNarrationSetting("pitch", Number(e.target.value))} /></label><label>Volume <input type="range" min="0" max="1" step="0.05" value={narrationSettings.volume} onChange={(e) => updateNarrationSetting("volume", Number(e.target.value))} /></label></details>
             <div className="reader__chapter-selector" aria-label="Chapter selector">
               <div className="reader__range-tabs">
                 {chapterRanges.map((range) => (
