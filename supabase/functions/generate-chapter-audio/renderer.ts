@@ -153,3 +153,15 @@ export async function renderChapterJob(db: Db, job: any, deps: { chapter: Chapte
   await db.from("audio_render_jobs").update({ status: "rendered", progress_percent: 100, updated_at: new Date().toISOString() }).eq("id", job.id);
   return { storagePath, waveform, reusedSegments: renderedSegments.filter((s) => s.reused).length };
 }
+
+export async function renderPreview(db: Db, options: { requestId: string; userId: string; provider: string; model: string; voice: string; text: string; language: string; bucket: string; expiresInSeconds: number }) {
+  const result = await renderAudioSegment(options.provider, { segmentId: `preview.${options.requestId}`, text: options.text, language: options.language, speaker: "Narrator", castSlot: options.voice, voiceProfile: options.voice, emotion: "neutral", intensity: 0.5, pace: 1, pauses: { beforeMs: 0, afterMs: 0 }, emphasis: [], format: "mp3" });
+  if (!result.ok) throw Object.assign(new Error(result.message), { code: result.code });
+  const expiresAt = new Date(Date.now() + options.expiresInSeconds * 1000).toISOString();
+  const path = `previews/${options.userId}/${options.requestId}.mp3`;
+  const upload = await db.storage.from(options.bucket).upload(path, result.audio, { contentType: result.contentType, upsert: false, metadata: { preview: "true", expires_at: expiresAt, request_id: options.requestId, provider: options.provider, model: options.model, character_count: String(options.text.length) } });
+  if (upload.error) throw Object.assign(new Error("Preview upload failed."), { code: "storage_upload_failed" });
+  const signed = await db.storage.from(options.bucket).createSignedUrl(path, options.expiresInSeconds);
+  if (signed.error || !signed.data?.signedUrl) throw Object.assign(new Error("Preview signed URL failed."), { code: "signed_url_failed" });
+  return { storagePath: path, signedUrl: signed.data.signedUrl, expiresAt };
+}

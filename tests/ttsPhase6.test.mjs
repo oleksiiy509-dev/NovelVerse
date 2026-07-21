@@ -52,3 +52,34 @@ test("server-only environment variables are documented", () => {
   assert.equal(envExample.includes(["VITE", "OPENAI"].join("_")), false);
   assert.equal(envExample.includes("VITE_SUPABASE_ANON_KEY"), true);
 });
+
+test("Phase 7 health diagnostics and preview workflow are production safe", () => {
+  assert.match(endpoint, /action === "health"/);
+  assert.match(endpoint, /ADMIN_REQUIRED/);
+  assert.match(endpoint, /NOVELVERSE_TTS_PREVIEW_MAX_CHARS", 250/);
+  assert.match(endpoint, /provider_configured/);
+  assert.match(endpoint, /ensurePrivateBucket/);
+  assert.match(endpoint, /renderPreview/);
+  assert.doesNotMatch(endpoint, /signed_url.*console\.log|OPENAI_API_KEY.*json/);
+});
+
+test("Phase 7 normalizes user-facing TTS errors", () => {
+  for (const code of ["TTS_API_KEY_MISSING", "TTS_RATE_LIMITED", "TTS_PROVIDER_UNAVAILABLE", "STORAGE_UPLOAD_FAILED", "SIGNED_URL_FAILED"]) assert.match(provider + endpoint + readFileSync("src/lib/chapterAudio.js", "utf8"), new RegExp(code));
+  assert.doesNotMatch(provider, /body\.slice/);
+});
+
+test("frontend admin test panel has no API key field and keeps device fallback", () => {
+  const admin = readFileSync("src/pages/Admin.jsx", "utf8");
+  const audio = readFileSync("src/lib/chapterAudio.js", "utf8");
+  assert.match(admin, /TTS Test/);
+  assert.match(admin, /Generate test preview/);
+  assert.match(admin, /audio controls/);
+  assert.doesNotMatch(admin, /OPENAI_API_KEY|api key/i);
+  assert.match(audio, /audioModes = \{ ai: "ai", device: "device" \}/);
+  assert.doesNotMatch(audio, /getPublicUrl\(data\.storage_path\)/);
+});
+
+test("repository frontend files do not reference OpenAI secrets", () => {
+  const files = ["src/lib/chapterAudio.js", "src/pages/Admin.jsx", "src/App.jsx"];
+  for (const file of files) assert.doesNotMatch(readFileSync(file, "utf8"), /OPENAI_API_KEY|VITE_OPENAI|sk-[A-Za-z0-9]/);
+});
