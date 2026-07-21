@@ -7,7 +7,19 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
+    files: ['voice-worker/**/*.{js,mjs,cjs}'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        process: 'readonly',
+        Buffer: 'readonly',
+      },
+    },
+  },
+  {
     files: ['**/*.{js,jsx}'],
+    ignores: ['voice-worker/**'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
