@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
-import { formatBytes, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
+import { deleteDownloadedNovel, formatBytes, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram } from "../lib/telegram";
 import { useTelegramMainButton } from "../hooks/useTelegram";
 import defaultCover from "../assets/default-cover.svg";
@@ -136,6 +136,7 @@ function Novel() {
   const [downloadedCount, setDownloadedCount] = useState(0);
   const [novelDownloading, setNovelDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const [downloadMessage, setDownloadMessage] = useState("");
   const cancelDownloadRef = useRef(false);
 
   const continueReading = useCallback(() => {
@@ -319,9 +320,11 @@ function Novel() {
     if (roughSize > 5 * 1024 * 1024 && !window.confirm(`Ця новела може зайняти приблизно ${formatBytes(roughSize)}. Продовжити?`)) return;
     setNovelDownloading(true);
     setDownloadError("");
+    setDownloadMessage("");
     cancelDownloadRef.current = false;
     try {
       const existing = new Set((await getDownloadedNovelChapters(id)).map((item) => item.chapter_id));
+      let saved = 0;
       for (const chapter of chapters) {
         if (cancelDownloadRef.current) break;
         if (existing.has(chapter.id)) continue;
@@ -332,12 +335,14 @@ function Novel() {
           full = data;
         }
         await saveDownloadedChapter(full, novel);
+        saved += 1;
         existing.add(chapter.id);
         setDownloadedCount(existing.size);
         await new Promise((resolve) => setTimeout(resolve, 80));
       }
+      setDownloadMessage(cancelDownloadRef.current ? "Завантаження скасовано. Уже збережені глави залишилися доступними." : saved ? "Завантаження завершено." : "Офлайн-копія вже актуальна.");
     } catch (error) {
-      setDownloadError(error.message || "Не вдалося завантажити новелу.");
+      setDownloadError(error.message || "Не вдалося завантажити новелу. Уже збережені глави не пошкоджено.");
     } finally {
       setNovelDownloading(false);
       refreshDownloadCount();
@@ -346,7 +351,18 @@ function Novel() {
 
   function cancelNovelDownload() {
     cancelDownloadRef.current = true;
+  }
+
+  async function removeNovelDownload() {
+    if (novelDownloading || !downloadedCount) return;
+    if (!window.confirm(`Видалити всі завантажені глави «${novel.title}»?`)) return;
+    setNovelDownloading(true);
+    setDownloadError("");
+    setDownloadMessage("");
+    await deleteDownloadedNovel(id);
+    setDownloadedCount(0);
     setNovelDownloading(false);
+    setDownloadMessage("Офлайн-копію видалено.");
   }
 
   function shareNovel() {
@@ -493,9 +509,10 @@ function Novel() {
             <button onClick={addToLibrary} disabled={saved} className={saved ? "novel-save novel-save--saved" : "novel-save"}>{saved ? "💖 Bookmarked" : "❤️ Bookmark"}</button>
             <button onClick={() => commentsRef.current?.scrollIntoView({ behavior: "smooth" })} className="novel-rate">⭐ Rate</button>
             <button onClick={shareNovel} className="novel-share">🔗 Share</button>
-            <button onClick={downloadNovel} disabled={!chapters.length || novelDownloading}>⬇️ Завантажити новелу</button>
+            <button onClick={downloadNovel} disabled={!chapters.length || novelDownloading}>⬇️ {downloadedCount ? "Оновити завантаження" : "Завантажити новелу"}</button>
+            <button onClick={removeNovelDownload} disabled={!downloadedCount || novelDownloading}>🗑 Видалити офлайн</button>
           </div>
-          <div className="novel-download-box"><strong>{downloadedCount}/{chapters.length} глав</strong><span>{chapters.length ? Math.round((downloadedCount / chapters.length) * 100) : 0}% завантажено</span><div className="novel-progress"><span style={{ width: `${chapters.length ? Math.round((downloadedCount / chapters.length) * 100) : 0}%` }} /></div>{novelDownloading && <button onClick={cancelNovelDownload}>Скасувати</button>}{downloadError && <p>{downloadError}</p>}</div>
+          <div className="novel-download-box"><strong>{downloadedCount ? "Офлайн-копія доступна" : "Не завантажено"} · {downloadedCount}/{chapters.length} глав</strong><span>{chapters.length ? Math.round((downloadedCount / chapters.length) * 100) : 0}% завантажено</span><div className="novel-progress"><span style={{ width: `${chapters.length ? Math.round((downloadedCount / chapters.length) * 100) : 0}%` }} /></div>{novelDownloading && <button onClick={cancelNovelDownload}>Скасувати після поточної глави</button>}{downloadMessage && <p className="novel-download-box__success">{downloadMessage}</p>}{downloadError && <p className="novel-download-box__error">{downloadError}</p>}</div>
         </div>
       </section>
 

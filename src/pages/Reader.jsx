@@ -79,6 +79,7 @@ function Reader() {
   const [downloadState, setDownloadState] = useState("idle");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [navMessage, setNavMessage] = useState("");
   const [settings, setSettings] = useState(getReaderSettings);
   const [settingsOpen, setSettingsOpen] = useState(getReaderPanelOpen);
   const [narrationOpen, setNarrationOpen] = useState(false);
@@ -218,7 +219,15 @@ function Reader() {
     setErrorMessage("");
     const currentUser = await getCurrentUser(supabase);
     setUser(currentUser);
-    const { data, error } = await supabase.from("chapters").select("*").eq("id", id).single();
+    let data = null;
+    let error = null;
+    try {
+      const result = await supabase.from("chapters").select("*").eq("id", id).single();
+      data = result.data;
+      error = result.error;
+    } catch (requestError) {
+      error = requestError;
+    }
     const cached = await getDownloadedChapter(id).catch(() => null);
 
     if (error && !cached) {
@@ -250,14 +259,24 @@ function Reader() {
     if (!read.includes(activeChapter.id)) await writeCloudBackedList(readKey, [...read, activeChapter.id], telegramCloudSetItem);
 
     await addReadingHistory(supabase, currentUser, { novel_id: activeChapter.novel_id, chapter_id: activeChapter.id, chapter_title: activeChapter.title });
+    setNavigatingChapter(false);
     setLoading(false);
   }
 
   async function loadAdjacentChapters(activeChapter) {
-    const [{ data: previous, error: prevError }, { data: next, error: nextError }] = await Promise.all([
-      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
-    ]);
+    let previous = null;
+    let next = null;
+    let prevError = null;
+    let nextError = null;
+    try {
+      [{ data: previous, error: prevError }, { data: next, error: nextError }] = await Promise.all([
+        supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).lt("number", activeChapter.number).order("number", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("chapters").select("id").eq("novel_id", activeChapter.novel_id).gt("number", activeChapter.number).order("number", { ascending: true }).limit(1).maybeSingle(),
+      ]);
+    } catch (requestError) {
+      prevError = requestError;
+      nextError = requestError;
+    }
     if (!prevError && !nextError) { setAdjacentChapters({ previous, next }); return; }
     const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
     const index = offline.findIndex((item) => item.chapter_id === activeChapter.id);
@@ -267,7 +286,11 @@ function Reader() {
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
     const target = direction < 0 ? adjacentChapters.previous : adjacentChapters.next;
-    if (!target) return;
+    if (!target) {
+      setNavMessage(direction > 0 ? "Наступна глава недоступна офлайн." : "Попередня глава недоступна офлайн.");
+      window.setTimeout(() => setNavMessage(""), 3500);
+      return;
+    }
     setNavigatingChapter(true);
     navigate(`/reader/${target.id}`, { preventScrollReset: true });
   }
@@ -414,6 +437,7 @@ function Reader() {
       <button className="reader__settings-toggle" onClick={() => setSettingsOpen(true)} aria-expanded={settingsOpen} aria-controls="reader-settings-panel">⚙️<span>Налаштування</span></button>
       <button className="reader__audio-toggle" onClick={() => narrationOpen ? setNarrationOpen(false) : openAudioPlayer()} aria-expanded={narrationOpen} aria-controls="reader-narration-panel">🔊<span>Аудіо</span></button>
       <div className="reader__reading-progress" aria-label={`Прогрес читання ${readingProgress}%`}><span style={{ width: `${readingProgress}%` }} /></div>
+      {navMessage && <div className="reader__offline-message">{navMessage}</div>}
       <div className="reader__controls reader__controls--top" aria-hidden={!controlsVisible}>
         <div className="reader__controls-inner" style={{ maxWidth: `${settings.textWidth}px` }}>
           <button className="reader__back reader__back--compact" onClick={() => navigate(`/novel/${chapter.novel_id}`)}>← Глави</button>
