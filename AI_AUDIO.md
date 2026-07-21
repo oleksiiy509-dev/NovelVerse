@@ -55,3 +55,7 @@ Telegram WebViews may block autoplay, may expose limited SpeechSynthesis voices,
 
 ## Security rules
 Never commit real TTS keys. Never expose provider secrets via `VITE_`. React uses Supabase anon access only for metadata and signed playback URL requests. Admin generation uses server-side authorization and the service role only inside the Edge Function.
+
+## Voice cast provider preparation
+
+AI Audio remains provider-neutral. Phase 2 stores abstract cast slots and future provider mapping fields (`provider_voice_id`, provider mapping JSON and `cloned_voice_id`) without calling paid TTS services. Real multi-voice generation should resolve each cast entry through `resolveProviderVoice`, validate consent and rights for any cloned voice, and fail safely when provider voice configuration is missing.

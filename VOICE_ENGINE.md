@@ -88,3 +88,9 @@ Reading a chapter never requires analysis. Standard narration still works with p
 - Real multi-voice TTS provider integration through server-side provider adapters.
 - Timestamp alignment and audio manifest generation.
 - Offline segment cache migrations with stale-analysis invalidation.
+
+## Phase 2 persistent cast
+
+Voice Engine Phase 2 adds a novel-level cast memory. Chapter analysis can continue to produce narration, dialogue, thought and system segments, but recurring characters now resolve through `novel_voice_cast` so the same canonical character keeps the same abstract cast slot across chapters. Manual locks and existing assignments are preserved during re-analysis.
+
+See `VOICE_CAST.md` for the full architecture, slot catalog, alias handling, merge workflow and validation rules.
