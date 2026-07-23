@@ -1,4 +1,9 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadEnv } from './env.js';
+
+const workerRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+loadEnv(path.join(workerRoot, '.env'));
 
 export const config = {
   port: Number(process.env.PORT || 8787),
