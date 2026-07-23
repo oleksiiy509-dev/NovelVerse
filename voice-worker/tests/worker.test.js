@@ -200,6 +200,63 @@ test('health marks Piper available for relative paths resolved from voice-worker
   }
 });
 
+test('CORS allows localhost development origin', async () => {
+  const ctx = await fixture();
+  const res = await ctx.request('/providers', { headers: { origin: 'http://localhost:5173' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  assert.match(res.headers.get('vary'), /Origin/);
+  await cleanup(ctx);
+});
+
+test('CORS allows 127.0.0.1 development origin', async () => {
+  const ctx = await fixture();
+  const res = await ctx.request('/health', { headers: { origin: 'http://127.0.0.1:5174' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), 'http://127.0.0.1:5174');
+  assert.match(res.headers.get('vary'), /Origin/);
+  await cleanup(ctx);
+});
+
+test('CORS blocks unknown origin by omitting allow-origin header', async () => {
+  const ctx = await fixture();
+  const res = await ctx.request('/health', { headers: { origin: 'http://example.com' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), null);
+  assert.match(res.headers.get('vary'), /Origin/);
+  await cleanup(ctx);
+});
+
+test('CORS OPTIONS preflight returns 204 for allowed origin', async () => {
+  const ctx = await fixture();
+  const res = await ctx.request('/synthesize', {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'http://localhost:5174',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'Content-Type, Authorization, X-NovelVerse-Token',
+    },
+  });
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get('access-control-allow-origin'), 'http://localhost:5174');
+  assert.equal(res.headers.get('access-control-allow-methods'), 'GET, POST, OPTIONS');
+  assert.equal(res.headers.get('access-control-allow-headers'), 'Content-Type, Authorization, X-NovelVerse-Token');
+  assert.match(res.headers.get('vary'), /Origin/);
+  await cleanup(ctx);
+});
+
+test('health includes CORS headers for allowed development origin', async () => {
+  const ctx = await fixture();
+  const res = await ctx.request('/health', { headers: { origin: 'http://localhost:5173' } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  assert.equal(res.headers.get('access-control-allow-methods'), 'GET, POST, OPTIONS');
+  assert.equal(res.headers.get('access-control-allow-headers'), 'Content-Type, Authorization, X-NovelVerse-Token');
+  assert.equal(res.headers.get('access-control-allow-credentials'), null);
+  assert.match(res.headers.get('vary'), /Origin/);
+  await cleanup(ctx);
+});
+
 test('voice list requires authentication', async () => {
   const ctx = await fixture();
   assert.equal((await ctx.request('/voices')).status, 401);
