@@ -2,6 +2,11 @@ const buckets = new Map();
 export function securityHeaders(_req, res, next) {
   res.setHeader('x-content-type-options', 'nosniff');
   res.setHeader('x-frame-options', 'DENY');
+  res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+  res.setHeader('access-control-allow-headers', 'content-type,authorization,accept');
+  res.setHeader('access-control-expose-headers', 'x-novelverse-metadata,content-type');
+  if (_req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 }
 export function rateLimiter(cfg) {

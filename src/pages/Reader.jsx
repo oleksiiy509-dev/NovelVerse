@@ -8,6 +8,7 @@ import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../
 import { fetchChapterVoiceSegments, fetchNovelVoiceCast, fetchReadyDirectorPlan } from "../lib/voiceEngine/client";
 import { hashDirectorContent } from "../lib/voiceDirector/director";
 import { getPreviewSettings } from "../lib/voiceEngine/voiceProfiles";
+import { defaultPiperVoiceId, getVoiceWorkerHealth, synthesizeVoiceWorkerAudio, splitTextForVoiceWorker } from "../lib/voiceWorker";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
 
@@ -173,6 +174,37 @@ function Reader() {
   const [playerExpanded, setPlayerExpanded] = useState(false);
   const pendingAutoplayRef = useRef(false);
   const aiAudioRef = useRef(null);
+  const localAudioRef = useRef(null);
+  const localAudioUrlRef = useRef("");
+  const localVoiceAbortRef = useRef(null);
+  const localVoiceStoppedRef = useRef(false);
+  const [localVoiceStatus, setLocalVoiceStatus] = useState({ online: false, piperAvailable: false, loading: true, error: "" });
+  const [localVoiceState, setLocalVoiceState] = useState("idle");
+  const [localVoiceError, setLocalVoiceError] = useState("");
+  const [localVoiceChunkIndex, setLocalVoiceChunkIndex] = useState(0);
+  const [localVoiceChunkTotal, setLocalVoiceChunkTotal] = useState(0);
+
+
+  const revokeLocalAudioUrl = useCallback(() => {
+    if (localAudioUrlRef.current) URL.revokeObjectURL(localAudioUrlRef.current);
+    localAudioUrlRef.current = "";
+  }, []);
+
+  const stopLocalVoice = useCallback(() => {
+    localVoiceStoppedRef.current = true;
+    localVoiceAbortRef.current?.abort();
+    localVoiceAbortRef.current = null;
+    if (localAudioRef.current) { localAudioRef.current.pause(); localAudioRef.current.src = ""; localAudioRef.current = null; }
+    revokeLocalAudioUrl();
+    setLocalVoiceState("idle");
+    setAudioAnnouncement("Локальне Piper озвучення зупинено.");
+  }, [revokeLocalAudioUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getVoiceWorkerHealth().then((health) => { if (!cancelled) setLocalVoiceStatus({ ...health, loading: false, error: "" }); }).catch((error) => { if (!cancelled) setLocalVoiceStatus({ online: false, piperAvailable: false, loading: false, error: error.message || "Voice Worker offline" }); });
+    return () => { cancelled = true; stopLocalVoice(); };
+  }, [stopLocalVoice]);
 
   const toggleBookmark = useCallback(async () => {
     if (!chapter) return;
@@ -457,8 +489,9 @@ function Reader() {
     clearTimeout(sleepTimerRef.current);
     sleepTimerEndsAtRef.current = 0;
     stopAiAudio();
+    stopLocalVoice();
     setAudioAnnouncement("Озвучення зупинено.");
-  }, [narrationSupported, stopAiAudio]);
+  }, [narrationSupported, stopAiAudio, stopLocalVoice]);
 
   async function goToAdjacentChapter(direction) {
     if (!chapter || navigatingChapter) return;
@@ -680,6 +713,43 @@ function Reader() {
     return () => { audio.pause(); audio.removeEventListener("timeupdate", saveTime); audio.removeEventListener("loadedmetadata", saveTime); audio.removeEventListener("play", onPlay); audio.removeEventListener("pause", onPause); audio.removeEventListener("ended", onEnded); };
   }, [aiAudio?.duration_seconds, aiAudioTime, chapter, handleChapterFinished]);
 
+
+  async function playLocalVoiceFromChunk(startIndex = 0) {
+    if (!chapter) return;
+    stopNarration();
+    const chunks = splitTextForVoiceWorker(stripReaderMarkup(chapter.content || ""));
+    setLocalVoiceChunkTotal(chunks.length);
+    if (!localVoiceStatus.online || !localVoiceStatus.piperAvailable) {
+      setLocalVoiceError("Local Voice Worker or Piper is unavailable; using Device Voice fallback.");
+      setNarrationOpen(true); setAudioReady(true); speakSentence(currentSentenceIndex); return;
+    }
+    if (!chunks.length) return;
+    localVoiceStoppedRef.current = false;
+    setNarrationOpen(true); setAudioReady(true); setLocalVoiceError(""); setLocalVoiceState("loading");
+    for (let index = startIndex; index < chunks.length; index += 1) {
+      if (localVoiceStoppedRef.current) return;
+      setLocalVoiceChunkIndex(index);
+      const controller = new AbortController();
+      localVoiceAbortRef.current = controller;
+      try {
+        const result = await synthesizeVoiceWorkerAudio({ text: chunks[index], provider: "piper", voice: defaultPiperVoiceId, language: "uk", format: "wav", signal: controller.signal });
+        if (localVoiceStoppedRef.current) return;
+        revokeLocalAudioUrl();
+        localAudioUrlRef.current = URL.createObjectURL(result.blob);
+        const audio = new Audio(localAudioUrlRef.current);
+        localAudioRef.current = audio;
+        setLocalVoiceState("playing");
+        await new Promise((resolve, reject) => { audio.onended = resolve; audio.onerror = () => reject(new Error("Local Piper audio playback failed")); audio.play().catch(reject); });
+      } catch (error) {
+        if (controller.signal.aborted || localVoiceStoppedRef.current) return;
+        setLocalVoiceState("error"); setLocalVoiceError(`${error.message || "Local Piper synthesis failed"}. Device Voice fallback remains available.`); return;
+      } finally { localVoiceAbortRef.current = null; }
+    }
+    setLocalVoiceState("idle"); setAudioAnnouncement("Локальне Piper озвучення глави завершено."); handleChapterFinished();
+  }
+
+  function retryLocalVoice() { playLocalVoiceFromChunk(localVoiceChunkIndex); }
+
   function toggleAiAudio() {
     const audio = aiAudioRef.current;
     if (!audio || !aiAudioReady) {
@@ -762,7 +832,7 @@ function Reader() {
   return (
     <main className={`reader reader--${settings.theme} ${controlsVisible ? "reader--controls-visible" : "reader--immersive"}`}>
       <button className="reader__settings-toggle" onClick={() => setSettingsOpen(true)} aria-expanded={settingsOpen} aria-controls="reader-settings-panel">⚙️<span>Налаштування</span></button>
-      <button className="reader__audio-toggle" onClick={() => narrationOpen ? setNarrationOpen(false) : openAudioPlayer()} aria-expanded={narrationOpen} aria-controls="reader-narration-panel">🔊<span>Аудіо</span></button>
+      <button className="reader__audio-toggle" onClick={() => narrationOpen ? setNarrationOpen(false) : openAudioPlayer()} aria-expanded={narrationOpen} aria-controls="reader-narration-panel">🔊<span>Аудіо</span></button><button className="reader__audio-toggle reader__audio-toggle--piper" onClick={() => playLocalVoiceFromChunk(0)} disabled={localVoiceState === "loading" || localVoiceState === "playing"}>🎙️<span>Озвучити</span></button>
       <div className="sr-only" aria-live="polite">{audioAnnouncement}</div>
       <div className="reader__reading-progress" aria-label={`Прогрес читання ${readingProgress}%`}><span style={{ width: `${readingProgress}%` }} /></div>
       {navMessage && <div className="reader__offline-message">{navMessage}</div>}
@@ -831,7 +901,7 @@ function Reader() {
           <p className="reader__narration-warning">Озвучення недоступне у цьому браузері. AI Audio: {aiAudioStatus}. Device Voice requires SpeechSynthesis.</p>
         ) : (
           <>
-            <p className="reader__narration-status">Cinematic/Classic Audio: {offlineMode ? "offline unavailable" : aiAudioStatus === "ready" ? "ready" : aiAudioStatus}. {narrationMode !== audioModes.device ? "Using Device Voice fallback." : "Device Voice selected."}</p>
+            <p className="reader__narration-status">Local Piper: {localVoiceStatus.loading ? "checking…" : localVoiceStatus.piperAvailable ? "ready" : "unavailable"} · chunk {Math.min(localVoiceChunkIndex + 1, localVoiceChunkTotal || 1)}/{localVoiceChunkTotal || 1} · {localVoiceState}. {localVoiceError}</p><div className="reader__media-controls"><button type="button" onClick={() => playLocalVoiceFromChunk(0)} disabled={localVoiceState === "loading" || localVoiceState === "playing"}>Озвучити</button><button type="button" onClick={stopLocalVoice} disabled={localVoiceState !== "loading" && localVoiceState !== "playing"}>Stop Piper</button><button type="button" onClick={retryLocalVoice} disabled={localVoiceState !== "error"}>Retry Piper</button></div><p className="reader__narration-status">Cinematic/Classic Audio: {offlineMode ? "offline unavailable" : aiAudioStatus === "ready" ? "ready" : aiAudioStatus}. {narrationMode !== audioModes.device ? "Using Device Voice fallback." : "Device Voice selected."}</p>
             <input className="reader__progress-slider" type="range" min="0" max={Math.max(sentences.length - 1, 0)} value={currentSentenceIndex} onChange={(e) => scrubNarration(e.target.value)} disabled={!sentences.length} aria-label="Прогрес озвучення" />
             <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{sentenceProgress}% · {ttsActive && !ttsPaused ? "Playing" : ttsPaused ? "Paused" : "Ready"}</span><span>{formatClock(estimatedTotalSeconds)}</span></div><div className="reader__player-meta"><span>Voice: {selectedVoice ? `${selectedVoice.name} (${selectedVoice.lang})` : "Best available voice"}</span><span>Speed: {narrationSettings.rate}x</span></div>
             <div className="reader__media-controls">
