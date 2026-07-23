@@ -8,7 +8,8 @@ import { shareToTelegram, telegramCloudGetItem, telegramCloudSetItem } from "../
 import { fetchChapterVoiceSegments, fetchNovelVoiceCast, fetchReadyDirectorPlan } from "../lib/voiceEngine/client";
 import { hashDirectorContent } from "../lib/voiceDirector/director";
 import { directTextPerformance, loadAiDirector2Settings, narrationPresets, saveAiDirector2Settings } from "../lib/voiceDirector/aiDirector2";
-import { getPreviewSettings } from "../lib/voiceEngine/voiceProfiles";
+import { getPreviewSettings, voiceProfiles } from "../lib/voiceEngine/voiceProfiles";
+import { buildPersistentCharacterRegistry, loadCharacterRegistry, resolveCharacterVoiceForSegment, updateCharacterProfile } from "../lib/characterVoiceEngine";
 import { defaultPiperVoiceId, getVoiceWorkerHealth, synthesizeVoiceWorkerAudio, splitTextForVoiceWorker } from "../lib/voiceWorker";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
@@ -190,6 +191,8 @@ function Reader() {
   const [localVoiceError, setLocalVoiceError] = useState("");
   const [localVoiceChunkIndex, setLocalVoiceChunkIndex] = useState(0);
   const [localVoiceChunkTotal, setLocalVoiceChunkTotal] = useState(0);
+  const [characterRegistry, setCharacterRegistry] = useState(() => loadCharacterRegistry("global"));
+  const [characterStudioOpen, setCharacterStudioOpen] = useState(false);
 
 
   const revokeLocalAudioUrl = useCallback(() => {
@@ -244,7 +247,7 @@ function Reader() {
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapterContent), [chapterContent]);
   const plainSentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex, voiceProfile: "narrator_neutral" }))), [paragraphs]);
   const castByCharacter = useMemo(() => new Map(voiceCast.map((entry) => [String(entry.character_id), entry])), [voiceCast]);
-  const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => { const castEntry = castByCharacter.get(String(segment.speaker_id)); return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: castEntry?.voice_profile || segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: segment.emotion, castSlot: castEntry?.cast_slot || (segment.segment_type === "narration" ? "narrator_main" : "unknown_01"), pitchOffset: Number(castEntry?.pitch_offset || 0), rateOffset: Number(castEntry?.rate_offset || 0) })); }), [voiceSegments, castByCharacter]);
+  const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => { const castEntry = castByCharacter.get(String(segment.speaker_id)); const registryProfile = resolveCharacterVoiceForSegment(segment, characterRegistry); const isNarration = (segment.segment_type || segment.type) === "narration"; return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: isNarration ? registryProfile.preferredVoice : registryProfile.preferredVoice || castEntry?.voice_profile || segment.voice_profile || "unknown_neutral", speakerName: isNarration ? registryProfile.name : registryProfile.name || segment.speaker_name, emotion: segment.emotion, castSlot: isNarration ? "narrator_main" : castEntry?.cast_slot || registryProfile.id || "unknown_01", pitchOffset: Number(castEntry?.pitch_offset || registryProfile.narrationOverrides?.pitchOffset || 0), rateOffset: Number(castEntry?.rate_offset || registryProfile.narrationOverrides?.rateOffset || 0), characterId: registryProfile.id })); }), [voiceSegments, castByCharacter, characterRegistry]);
   const directorSentences = useMemo(() => (directorPlan?.director_segment_settings || directorPlan?.segmentSettings || []).sort((a,b)=>Number(a.segment_index ?? a.segmentIndex)-Number(b.segment_index ?? b.segmentIndex)).flatMap((setting) => { const segment = voiceSegments.find((row) => Number(row.segment_index) === Number(setting.segment_index ?? setting.segmentIndex)); if (!segment) return []; return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: Number(setting.segment_index ?? setting.segmentIndex), voiceProfile: setting.voice_profile || setting.voiceProfile || segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: setting.emotion, castSlot: setting.cast_slot || setting.castSlot || "unknown_01", pitchOffset: Number(setting.pitch ?? 0), rateOffset: Number(setting.rate ?? 1) - 1, pauseAfterMs: Number(setting.pause_after_ms ?? setting.pauseAfterMs ?? 0), sceneTitle: (directorPlan?.director_scenes || directorPlan?.scenes || []).find((scene) => Number(setting.segment_index ?? setting.segmentIndex) >= Number(scene.start_segment_index ?? scene.startSegmentIndex) && Number(setting.segment_index ?? setting.segmentIndex) <= Number(scene.end_segment_index ?? scene.endSegmentIndex))?.title })); }), [directorPlan, voiceSegments]);
   const sentences = useMemo(() => (directorPreview && directorSentences.length ? directorSentences : structuredPreview && structuredSentences.length ? structuredSentences : plainSentences), [directorPreview, directorSentences, plainSentences, structuredPreview, structuredSentences]);
   const currentDirectorPerformance = useMemo(() => directTextPerformance(sentences[currentSentenceIndex]?.text || "", { settings: narrationSettings.aiDirector2, speakerName: sentences[currentSentenceIndex]?.speakerName, segmentType: sentences[currentSentenceIndex]?.castSlot === "narrator_main" ? "narration" : sentences[currentSentenceIndex]?.castSlot ? "dialogue" : "narration" }), [currentSentenceIndex, narrationSettings.aiDirector2, sentences]);
@@ -337,6 +340,8 @@ function Reader() {
     setAiAudioDownloaded(localStorage.getItem(getAudioDownloadKey(activeChapter.id)) === "true");
     setAiAudioTime(Number(localStorage.getItem(getAudioPositionKey(activeChapter.id))) || 0);
     setChapter(activeChapter);
+    const nextRegistry = buildPersistentCharacterRegistry({ novelId: activeChapter.novel_id, content: activeChapter.content, knownCharacters: activeChapter.characters || activeChapter.voice_characters || [] });
+    setCharacterRegistry(nextRegistry);
     const [loadedVoiceSegments, loadedCast] = await Promise.all([
       data ? fetchChapterVoiceSegments(activeChapter.id) : Promise.resolve(activeChapter.voice_segments || []),
       data ? fetchNovelVoiceCast(activeChapter.novel_id) : Promise.resolve(activeChapter.voice_cast || []),
@@ -871,13 +876,19 @@ function Reader() {
     setNarrationOpen(true);
   }
 
+  function updateCharacterVoice(characterId, patch) {
+    if (!chapter) return;
+    setCharacterRegistry(updateCharacterProfile(chapter.novel_id, characterId, patch));
+    setStructuredPreview(true);
+  }
+
   if (loading) return <main className="reader reader--dark"><div className="reader__shell"><div className="skeleton reader__skeleton" /></div></main>;
   if (errorMessage) return <main className="reader reader--dark"><div className="reader__shell"><div className="error-state">{errorMessage}</div></div></main>;
 
   return (
     <main className={`reader reader--${settings.theme} ${controlsVisible ? "reader--controls-visible" : "reader--immersive"}`}>
       <button className="reader__settings-toggle" onClick={() => setSettingsOpen(true)} aria-expanded={settingsOpen} aria-controls="reader-settings-panel">⚙️<span>Налаштування</span></button>
-      <button className="reader__audio-toggle" onClick={() => narrationOpen ? setNarrationOpen(false) : openAudioPlayer()} aria-expanded={narrationOpen} aria-controls="reader-narration-panel">🔊<span>Аудіо</span></button><button className="reader__audio-toggle reader__audio-toggle--piper" onClick={() => playLocalVoiceFromChunk(0)} disabled={localVoiceState === "loading" || localVoiceState === "playing"}>🎙️<span>Озвучити</span></button>
+      <button className="reader__audio-toggle" onClick={() => narrationOpen ? setNarrationOpen(false) : openAudioPlayer()} aria-expanded={narrationOpen} aria-controls="reader-narration-panel">🔊<span>Аудіо</span></button><button className="reader__audio-toggle reader__audio-toggle--piper" onClick={() => setCharacterStudioOpen(true)}>🎭<span>Voices</span></button><button className="reader__audio-toggle reader__audio-toggle--piper" onClick={() => playLocalVoiceFromChunk(0)} disabled={localVoiceState === "loading" || localVoiceState === "playing"}>🎙️<span>Озвучити</span></button>
       <div className="sr-only" aria-live="polite">{audioAnnouncement}</div>
       <div className="reader__reading-progress" aria-label={`Прогрес читання ${readingProgress}%`}><span style={{ width: `${readingProgress}%` }} /></div>
       {navMessage && <div className="reader__offline-message">{navMessage}</div>}
@@ -922,6 +933,22 @@ function Reader() {
         <button onClick={toggleBookmark}>{bookmarked ? "🔖 Додано" : "🔖 Закладка"}</button>
         <button onClick={shareChapter}>📤 Поділитися в Telegram</button>
         <button onClick={toggleDownloadChapter}>{downloadState === "loading" ? "Завантаження…" : downloadState === "downloaded" ? "Завантажено · видалити" : downloadState === "error" ? "Помилка — повторити" : "Завантажити главу"}</button>
+      </section>
+
+      {characterStudioOpen && <div className="reader__settings-scrim" onClick={() => setCharacterStudioOpen(false)} />}
+      <section className={`reader__settings ${characterStudioOpen ? "reader__settings--open" : ""}`} aria-label="Character Voice Studio" aria-hidden={!characterStudioOpen}>
+        <div className="reader__settings-header"><h2>🎭 Character Voice Studio</h2><button onClick={() => setCharacterStudioOpen(false)} aria-label="Close Character Voice Studio">✕</button></div>
+        <p className="reader__narration-status">Persistent registry saved on this device. Narration always uses the narrator profile; dialogue switches by detected speaker when Structured Voice Engine preview is enabled.</p>
+        <button type="button" onClick={() => { if (chapter) setCharacterRegistry(buildPersistentCharacterRegistry({ novelId: chapter.novel_id, content: chapter.content, existingRegistry: characterRegistry })); }}>Re-detect characters</button>
+        {characterRegistry.characters.map((character) => (
+          <div className="reader__character-studio-row" key={character.id}>
+            <strong>{character.name}</strong>
+            <label>Gender<select value={character.gender} onChange={(e) => updateCharacterVoice(character.id, { gender: e.target.value })}><option value="unknown">unknown</option><option value="neutral">neutral</option><option value="male">male</option><option value="female">female</option></select></label>
+            <label>Age<select value={character.ageCategory} onChange={(e) => updateCharacterVoice(character.id, { ageCategory: e.target.value })}><option value="unknown">unknown</option><option value="child">child</option><option value="teenager">teenager</option><option value="young">young</option><option value="adult">adult</option><option value="elderly">elderly</option></select></label>
+            <label>Preferred voice<select value={character.preferredVoice} onChange={(e) => updateCharacterVoice(character.id, { preferredVoice: e.target.value })}>{voiceProfiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.label}</option>)}</select></label>
+            <label>Rate override<input type="number" min="0.5" max="1.5" step="0.05" value={character.narrationOverrides?.rate || 1} onChange={(e) => updateCharacterVoice(character.id, { narrationOverrides: { ...character.narrationOverrides, rate: Number(e.target.value) } })} /></label>
+          </div>
+        ))}
       </section>
       <section id="reader-narration-panel" className={`reader__narration-player ${narrationOpen ? "reader__narration-player--open" : ""} ${playerExpanded ? "reader__narration-player--expanded" : "reader__narration-player--mini"}`} aria-label="Озвучення глави" aria-hidden={!narrationOpen}>
         <button className="reader__player-grip" onClick={() => setPlayerExpanded((expanded) => !expanded)} aria-label={playerExpanded ? "Згорнути аудіоплеєр" : "Розгорнути аудіоплеєр"} />
