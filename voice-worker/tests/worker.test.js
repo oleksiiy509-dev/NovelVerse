@@ -169,6 +169,37 @@ test('health marks Piper available when configured Windows-style paths exist', a
   }
 });
 
+test('health marks Piper available for relative paths resolved from voice-worker root', async () => {
+  const previous = {
+    PIPER_BIN: process.env.PIPER_BIN,
+    PIPER_MODEL: process.env.PIPER_MODEL,
+    PIPER_VOICE: process.env.PIPER_VOICE,
+  };
+  const bin = path.join(workerRoot, 'test-piper-bin');
+  const model = path.join(workerRoot, 'test-piper-model.onnx');
+  await writeFile(bin, 'test piper executable');
+  await writeFile(model, 'test piper model');
+  process.env.PIPER_BIN = 'test-piper-bin';
+  process.env.PIPER_MODEL = 'test-piper-model.onnx';
+  process.env.PIPER_VOICE = 'relative-test-voice';
+
+  const ctx = await fixture();
+  const res = await ctx.request('/health');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  const piper = body.providers.find((provider) => provider.id === 'piper');
+  assert.equal(piper.available, true);
+  assert.ok(body.availableVoices.some((voice) => voice.id === 'relative-test-voice'));
+  assert.ok(!('debug' in body));
+
+  await cleanup(ctx);
+  await rm(bin, { force: true });
+  await rm(model, { force: true });
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
+});
+
 test('voice list requires authentication', async () => {
   const ctx = await fixture();
   assert.equal((await ctx.request('/voices')).status, 401);
