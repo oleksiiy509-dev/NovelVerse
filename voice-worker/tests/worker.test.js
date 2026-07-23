@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../api/app.js';
@@ -39,6 +39,40 @@ test('providers endpoint returns public provider status', async () => {
   assert.equal(piper.status.modelConfigured, false);
   assert.ok(!('synthesize' in piper));
   await cleanup(ctx);
+});
+
+
+test('health marks Piper available when configured Windows-style paths exist', async () => {
+  const previous = {
+    PIPER_BIN: process.env.PIPER_BIN,
+    PIPER_MODEL: process.env.PIPER_MODEL,
+    PIPER_VOICE: process.env.PIPER_VOICE,
+    DEFAULT_LANGUAGE: process.env.DEFAULT_LANGUAGE,
+  };
+  const root = await mkdtemp(path.join(os.tmpdir(), 'nv-piper-'));
+  const bin = path.join(root, 'piper.exe');
+  const model = path.join(root, 'voices', 'uk_UA-lada-medium.onnx');
+  await mkdir(path.dirname(model), { recursive: true });
+  await writeFile(bin, 'test piper executable');
+  await writeFile(model, 'test piper model');
+  process.env.PIPER_BIN = `"${bin}"`;
+  process.env.PIPER_MODEL = `"${model}"`;
+  process.env.PIPER_VOICE = 'uk_UA-lada-medium';
+  process.env.DEFAULT_LANGUAGE = 'uk';
+
+  const ctx = await fixture();
+  const res = await ctx.request('/health');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  const piper = body.providers.find((provider) => provider.id === 'piper');
+  assert.equal(piper.available, true);
+  assert.ok(body.availableVoices.some((voice) => voice.id === 'uk_UA-lada-medium'));
+
+  await cleanup(ctx);
+  await rm(root, { recursive: true, force: true });
+  for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
 });
 
 test('voice list requires authentication', async () => {
