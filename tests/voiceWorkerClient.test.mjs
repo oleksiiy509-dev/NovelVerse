@@ -15,7 +15,9 @@ test("frontend voice worker client uses local defaults and public endpoints only
   assert.match(workerClient, /"\/preview"/);
   assert.match(workerClient, /provider = "piper"/);
   assert.match(workerClient, /uk_UA-ukrainian_tts-medium/);
-  assert.doesNotMatch(workerClient, /TOKEN|SECRET|Authorization|Bearer/);
+  assert.match(workerClient, /VITE_VOICE_WORKER_TOKEN/);
+  assert.match(workerClient, /Authorization: `Bearer/);
+  assert.doesNotMatch(workerClient, /SECRET/);
 });
 
 test("reader chunks local Piper synthesis and exposes controls", () => {
@@ -36,7 +38,8 @@ test("universal voice studio displays worker and Piper status with voice list pr
 });
 
 test("voice worker exposes CORS headers for local Vite development", () => {
-  assert.match(workerSecurity, /access-control-allow-origin', '\*'/);
-  assert.match(workerSecurity, /access-control-allow-methods', 'GET,POST,OPTIONS'/);
-  assert.match(workerSecurity, /access-control-expose-headers', 'x-novelverse-metadata,content-type'/);
+  assert.match(workerSecurity, /allowedCorsOrigins/);
+  assert.match(workerSecurity, /access-control-allow-origin', origin/);
+  assert.match(workerSecurity, /access-control-allow-methods', corsMethods/);
+  assert.match(workerSecurity, /access-control-expose-headers', 'X-NovelVerse-Metadata, Content-Type'/);
 });
