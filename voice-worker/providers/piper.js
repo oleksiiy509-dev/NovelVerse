@@ -4,9 +4,32 @@ import { readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+function getStatus() {
+  const binConfigured = Boolean(process.env.PIPER_BIN);
+  const modelConfigured = Boolean(process.env.PIPER_MODEL);
+  const binExists = binConfigured && existsSync(process.env.PIPER_BIN);
+  const modelExists = modelConfigured && existsSync(process.env.PIPER_MODEL);
+  const available = Boolean(binExists && modelExists);
+  const reason = available ? null : [
+    !binConfigured && 'PIPER_BIN is not configured',
+    binConfigured && !binExists && 'PIPER_BIN does not exist',
+    !modelConfigured && 'PIPER_MODEL is not configured',
+    modelConfigured && !modelExists && 'PIPER_MODEL does not exist',
+  ].filter(Boolean).join('; ');
+  return { available, reason, binConfigured, binExists, modelConfigured, modelExists };
+}
+
 export function piperProvider() {
-  const available = Boolean(process.env.PIPER_BIN && existsSync(process.env.PIPER_BIN) && process.env.PIPER_MODEL && existsSync(process.env.PIPER_MODEL));
-  return { id: 'piper', label: 'Piper', available, languages: ['en', 'uk', 'ru'], voices: [{ id: process.env.PIPER_VOICE || 'piper-default', name: 'Piper local voice', language: 'en' }], synthesize };
+  const status = getStatus();
+  return {
+    id: 'piper',
+    label: 'Piper',
+    available: status.available,
+    status,
+    languages: ['en', 'uk', 'ru'],
+    voices: [{ id: process.env.PIPER_VOICE || 'uk_UA-lada-medium', name: 'Piper local voice', language: process.env.DEFAULT_LANGUAGE || 'uk' }],
+    synthesize,
+  };
 }
 async function synthesize(req) {
   const out = path.join(os.tmpdir(), `novelverse-piper-${Date.now()}.wav`);
@@ -16,5 +39,5 @@ async function synthesize(req) {
     child.on('error', reject); child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`piper exited ${code}`)));
   });
   const audio = await readFile(out); await rm(out, { force: true });
-  return { audio, metadata: { provider: 'piper' } };
+  return { audio, metadata: { provider: 'piper', voice: process.env.PIPER_VOICE || 'uk_UA-lada-medium' } };
 }

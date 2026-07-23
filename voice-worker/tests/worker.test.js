@@ -27,6 +27,20 @@ test('health returns provider status and runtime details', async () => {
   await cleanup(ctx);
 });
 
+
+test('providers endpoint returns public provider status', async () => {
+  const ctx = await fixture();
+  const res = await ctx.request('/providers');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  const piper = body.providers.find((provider) => provider.id === 'piper');
+  assert.equal(body.ok, true);
+  assert.equal(piper.available, false);
+  assert.equal(piper.status.modelConfigured, false);
+  assert.ok(!('synthesize' in piper));
+  await cleanup(ctx);
+});
+
 test('voice list requires authentication', async () => {
   const ctx = await fixture();
   assert.equal((await ctx.request('/voices')).status, 401);

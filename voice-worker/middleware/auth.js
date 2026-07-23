@@ -1,4 +1,4 @@
-const openPaths = new Set(['/health']);
+const openPaths = new Set(['/health', '/providers']);
 
 export function requireBearerToken(cfg) {
   return (req, res, next) => {

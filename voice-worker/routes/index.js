@@ -11,6 +11,7 @@ router.get('/health', (req, res) => {
   const providers = getProviders(req.app.locals.config);
   res.json({ ok: true, version, providers: providers.map(({ id, available }) => ({ id, available })), availableVoices: providers.flatMap((p) => p.voices || []), uptime: process.uptime(), memoryUsage: process.memoryUsage() });
 });
+router.get('/providers', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
 router.get('/voices', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
 router.get('/status', (req, res) => res.json({ ok: true, defaultProvider: req.app.locals.config.defaultProvider, uptime: process.uptime() }));
 
