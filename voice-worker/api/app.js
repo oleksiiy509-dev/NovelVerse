@@ -1,3 +1,4 @@
+import '../utils/load-env.js';
 import express from 'express';
 import { config } from '../utils/config.js';
 import { errorHandler, notFound } from '../middleware/errors.js';

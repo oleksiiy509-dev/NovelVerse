@@ -1,3 +1,4 @@
+import '../utils/load-env.js';
 import { createApp } from './app.js';
 import { config } from '../utils/config.js';
 

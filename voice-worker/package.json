@@ -10,6 +10,11 @@
     "lint": "node utils/lint-check.js",
     "test": "node --test tests/*.test.js"
   },
-  "engines": { "node": ">=20" },
-  "dependencies": { "express": "file:vendor/express" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "file:vendor/dotenv",
+    "express": "file:vendor/express"
+  }
 }
