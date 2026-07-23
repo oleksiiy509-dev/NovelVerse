@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createApp } from '../api/app.js';
+import { requireBearerToken } from '../middleware/auth.js';
 
 async function fixture(overrides = {}) {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'nv-worker-'));
@@ -264,6 +265,34 @@ test('voice list requires authentication', async () => {
   assert.equal(res.status, 200);
   assert.ok((await res.json()).providers.find((provider) => provider.id === 'mock'));
   await cleanup(ctx);
+});
+
+
+test('localhost POST synthesize allows missing token when TOKEN is empty for local development', async () => {
+  const ctx = await fixture({ token: '' });
+  const res = await ctx.request('/synthesize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Hello local dev.', provider: 'mock', format: 'wav' }) });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /audio\/wav/);
+  await cleanup(ctx);
+});
+
+test('localhost POST synthesize accepts bearer token when TOKEN is configured', async () => {
+  const ctx = await fixture({ token: 'secret' });
+  const res = await ctx.request('/synthesize', auth({ text: 'Hello token.', provider: 'mock', format: 'wav' }));
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /audio\/wav/);
+  await cleanup(ctx);
+});
+
+test('remote POST synthesize without token returns clear JSON unauthorized error', async () => {
+  const middleware = requireBearerToken({ token: 'change-me' });
+  let statusCode = 200;
+  let payload;
+  const req = { path: '/synthesize', headers: { host: 'voice.example.com' }, socket: { remoteAddress: '203.0.113.10' } };
+  const res = { status(code) { statusCode = code; return this; }, json(body) { payload = body; return this; } };
+  middleware(req, res, () => assert.fail('remote request without token should not continue'));
+  assert.equal(statusCode, 401);
+  assert.deepEqual(payload, { ok: false, error: 'unauthorized', message: 'Voice Worker authentication required. Send Authorization: Bearer <TOKEN>.' });
 });
 
 test('preview generates audio and metadata', async () => {

@@ -2,6 +2,15 @@ export const defaultVoiceWorkerUrl = "http://127.0.0.1:8787";
 export const defaultPiperVoiceId = "uk_UA-ukrainian_tts-medium";
 export const safeVoiceWorkerChunkChars = 2800;
 
+export function getVoiceWorkerToken() {
+  return String(import.meta.env?.VITE_VOICE_WORKER_TOKEN || "").trim();
+}
+
+function voiceWorkerHeaders(extra = {}) {
+  const token = getVoiceWorkerToken();
+  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
+
 export function getVoiceWorkerUrl() {
   return String(import.meta.env?.VITE_VOICE_WORKER_URL || defaultVoiceWorkerUrl).replace(/\/+$/, "");
 }
@@ -13,7 +22,7 @@ export function parseWorkerMetadata(headers) {
 }
 
 async function requestJson(path) {
-  const res = await fetch(`${getVoiceWorkerUrl()}${path}`, { headers: { accept: "application/json" } });
+  const res = await fetch(`${getVoiceWorkerUrl()}${path}`, { headers: voiceWorkerHeaders({ accept: "application/json" }) });
   if (!res.ok) throw Object.assign(new Error(`Voice Worker ${path} returned HTTP ${res.status}`), { status: res.status });
   return res.json();
 }
@@ -29,7 +38,7 @@ export async function synthesizeVoiceWorkerAudio({ text, provider = "piper", voi
   const body = { text: String(text || "").trim(), provider, voice, language, format };
   const res = await fetch(`${getVoiceWorkerUrl()}${preview ? "/preview" : "/synthesize"}`, {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "audio/*" },
+    headers: voiceWorkerHeaders({ "content-type": "application/json", accept: "audio/*" }),
     body: JSON.stringify(body),
     signal,
   });
