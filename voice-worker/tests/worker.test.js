@@ -82,6 +82,31 @@ test('loads Piper paths from voice-worker/.env when started from repository root
   });
 });
 
+
+test('loads voice-worker .env before direct config imports from a Windows-style launch', async () => {
+  const windowsBin = String.raw`C:\NovelVerse\voice-worker\piper\piper.exe`;
+  const windowsModel = String.raw`C:\NovelVerse\voice-worker\piper\voices\uk_UA-lada-medium.onnx`;
+  await withTemporaryWorkerEnv(`PIPER_BIN=${windowsBin}\r\nPIPER_MODEL=${windowsModel}\r\nDEFAULT_PROVIDER=piper\r\n`, async () => {
+    const configUrl = pathToFileURL(path.join(workerRoot, 'utils/config.js')).href;
+    const script = [
+      `const { config } = await import('${configUrl}');`,
+      "console.log(JSON.stringify({ PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL, DEFAULT_PROVIDER: config.defaultProvider }));",
+    ].join(' ');
+    const env = { ...process.env };
+    for (const key of ['PIPER_BIN', 'PIPER_MODEL', 'PIPER_VOICE', 'DEFAULT_PROVIDER']) delete env[key];
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
+    assert.equal(parsed.PIPER_BIN, windowsBin);
+    assert.equal(parsed.PIPER_MODEL, windowsModel);
+    assert.equal(parsed.DEFAULT_PROVIDER, 'piper');
+  });
+});
+
 test('health returns provider status and runtime details', async () => {
   const ctx = await fixture();
   const res = await ctx.request('/health');
