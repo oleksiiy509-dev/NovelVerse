@@ -1,3 +1,4 @@
+import './load-env.js';
 import path from 'node:path';
 
 export const config = {
