@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { workerRoot } from '../utils/load-env.js';
 
 function cleanEnvPath(value) {
   return String(value || '').trim().replace(/^['"]|['"]$/g, '');
@@ -11,7 +12,7 @@ function cleanEnvPath(value) {
 function resolveConfiguredPath(value) {
   const cleaned = cleanEnvPath(value);
   if (!cleaned) return '';
-  return path.resolve(cleaned);
+  return path.isAbsolute(cleaned) ? cleaned : path.resolve(workerRoot, cleaned);
 }
 
 function getStatus() {
