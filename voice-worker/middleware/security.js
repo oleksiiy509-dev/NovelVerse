@@ -1,12 +1,35 @@
 const buckets = new Map();
-export function securityHeaders(_req, res, next) {
+const allowedCorsOrigins = new Set([
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+]);
+const corsMethods = 'GET, POST, OPTIONS';
+const corsHeaders = 'Content-Type, Authorization, X-NovelVerse-Token';
+
+function appendVaryOrigin(res) {
+  const current = res.getHeader('vary');
+  if (!current) {
+    res.setHeader('vary', 'Origin');
+    return;
+  }
+  const values = String(current).split(',').map((value) => value.trim().toLowerCase());
+  if (!values.includes('origin')) res.setHeader('vary', `${current}, Origin`);
+}
+
+export function securityHeaders(req, res, next) {
   res.setHeader('x-content-type-options', 'nosniff');
   res.setHeader('x-frame-options', 'DENY');
-  res.setHeader('access-control-allow-origin', '*');
-  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-  res.setHeader('access-control-allow-headers', 'content-type,authorization,accept');
-  res.setHeader('access-control-expose-headers', 'x-novelverse-metadata,content-type');
-  if (_req.method === 'OPTIONS') return res.sendStatus(204);
+  appendVaryOrigin(res);
+  const origin = req.headers.origin;
+  if (allowedCorsOrigins.has(origin)) {
+    res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('access-control-allow-methods', corsMethods);
+    res.setHeader('access-control-allow-headers', corsHeaders);
+    res.setHeader('access-control-expose-headers', 'X-NovelVerse-Metadata, Content-Type');
+  }
+  if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 }
 export function rateLimiter(cfg) {
