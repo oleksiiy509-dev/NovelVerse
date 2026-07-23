@@ -1,0 +1,26 @@
+.audio-studio { min-height: 100vh; padding: 28px; color: #eef2ff; background: radial-gradient(circle at top left, #312e81, #080a16 55%); }
+.studio-hero, .transport, .studio-panel, .track { border: 1px solid rgba(255,255,255,.12); background: rgba(15,23,42,.78); box-shadow: 0 20px 60px rgba(0,0,0,.25); border-radius: 24px; }
+.studio-hero { display:flex; justify-content:space-between; gap:20px; padding:26px; margin-bottom:18px; }
+.eyebrow { color:#93c5fd; text-transform:uppercase; letter-spacing:.16em; font-weight:800; }
+.studio-hero h1 { margin:.2rem 0; font-size: clamp(2rem, 5vw, 4rem); }
+.studio-actions, .transport { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.audio-studio button { border:0; border-radius:999px; padding:10px 14px; color:#08111f; background:#bfdbfe; font-weight:800; cursor:pointer; }
+.audio-studio button:disabled { opacity:.45; cursor:not-allowed; }
+.transport { padding:14px 18px; margin-bottom:18px; }
+.transport label { display:flex; gap:10px; align-items:center; flex:1; min-width:240px; }
+.transport input { width:100%; accent-color:#38bdf8; }
+.timeline { display:grid; gap:10px; margin-bottom:18px; }
+.track { display:grid; grid-template-columns: 170px 1fr; overflow:hidden; }
+.track aside { padding:14px; border-right:1px solid rgba(255,255,255,.1); display:grid; gap:8px; }
+.track small { color:#cbd5e1; text-transform:uppercase; letter-spacing:.1em; }
+.lane { position:relative; min-height:82px; background: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 8.33%); }
+.clip { position:absolute; top:15px; min-width:80px; height:52px; border-radius:14px; padding:9px; color:#111827; overflow:hidden; }
+.clip strong, .clip span { display:block; white-space:nowrap; font-size:12px; }
+.automation { position:absolute; inset:4px; pointer-events:none; }
+.automation i { position:absolute; width:7px; height:7px; background:#111827; border:2px solid white; border-radius:50%; }
+.studio-grid { display:grid; grid-template-columns: 2fr 1fr 1fr; gap:18px; }
+.studio-panel { padding:18px; }
+.editor-row { display:grid; grid-template-columns: 1.3fr 1fr 90px 90px; gap:10px; align-items:center; padding:10px 0; border-top:1px solid rgba(255,255,255,.08); }
+.editor-row label { display:grid; gap:4px; color:#cbd5e1; font-size:12px; }
+.editor-row input { width:100%; border-radius:10px; border:1px solid rgba(255,255,255,.15); padding:7px; background:#0f172a; color:white; accent-color:#38bdf8; }
+@media (max-width: 900px) { .studio-hero, .track { grid-template-columns:1fr; display:grid; } .studio-grid { grid-template-columns:1fr; } .editor-row { grid-template-columns:1fr; } }
