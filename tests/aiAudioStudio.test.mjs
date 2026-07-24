@@ -11,7 +11,7 @@ test("AI Audio Studio creates the required production tracks", () => {
 test("projects export and import as validated JSON", () => {
   const exported = serializeAudioStudioProject(createAudioStudioProject());
   const imported = deserializeAudioStudioProject(exported);
-  assert.equal(imported.version, 1);
+  assert.equal(imported.version, 2);
   assert.equal(imported.tracks.length, 6);
 });
 
@@ -29,4 +29,11 @@ test("live preview summarizes active audible clips", () => {
   assert.ok(summary.some((item) => item.track === "Narrator"));
   assert.ok(summary.some((item) => item.track === "Ambient"));
   assert.ok(summary.some((item) => item.track === "Music"));
+});
+
+test("timeline character ids remain stable when voice settings change", () => {
+  const project = createAudioStudioProject();
+  const edited = updateClip(project, "character_mira", "clip_mira_1", { volume: 0.4, voiceId: "female_young_soft" });
+  assert.equal(project.tracks.find((track) => track.id === "character_mira").clips[0].characterId, "mira");
+  assert.equal(edited.tracks.find((track) => track.id === "character_mira").clips[0].characterId, "mira");
 });

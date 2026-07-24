@@ -9,7 +9,7 @@ import { fetchChapterVoiceSegments, fetchNovelVoiceCast, fetchReadyDirectorPlan 
 import { hashDirectorContent } from "../lib/voiceDirector/director";
 import { directTextPerformance, loadAiDirector2Settings, narrationPresets, saveAiDirector2Settings } from "../lib/voiceDirector/aiDirector2";
 import { getPreviewSettings, voiceProfiles } from "../lib/voiceEngine/voiceProfiles";
-import { buildPersistentCharacterRegistry, loadCharacterRegistry, resolveCharacterVoiceForSegment, updateCharacterProfile } from "../lib/characterVoiceEngine";
+import { assignVoiceToProfile, buildPersistentCharacterRegistry, loadCharacterRegistry, mergeCharacterAliases, resetCharacterToAutomatic, resolveCharacterVoiceForSegment, updateCharacterProfile } from "../lib/characterVoiceEngine";
 import { defaultPiperVoiceId, getVoiceWorkerHealth, synthesizeVoiceWorkerAudio, splitTextForVoiceWorker } from "../lib/voiceWorker";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
 import "../styles/Reader.css";
@@ -247,7 +247,7 @@ function Reader() {
   const paragraphs = useMemo(() => splitChapterIntoParagraphs(chapterContent), [chapterContent]);
   const plainSentences = useMemo(() => paragraphs.flatMap((paragraph, paragraphIndex) => splitParagraphIntoSentences(paragraph).map((text) => ({ text, paragraphIndex, voiceProfile: "narrator_neutral" }))), [paragraphs]);
   const castByCharacter = useMemo(() => new Map(voiceCast.map((entry) => [String(entry.character_id), entry])), [voiceCast]);
-  const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => { const castEntry = castByCharacter.get(String(segment.speaker_id)); const registryProfile = resolveCharacterVoiceForSegment(segment, characterRegistry); const isNarration = (segment.segment_type || segment.type) === "narration"; return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: isNarration ? registryProfile.preferredVoice : registryProfile.preferredVoice || castEntry?.voice_profile || segment.voice_profile || "unknown_neutral", speakerName: isNarration ? registryProfile.name : registryProfile.name || segment.speaker_name, emotion: segment.emotion, castSlot: isNarration ? "narrator_main" : castEntry?.cast_slot || registryProfile.id || "unknown_01", pitchOffset: Number(castEntry?.pitch_offset || registryProfile.narrationOverrides?.pitchOffset || 0), rateOffset: Number(castEntry?.rate_offset || registryProfile.narrationOverrides?.rateOffset || 0), characterId: registryProfile.id })); }), [voiceSegments, castByCharacter, characterRegistry]);
+  const structuredSentences = useMemo(() => voiceSegments.flatMap((segment, segmentIndex) => { const castEntry = castByCharacter.get(String(segment.speaker_id)); const registryProfile = resolveCharacterVoiceForSegment(segment, characterRegistry); const isNarration = (segment.segment_type || segment.type) === "narration"; return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: segmentIndex, voiceProfile: isNarration ? registryProfile.preferredVoice : registryProfile.preferredVoice || castEntry?.voice_profile || segment.voice_profile || "unknown_neutral", speakerName: isNarration ? registryProfile.name : registryProfile.name || segment.speaker_name, emotion: segment.emotion || "neutral", castSlot: isNarration ? "narrator_main" : castEntry?.cast_slot || registryProfile.id || "unknown_01", pitchOffset: Number(castEntry?.pitch_offset || registryProfile.narrationOverrides?.pitchOffset || 0), rateOffset: Number(castEntry?.rate_offset || registryProfile.narrationOverrides?.rateOffset || 0), characterId: registryProfile.id, rate: registryProfile.rate, pitch: registryProfile.pitch, volume: registryProfile.volume, pauseScale: registryProfile.pauseScale })); }), [voiceSegments, castByCharacter, characterRegistry]);
   const directorSentences = useMemo(() => (directorPlan?.director_segment_settings || directorPlan?.segmentSettings || []).sort((a,b)=>Number(a.segment_index ?? a.segmentIndex)-Number(b.segment_index ?? b.segmentIndex)).flatMap((setting) => { const segment = voiceSegments.find((row) => Number(row.segment_index) === Number(setting.segment_index ?? setting.segmentIndex)); if (!segment) return []; return splitParagraphIntoSentences(segment.text || "").map((text) => ({ text, paragraphIndex: Number(setting.segment_index ?? setting.segmentIndex), voiceProfile: setting.voice_profile || setting.voiceProfile || segment.voice_profile || "unknown_neutral", speakerName: segment.speaker_name, emotion: setting.emotion, castSlot: setting.cast_slot || setting.castSlot || "unknown_01", pitchOffset: Number(setting.pitch ?? 0), rateOffset: Number(setting.rate ?? 1) - 1, pauseAfterMs: Number(setting.pause_after_ms ?? setting.pauseAfterMs ?? 0), sceneTitle: (directorPlan?.director_scenes || directorPlan?.scenes || []).find((scene) => Number(setting.segment_index ?? setting.segmentIndex) >= Number(scene.start_segment_index ?? scene.startSegmentIndex) && Number(setting.segment_index ?? setting.segmentIndex) <= Number(scene.end_segment_index ?? scene.endSegmentIndex))?.title })); }), [directorPlan, voiceSegments]);
   const sentences = useMemo(() => (directorPreview && directorSentences.length ? directorSentences : structuredPreview && structuredSentences.length ? structuredSentences : plainSentences), [directorPreview, directorSentences, plainSentences, structuredPreview, structuredSentences]);
   const currentDirectorPerformance = useMemo(() => directTextPerformance(sentences[currentSentenceIndex]?.text || "", { settings: narrationSettings.aiDirector2, speakerName: sentences[currentSentenceIndex]?.speakerName, segmentType: sentences[currentSentenceIndex]?.castSlot === "narrator_main" ? "narration" : sentences[currentSentenceIndex]?.castSlot ? "dialogue" : "narration" }), [currentSentenceIndex, narrationSettings.aiDirector2, sentences]);
@@ -266,6 +266,8 @@ function Reader() {
   const effectiveNarrationMode = [audioModes.cinematic, audioModes.ai].includes(narrationMode) && aiAudioReady ? audioModes.ai : audioModes.device;
   const aiAudioStatus = aiAudioLoading ? "loading" : aiAudio?.status || "unavailable";
   const aiWaveform = Array.isArray(aiAudio?.waveform) ? aiAudio.waveform : [];
+  const currentSpeaker = sentences[currentSentenceIndex]?.speakerName || "Narrator";
+  const currentCharacterId = sentences[currentSentenceIndex]?.characterId || "narrator";
   const selectedRangeExists = chapterRanges.some((range) => range.key === selectedRangeKey);
   const openRangeKey = selectedRangeExists ? selectedRangeKey : currentRangeKey;
 
@@ -640,8 +642,8 @@ function Reader() {
     const profileSettings = (structuredPreview || directorPreview) ? getPreviewSettings(sentences[safeIndex].voiceProfile) : { pitch: 1, rate: 1 };
     const aiDirector = directTextPerformance(sentences[safeIndex].text, { settings: nextSettings.aiDirector2, speakerName: sentences[safeIndex].speakerName, segmentType: sentences[safeIndex].castSlot === "narrator_main" ? "narration" : sentences[safeIndex].castSlot ? "dialogue" : "narration" });
     const directorMultiplier = nextSettings.aiDirector2?.enabled === false ? { rate: 1, pitch: 1, volume: Number(sentences[safeIndex].volume || nextSettings.volume), pauseAfterMs: 0 } : aiDirector;
-    utterance.rate = Math.min(3, Math.max(0.5, (profileSettings.rate + Number(sentences[safeIndex].rateOffset || 0)) * nextSettings.rate * directorMultiplier.rate));
-    utterance.pitch = Math.min(2, Math.max(0, (profileSettings.pitch + Number(sentences[safeIndex].pitchOffset || 0)) * nextSettings.pitch * directorMultiplier.pitch));
+    utterance.rate = Math.min(3, Math.max(0.5, (profileSettings.rate + Number(sentences[safeIndex].rateOffset || 0)) * Number(sentences[safeIndex].rate || 1) * nextSettings.rate * directorMultiplier.rate));
+    utterance.pitch = Math.min(2, Math.max(0, (profileSettings.pitch + Number(sentences[safeIndex].pitchOffset || 0)) * Number(sentences[safeIndex].pitch || 1) * nextSettings.pitch * directorMultiplier.pitch));
     utterance.volume = Math.min(1, Math.max(0, directorMultiplier.volume * Number(sentences[safeIndex].volume || nextSettings.volume)));
     utterance.onend = () => {
       if (manuallyStoppingRef.current || speechTokenRef.current !== token) return;
@@ -649,7 +651,7 @@ function Reader() {
         const nextSentence = sentences[safeIndex + 1];
         const structuralPause = nextSentence?.paragraphIndex !== sentences[safeIndex].paragraphIndex ? nextSettings.paragraphPause : nextSettings.sentencePause;
         const plannedPause = Math.max(Number(sentences[safeIndex].pauseAfterMs || 0), directorMultiplier.pauseAfterMs || 0);
-        const pauseMs = Math.min(6000, Math.max(plannedPause, structuralPause) * nextSettings.pauseLength);
+        const pauseMs = Math.min(6000, Math.max(plannedPause, structuralPause) * nextSettings.pauseLength * Number(sentences[safeIndex].pauseScale || 1));
         window.setTimeout(() => speakSentenceCallback(safeIndex + 1, nextSettings), pauseMs);
       }
       else {
@@ -668,7 +670,7 @@ function Reader() {
     setCurrentSentenceIndex(safeIndex);
     setTtsActive(true);
     setTtsPaused(false);
-    setAudioAnnouncement(`Озвучення: ${sentenceProgress}% глави.`);
+    setAudioAnnouncement(`Озвучення: ${sentenceProgress}% глави · ${sentences[safeIndex].speakerName || "Narrator"}.`);
     window.speechSynthesis.speak(utterance);
   }, [chapter, currentSentenceIndex, narrationSettings, narrationSupported, rankedVoices, selectedVoice, sentenceProgress, sentences, structuredPreview, directorPreview, handleChapterFinished]);
 
@@ -761,7 +763,7 @@ function Reader() {
   async function playLocalVoiceFromChunk(startIndex = 0) {
     if (!chapter) return;
     stopNarration();
-    const chunks = splitTextForVoiceWorker(stripReaderMarkup(chapter.content || ""));
+    const chunks = (structuredPreview && sentences.length ? sentences.map((sentence) => sentence.text) : splitTextForVoiceWorker(stripReaderMarkup(chapter.content || "")));
     setLocalVoiceChunkTotal(chunks.length);
     if (!localVoiceStatus.online || !localVoiceStatus.piperAvailable) {
       setLocalVoiceError("Local Voice Worker or Piper is unavailable; using Device Voice fallback.");
@@ -776,8 +778,10 @@ function Reader() {
       const controller = new AbortController();
       localVoiceAbortRef.current = controller;
       try {
-        const aiDirector = directTextPerformance(chunks[index], { settings: narrationSettings.aiDirector2 });
-        const result = await synthesizeVoiceWorkerAudio({ text: chunks[index], provider: "piper", voice: defaultPiperVoiceId, language: "uk", format: "wav", signal: controller.signal, options: { rate: narrationSettings.rate * aiDirector.rate, pitch: narrationSettings.pitch * aiDirector.pitch, volume: narrationSettings.volume * aiDirector.volume, pauseLength: narrationSettings.pauseLength, sentencePause: Math.max(narrationSettings.sentencePause, aiDirector.pauseAfterMs), paragraphPause: narrationSettings.paragraphPause, emotion: narrationSettings.emotion, aiDirector2: aiDirector } });
+        const sentenceProfile = resolveCharacterVoiceForSegment({ segment_type: sentences[index]?.characterId === "narrator" ? "narration" : "dialogue", characterId: sentences[index]?.characterId, speakerName: sentences[index]?.speakerName }, characterRegistry);
+        const assignment = assignVoiceToProfile(sentenceProfile, localVoiceStatus.voices || []);
+        const aiDirector = directTextPerformance(chunks[index], { settings: narrationSettings.aiDirector2, speakerName: sentences[index]?.speakerName });
+        const result = await synthesizeVoiceWorkerAudio({ text: chunks[index], provider: assignment.provider, voice: assignment.voice || defaultPiperVoiceId, language: "uk", format: "wav", signal: controller.signal, options: { rate: narrationSettings.rate * aiDirector.rate, pitch: narrationSettings.pitch * aiDirector.pitch, volume: narrationSettings.volume * aiDirector.volume, pauseLength: narrationSettings.pauseLength, sentencePause: Math.max(narrationSettings.sentencePause, aiDirector.pauseAfterMs), paragraphPause: narrationSettings.paragraphPause, emotion: sentences[index]?.emotion || narrationSettings.emotion, characterId: sentenceProfile.id, speaker: sentenceProfile.name, aiDirector2: aiDirector } });
         if (localVoiceStoppedRef.current) return;
         revokeLocalAudioUrl();
         localAudioUrlRef.current = URL.createObjectURL(result.blob);
@@ -938,15 +942,23 @@ function Reader() {
       {characterStudioOpen && <div className="reader__settings-scrim" onClick={() => setCharacterStudioOpen(false)} />}
       <section className={`reader__settings ${characterStudioOpen ? "reader__settings--open" : ""}`} aria-label="Character Voice Studio" aria-hidden={!characterStudioOpen}>
         <div className="reader__settings-header"><h2>🎭 Character Voice Studio</h2><button onClick={() => setCharacterStudioOpen(false)} aria-label="Close Character Voice Studio">✕</button></div>
-        <p className="reader__narration-status">Persistent registry saved on this device. Narration always uses the narrator profile; dialogue switches by detected speaker when Structured Voice Engine preview is enabled.</p>
+        <p className="reader__narration-status">Persistent v2 registry saved by novel. Narration always uses the narrator profile; dialogue uses stable character ids and per-utterance emotion.</p>
         <button type="button" onClick={() => { if (chapter) setCharacterRegistry(buildPersistentCharacterRegistry({ novelId: chapter.novel_id, content: chapter.content, existingRegistry: characterRegistry })); }}>Re-detect characters</button>
         {characterRegistry.characters.map((character) => (
           <div className="reader__character-studio-row" key={character.id}>
             <strong>{character.name}</strong>
-            <label>Gender<select value={character.gender} onChange={(e) => updateCharacterVoice(character.id, { gender: e.target.value })}><option value="unknown">unknown</option><option value="neutral">neutral</option><option value="male">male</option><option value="female">female</option></select></label>
-            <label>Age<select value={character.ageCategory} onChange={(e) => updateCharacterVoice(character.id, { ageCategory: e.target.value })}><option value="unknown">unknown</option><option value="child">child</option><option value="teenager">teenager</option><option value="young">young</option><option value="adult">adult</option><option value="elderly">elderly</option></select></label>
-            <label>Preferred voice<select value={character.preferredVoice} onChange={(e) => updateCharacterVoice(character.id, { preferredVoice: e.target.value })}>{voiceProfiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.label}</option>)}</select></label>
-            <label>Rate override<input type="number" min="0.5" max="1.5" step="0.05" value={character.narrationOverrides?.rate || 1} onChange={(e) => updateCharacterVoice(character.id, { narrationOverrides: { ...character.narrationOverrides, rate: Number(e.target.value) } })} /></label>
+            <label>Gender<select value={character.gender} onChange={(e) => updateCharacterVoice(character.id, { gender: e.target.value })}><option value="unknown">unknown</option><option value="male">male</option><option value="female">female</option></select></label>
+            <label>Age<select value={character.ageCategory} onChange={(e) => updateCharacterVoice(character.id, { ageCategory: e.target.value })}><option value="unknown">unknown</option><option value="child">child</option><option value="teen">teen</option><option value="young-adult">young-adult</option><option value="adult">adult</option><option value="elderly">elderly</option></select></label>
+            <label>Role<select value={character.role} onChange={(e) => updateCharacterVoice(character.id, { role: e.target.value })}><option value="narrator">narrator</option><option value="protagonist">protagonist</option><option value="supporting">supporting</option><option value="minor">minor</option><option value="creature">creature</option><option value="unknown">unknown</option></select></label>
+            <label>Aliases<input value={(character.aliases || []).join(", ")} onChange={(e) => updateCharacterVoice(character.id, { aliases: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} /></label>
+            <label>Voice<select value={character.voiceId} onChange={(e) => updateCharacterVoice(character.id, { voiceId: e.target.value })}>{voiceProfiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.label}</option>)}</select></label>
+            <label>Rate<input type="number" min="0.5" max="2" step="0.05" value={character.rate || 1} onChange={(e) => updateCharacterVoice(character.id, { rate: Number(e.target.value) })} /></label>
+            <label>Pitch<input type="number" min="0" max="2" step="0.05" value={character.pitch || 1} onChange={(e) => updateCharacterVoice(character.id, { pitch: Number(e.target.value) })} /></label>
+            <label>Volume<input type="number" min="0" max="1" step="0.05" value={character.volume || 1} onChange={(e) => updateCharacterVoice(character.id, { volume: Number(e.target.value) })} /></label>
+            <label><input type="checkbox" checked={character.manualLock} onChange={(e) => updateCharacterVoice(character.id, { manualLock: e.target.checked })} /> Manual lock</label>
+            <button type="button" onClick={() => speakSentence(sentences.findIndex((sentence) => sentence.characterId === character.id) >= 0 ? sentences.findIndex((sentence) => sentence.characterId === character.id) : currentSentenceIndex)}>Preview</button>
+            <button type="button" onClick={() => setCharacterRegistry(resetCharacterToAutomatic(chapter.novel_id, character.id))} disabled={character.id === "narrator"}>Reset auto</button>
+            {character.id !== "narrator" && <button type="button" onClick={() => { const duplicate = characterRegistry.characters.find((item) => item.id !== character.id && item.id !== "narrator"); if (duplicate) setCharacterRegistry(mergeCharacterAliases(chapter.novel_id, character.id, duplicate.id)); }}>Merge next duplicate</button>}
           </div>
         ))}
       </section>
@@ -975,7 +987,7 @@ function Reader() {
           <>
             <p className="reader__narration-status">Local Piper: {localVoiceStatus.loading ? "checking…" : localVoiceStatus.piperAvailable ? "ready" : "unavailable"} · chunk {Math.min(localVoiceChunkIndex + 1, localVoiceChunkTotal || 1)}/{localVoiceChunkTotal || 1} · {localVoiceState}. {localVoiceError}</p><div className="reader__media-controls"><button type="button" onClick={() => playLocalVoiceFromChunk(0)} disabled={localVoiceState === "loading" || localVoiceState === "playing"}>Озвучити</button><button type="button" onClick={stopLocalVoice} disabled={localVoiceState !== "loading" && localVoiceState !== "playing"}>Stop Piper</button><button type="button" onClick={retryLocalVoice} disabled={localVoiceState !== "error"}>Retry Piper</button></div><p className="reader__narration-status">Cinematic/Classic Audio: {offlineMode ? "offline unavailable" : aiAudioStatus === "ready" ? "ready" : aiAudioStatus}. {narrationMode !== audioModes.device ? "Using Device Voice fallback." : "Device Voice selected."}</p>
             <input className="reader__progress-slider" type="range" min="0" max={Math.max(sentences.length - 1, 0)} value={currentSentenceIndex} onChange={(e) => scrubNarration(e.target.value)} disabled={!sentences.length} aria-label="Прогрес озвучення" />
-            <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{sentenceProgress}% · {ttsActive && !ttsPaused ? "Playing" : ttsPaused ? "Paused" : "Ready"}</span><span>{formatClock(estimatedTotalSeconds)}</span></div><div className="reader__player-meta"><span>Voice: {selectedVoice ? `${selectedVoice.name} (${selectedVoice.lang})` : "Best available voice"}</span><span>Speed: {narrationSettings.rate}x</span><span>Pitch: {narrationSettings.pitch}x</span><span>Emotion: {emotionPresets[narrationSettings.emotion]?.label}</span></div>
+            <div className="reader__player-time"><span>{formatClock(elapsedSeconds)}</span><span>{sentenceProgress}% · {ttsActive && !ttsPaused ? "Playing" : ttsPaused ? "Paused" : "Ready"}</span><span>{formatClock(estimatedTotalSeconds)}</span></div><div className="reader__player-meta"><span>Speaker: {currentSpeaker} ({currentCharacterId})</span><span>Voice: {selectedVoice ? `${selectedVoice.name} (${selectedVoice.lang})` : "Best available voice"}</span><span>Speed: {narrationSettings.rate}x</span><span>Pitch: {narrationSettings.pitch}x</span><span>Emotion: {emotionPresets[narrationSettings.emotion]?.label}</span></div>
             <div className="reader__media-controls">
               <button onClick={previousChapter} disabled={navigatingChapter || !adjacentChapters.previous} aria-label="Попередня глава">⏪</button>
               <button onClick={() => moveSentence(-1)} disabled={!sentences.length || currentSentenceIndex === 0} aria-label="Попереднє речення">⏮</button>
