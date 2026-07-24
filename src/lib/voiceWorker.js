@@ -34,8 +34,9 @@ export async function getVoiceWorkerHealth() {
   return { ...health, online: true, piperAvailable: Boolean(piper?.available), voices: Array.isArray(health.availableVoices) ? health.availableVoices : [], piper };
 }
 
-export async function synthesizeVoiceWorkerAudio({ text, provider = "piper", voice = defaultPiperVoiceId, language = "uk", format = "wav", preview = false, signal, options = {} } = {}) {
-  const body = { text: String(text || "").trim(), provider, voice, language, format, options };
+export async function synthesizeVoiceWorkerAudio({ text, sourceText, provider = "piper", voice = defaultPiperVoiceId, language = "uk", format = "wav", preview = false, signal, options = {} } = {}) {
+  const normalizedText = String(sourceText || text || "").trim();
+  const body = { text: normalizedText, sourceText: normalizedText, provider, voice, language, format, options };
   const res = await fetch(`${getVoiceWorkerUrl()}${preview ? "/preview" : "/synthesize"}`, {
     method: "POST",
     headers: voiceWorkerHeaders({ "content-type": "application/json", accept: "audio/*" }),
