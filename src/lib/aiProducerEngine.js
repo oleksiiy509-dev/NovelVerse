@@ -33,7 +33,6 @@ const sfxRules = [
   ["heartbeat pulse", /\b(heart|pulse|серце|пульс)\b/iu], ["fire crackle", /\b(fire|flame|campfire|вогонь|полум)\b/iu],
 ];
 
-const clamp = (n, min, max) => Math.min(max, Math.max(min, Number(n) || 0));
 const words = (text = "") => String(text).trim().split(/\s+/u).filter(Boolean);
 const clean = (text = "") => String(text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const firstMatch = (rules, text, fallback) => rules.find(([, rx]) => rx.test(text))?.[0] || fallback;
