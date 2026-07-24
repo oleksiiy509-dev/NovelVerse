@@ -1,3 +1,5 @@
+import { createAiProducerProject } from "./aiProducerEngine.js";
+
 const TRACK_TYPES = ["narrator", "character", "ambient", "music", "sfx"];
 
 export const audioStudioTrackTemplates = [
@@ -34,6 +36,10 @@ function defaultClips(trackId) {
   return clips[trackId] || [];
 }
 
+export function createAudioStudioProjectFromChapter(chapter, options = {}) {
+  return validateAudioStudioProject(createAiProducerProject(chapter, options));
+}
+
 export function validateAudioStudioProject(project) {
   if (!project || typeof project !== "object") throw new Error("Project JSON must be an object.");
   if (!Array.isArray(project.tracks)) throw new Error("Project JSON must include tracks.");
@@ -41,7 +47,7 @@ export function validateAudioStudioProject(project) {
     if (!TRACK_TYPES.includes(track.type)) throw new Error(`Unsupported track type: ${track.type}`);
     if (!Array.isArray(track.clips)) throw new Error(`Track ${track.name || track.id} must include clips.`);
   }
-  return { ...project, version: Math.max(2, Number(project.version) || 1), updatedAt: new Date().toISOString(), tracks: project.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => ({ ...clip, characterId: clip.characterId || (track.type === "narrator" ? "narrator" : track.type === "character" ? track.id.replace(/^character_/, "") : null) })) })) };
+  return { ...project, version: typeof project.version === "string" ? project.version : Math.max(2, Number(project.version) || 1), audioStudioVersion: Math.max(2, Number(project.audioStudioVersion || project.version) || 1), updatedAt: new Date().toISOString(), editable: project.editable !== false, tracks: project.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => ({ ...clip, editable: clip.editable !== false, synthesisStatus: clip.synthesisStatus || "not_synthesized", characterId: clip.characterId || (track.type === "narrator" ? "narrator" : track.type === "character" ? track.id.replace(/^character_/, "") : null) })) })) };
 }
 
 export function serializeAudioStudioProject(project) {
