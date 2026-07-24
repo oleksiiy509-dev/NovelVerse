@@ -51,7 +51,7 @@ async function withoutPiperEnv(callback) {
 function runEnvProbe(cwd, extraEnv = {}) {
   const script = [
     `await import('${appUrl}');`,
-    "console.log(JSON.stringify({ PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL }));",
+    'console.log(JSON.stringify({ PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL }));',
   ].join(' ');
   const env = { ...process.env, ...extraEnv };
   for (const key of ['PIPER_BIN', 'PIPER_MODEL', 'PIPER_VOICE']) {
@@ -91,7 +91,7 @@ test('loads voice-worker .env before direct config imports from a Windows-style 
     const configUrl = pathToFileURL(path.join(workerRoot, 'utils/config.js')).href;
     const script = [
       `const { config } = await import('${configUrl}');`,
-      "console.log(JSON.stringify({ PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL, DEFAULT_PROVIDER: config.defaultProvider }));",
+      'console.log(JSON.stringify({ PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL, DEFAULT_PROVIDER: config.defaultProvider }));',
     ].join(' ');
     const env = { ...process.env };
     for (const key of ['PIPER_BIN', 'PIPER_MODEL', 'PIPER_VOICE', 'DEFAULT_PROVIDER']) delete env[key];

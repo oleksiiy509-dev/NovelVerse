@@ -34,7 +34,20 @@ export default function UniversalVoiceStudio() {
   function updateAssignment(characterId, patch) { const next = { ...assignments, [characterId]: { assignmentMode: "automatic", ...(assignments[characterId] || {}), ...patch } }; setAssignments(next); persist(profiles, next); }
   async function saveCharacterAssignment(character) { const resolved = resolveCharacterVoice({ character, assignment: assignments[character.id], profiles, storyProgress: Number(storyProgress) }); const existing = cast.find((entry) => String(entry.character_id) === String(character.id)); const saved = await saveNovelVoiceCastEntry({ ...(existing || {}), novel_id: Number(novelId), character_id: character.id, cast_slot: existing?.cast_slot || `universal_${character.id}`, voice_profile: resolved.id, provider_voice_id: resolved.voice, provider_voice_mappings: { [resolved.provider]: { model: resolved.model, voice: resolved.voice }, fallbackProvider: resolved.fallbackProvider }, pitch_offset: resolved.pitchModifier - 1, rate_offset: resolved.speedModifier - 1, energy: resolved.energyModifier, assignment_source: resolved.assignmentMode === "custom" ? "manual" : "automatic", manually_locked: resolved.assignmentMode === "custom" }); setCast((rows) => [...rows.filter((entry) => entry.id !== saved.id), saved]); setNotice(`${character.display_name || character.canonical_name} now uses ${resolved.label}; consistency is preserved until manually changed.`); }
   const refreshWorkerStatus = useCallback(async () => { setWorkerStatus((current) => ({ ...current, loading: true, error: "" })); try { const health = await getVoiceWorkerHealth(); setWorkerStatus({ ...health, loading: false, error: "" }); } catch (error) { setWorkerStatus({ online: false, piperAvailable: false, voices: [], loading: false, error: error.message || "Voice Worker offline" }); } }, []);
-  useEffect(() => { refreshWorkerStatus(); return () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); }; }, [refreshWorkerStatus]);
+ useEffect(() => {
+  const timeoutId = window.setTimeout(() => {
+    void refreshWorkerStatus();
+  }, 0);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+  };
+}, [refreshWorkerStatus]);
   async function previewPiper() { setWorkerPreviewing(true); try { const result = await synthesizeVoiceWorkerAudio({ text: previewText.slice(0, 220), provider: "piper", voice: defaultPiperVoiceId, language: "uk", preview: true }); if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = URL.createObjectURL(result.blob); const audio = new Audio(previewUrlRef.current); await audio.play(); setNotice(`Piper preview playing from ${getVoiceWorkerUrl()} using ${defaultPiperVoiceId}.`); } catch (error) { setNotice(`${error.message || "Piper preview failed"}. Device Voice fallback remains available.`); } finally { setWorkerPreviewing(false); } }
   function speakPreview(kind) { const character = characters.find((item) => String(item.id) === String(selectedCharacter)); const resolved = resolveCharacterVoice({ character, assignment: assignments[selectedCharacter], profiles, storyProgress: Number(storyProgress) }); if (!("speechSynthesis" in window)) { setNotice("This browser has no SpeechSynthesis support; local worker preview can still be configured server-side."); return; } const utterance = new SpeechSynthesisUtterance(previewText.split(/[.!?]/)[0] || previewText); utterance.pitch = kind === "base" ? 1 : resolved.pitchModifier; utterance.rate = kind === "base" ? 1 : resolved.speedModifier; window.speechSynthesis.cancel(); window.speechSynthesis.speak(utterance); setNotice(`${kind === "base" ? "Original base" : "Transformed synthetic"} preview. Pitch alone is only a preview cue; production transforms preserve formants where supported.`); }
   function resetControls() { setControls({ pitch_semitones: 0, formant_shift: 0, speed: 1, roughness: 0.08, breathiness: 0.08 }); setTemporaryState(""); }
