@@ -1,6 +1,6 @@
 export const readerRoutes = Object.freeze([
   "/", "/library", "/catalog", "/profile", "/downloads", "/reader/:id",
-  "/novel/:id", "/login", "/beta",
+  "/novel/:id", "/login", "/subscription", "/beta",
 ]);
 
 export const adminRoutes = Object.freeze([
@@ -9,6 +9,7 @@ export const adminRoutes = Object.freeze([
   "/admin/taxonomy", "/admin/characters", "/admin/ai-brain",
   "/admin/voice-studio", "/admin/scene-studio", "/admin/audio-studio",
   "/admin/narration-studio", "/admin/export-studio", "/admin/publishing",
+  "/admin/subscriptions",
   "/admin/novels/:novelId/characters",
 ]);
 

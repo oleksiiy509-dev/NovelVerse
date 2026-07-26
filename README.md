@@ -1,20 +1,43 @@
-# React + Vite
+# NovelVerse
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+NovelVerse is a production-oriented React and Supabase platform for reading, publishing, and turning serialized novels into audiobooks. It runs as a responsive web app and Telegram Mini App, with an optional local Node/Piper voice worker.
 
-Currently, two official plugins are available:
+## Release candidate capabilities
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Reader, catalog, library, downloads, profile, offline progress, and subscriptions.
+- Protected novel/chapter administration plus AI Brain, Voice, Scene, Audio, Narration, Export, and Publishing Studios.
+- Resumable audiobook production from chapter analysis through render, mixer, export, quality control, approval, and publishing.
+- Provider-neutral character voices, local Piper synthesis, server-side hosted TTS, and Device Voice fallback.
+- Diagnostics, recovery checkpoints, non-destructive editing, portable settings, and structured redacted reports.
 
-## React Compiler
+See [the architecture](docs/ARCHITECTURE.md), [developer setup](docs/DEVELOPER_SETUP.md), [user guide](docs/USER_GUIDE.md), and [1.0 RC audit](docs/RELEASE_AUDIT.md).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Local development
 
-## Expanding the ESLint configuration
+Requirements: Node.js 20 or newer and npm.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+cp .env.example .env
+npm ci
+npm run dev
+```
 
-## Voice Engine Phase 6: real TTS
+Frontend Supabase values are public client configuration. Keep provider keys in Supabase Edge Function secrets; never expose them with a `VITE_` prefix. For local speech synthesis, follow [`voice-worker/README.md`](voice-worker/README.md).
 
-NovelVerse can render chapter audio through a server-side OpenAI TTS adapter. Configure only Supabase Edge Function secrets (`OPENAI_API_KEY`, `NOVELVERSE_TTS_PROVIDER=openai`, `NOVELVERSE_TTS_MODEL`, `NOVELVERSE_TTS_DEFAULT_VOICE`) and deploy `generate-chapter-audio`. The frontend receives only job metadata and signed playback URLs; when rendered AI audio is missing, Reader falls back to Device Voice.
+## Release verification
+
+```bash
+npm test
+npm run lint
+npm run build
+(cd voice-worker && npm test)
+git diff --check
+```
+
+External services are not required by unit tests. A release still requires the credentialed staging, real-device, accessibility, security, performance, and full-audio acceptance gates documented in the audit.
+
+## Deployment
+
+Apply the Supabase migrations in timestamp order, deploy the Edge Functions, configure environment values, and deploy the Vite output behind HTTPS. `vercel.json` supplies SPA rewrites, baseline response headers, and immutable caching for hashed assets. See [deployment guidance](DEPLOYMENT.md) before promoting a candidate.
+
+NovelVerse 1.0 RC is a candidate for controlled validation, not an instruction to publish or merge automatically.
