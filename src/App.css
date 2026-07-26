@@ -65,3 +65,8 @@ button {
 button:hover {
   background: #2563eb;
 }
+.emotion-timeline { display: flex; align-items: end; gap: .45rem; min-height: 120px; overflow-x: auto; padding: 1rem 0; }
+.emotion-point { min-width: 78px; border: 0; border-radius: 8px 8px 3px 3px; background: linear-gradient(#a855f7, #6366f1); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: transform .15s; }
+.emotion-point.selected { outline: 3px solid #fbbf24; transform: translateY(-4px); }
+.emotion-point span { font-size: .72rem; text-transform: capitalize; }
+.emotion-point b { font-size: .8rem; }
