@@ -23,4 +23,21 @@
 .editor-row { display:grid; grid-template-columns: 1.3fr 1fr 90px 90px; gap:10px; align-items:center; padding:10px 0; border-top:1px solid rgba(255,255,255,.08); }
 .editor-row label { display:grid; gap:4px; color:#cbd5e1; font-size:12px; }
 .editor-row input { width:100%; border-radius:10px; border:1px solid rgba(255,255,255,.15); padding:7px; background:#0f172a; color:white; accent-color:#38bdf8; }
+.mixer-panel { margin:18px 0; }
+.mixer-heading, .mixer-status { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+.mixer-status { margin:14px 0; padding:10px 14px; border-radius:14px; background:#080f22; color:#cbd5e1; }
+.missing-warning, .is-missing span { color:#fecaca; }
+.mixer-scroll { overflow-x:auto; border:1px solid rgba(255,255,255,.12); border-radius:16px; background:#080f22; }
+.mixer-ruler { position:relative; height:36px; min-width:100%; margin-left:190px; border-bottom:1px solid rgba(255,255,255,.15); }
+.mixer-ruler span { position:absolute; top:8px; font-size:11px; color:#94a3b8; }
+.mixer-ruler i { position:absolute; top:0; z-index:5; width:2px; height:1000px; background:#fb7185; pointer-events:none; }
+.mixer-track { display:grid; grid-template-columns:190px auto; min-height:92px; border-bottom:1px solid rgba(255,255,255,.1); }
+.mixer-track aside { position:sticky; left:0; z-index:6; display:grid; gap:5px; padding:10px; background:#111827; }
+.mixer-track aside div { display:flex; gap:5px; }
+.mixer-track aside button { padding:5px 9px; font-size:11px; }
+.mixer-track aside label { display:flex; align-items:center; gap:5px; font-size:11px; }
+.mixer-lane { position:relative; min-width:100%; background:repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 120px); }
+.mixer-clip { position:absolute; top:16px; height:58px; overflow:hidden; border:1px solid #67e8f9; border-radius:8px; padding:7px; background:linear-gradient(135deg,#164e63,#155e75); font-size:10px; }
+.mixer-clip b, .mixer-clip span { display:block; white-space:nowrap; }
+.mixer-clip.is-missing { border-color:#fb7185; background:repeating-linear-gradient(135deg,#4c0519,#4c0519 8px,#881337 8px,#881337 16px); }
 @media (max-width: 900px) { .studio-hero, .track { grid-template-columns:1fr; display:grid; } .studio-grid { grid-template-columns:1fr; } .editor-row { grid-template-columns:1fr; } }
