@@ -7,6 +7,7 @@ function BottomNav() {
       <NavLink to="/" end>⌂<span>Home</span></NavLink>
       <NavLink to="/catalog">☷<span>Catalog</span></NavLink>
       <NavLink to="/library">♡<span>Bookmarks</span></NavLink>
+      <NavLink to="/beta">◉<span>Beta</span></NavLink>
     </nav>
   );
 }
