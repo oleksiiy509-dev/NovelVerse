@@ -16,7 +16,9 @@ const unique = (items) => [...new Set((items || []).map((item) => String(item).t
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, Number(value) || 0));
 
 export function sanitizeFileName(name = "audio") {
-  return String(name).split(/[\\/]/).pop().normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").replace(/[^\p{L}\p{N}._() -]/gu, "_").replace(/\.{2,}/g, ".").trim().slice(0, 180) || "audio";
+  return Array.from(String(name).split(/[\\/]/).pop().normalize("NFKC"))
+    .filter((character) => character.charCodeAt(0) > 31 && character.charCodeAt(0) !== 127)
+    .join("").replace(/[^\p{L}\p{N}._() -]/gu, "_").replace(/\.{2,}/g, ".").trim().slice(0, 180) || "audio";
 }
 
 export function createAssetLibrary(input = {}) {
@@ -28,6 +30,7 @@ export function createAssetMetadata(input = {}) {
   const timestamp = now();
   const fileName = sanitizeFileName(input.fileName || input.name);
   const extension = (input.extension || fileName.split(".").pop() || "").toLowerCase();
+  const sanitizedInput = { ...input, fileName, extension };
   return {
     assetId: input.assetId || id("asset"), fileName, displayName: input.displayName || fileName.replace(/\.[^.]+$/, ""), assetType: "unknown",
     mimeType: input.mimeType || "application/octet-stream", extension, sizeBytes: Number(input.sizeBytes || 0), duration: 0, sampleRate: 0, channelCount: 0, bitDepth: null,
@@ -35,7 +38,7 @@ export function createAssetMetadata(input = {}) {
     loopCandidate: false, seamlessLoopConfidence: 0, loopBoundaries: [], tags: [], tagSuggestions: [], categories: [], moods: [], environments: [], events: [],
     intensity: "medium", transientProfile: { density: 0, label: "unknown" }, frequencyProfile: { low: 0, mid: 0, high: 0 }, manuallyEdited: {},
     favorite: false, collectionId: "", notes: "", usage: { chapters: [], scenes: [], cues: [], usageCount: 0, mostRecentlyUsed: null },
-    missing: false, invalid: false, analysisStatus: "pending", analysisError: "", analysisVersion: 0, createdAt: timestamp, updatedAt: timestamp, ...input, fileName, extension,
+    missing: false, invalid: false, analysisStatus: "pending", analysisError: "", analysisVersion: 0, createdAt: timestamp, updatedAt: timestamp, ...sanitizedInput,
   };
 }
 
@@ -117,7 +120,7 @@ export function analyzeAudioBuffer(buffer) {
 export async function decodeAndAnalyze(file, audioContext) {
   const bytes = await file.arrayBuffer();
   let buffer;
-  try { buffer = await audioContext.decodeAudioData(bytes.slice(0)); } catch (error) { throw new Error(`Browser decode failed; this format is not supported here. ${error.message || ""}`.trim()); }
+  try { buffer = await audioContext.decodeAudioData(bytes.slice(0)); } catch (error) { throw new Error(`Browser decode failed; this format is not supported here. ${error.message || ""}`.trim(), { cause: error }); }
   return analyzeAudioBuffer(buffer);
 }
 
