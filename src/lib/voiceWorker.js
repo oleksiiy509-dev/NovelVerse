@@ -1,6 +1,7 @@
 export const defaultVoiceWorkerUrl = "http://127.0.0.1:8787";
 export const defaultPiperVoiceId = "uk_UA-ukrainian_tts-medium";
 export const safeVoiceWorkerChunkChars = 2800;
+export const voiceWorkerTimeoutMs = 15000;
 
 export function getVoiceWorkerToken() {
   return String(import.meta.env?.VITE_VOICE_WORKER_TOKEN || "").trim();
@@ -21,8 +22,15 @@ export function parseWorkerMetadata(headers) {
   try { return JSON.parse(atob(encoded)); } catch { return null; }
 }
 
-async function requestJson(path) {
-  const res = await fetch(`${getVoiceWorkerUrl()}${path}`, { headers: voiceWorkerHeaders({ accept: "application/json" }) });
+async function requestJson(path, timeoutMs = voiceWorkerTimeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("Voice Worker request timed out")), timeoutMs);
+  let res;
+  try {
+    res = await fetch(`${getVoiceWorkerUrl()}${path}`, { headers: voiceWorkerHeaders({ accept: "application/json" }), signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) throw Object.assign(new Error(`Voice Worker ${path} returned HTTP ${res.status}`), { status: res.status });
   return res.json();
 }
@@ -36,16 +44,31 @@ export async function getVoiceWorkerHealth() {
 
 export async function synthesizeVoiceWorkerAudio({ text, sourceText, provider = "piper", voice = defaultPiperVoiceId, language = "uk", format = "wav", preview = false, signal, options = {} } = {}) {
   const normalizedText = String(sourceText || text || "").trim();
+  if (!normalizedText) throw new TypeError("Voice Worker text is required");
   const body = { text: normalizedText, sourceText: normalizedText, provider, voice, language, format, options };
-  const res = await fetch(`${getVoiceWorkerUrl()}${preview ? "/preview" : "/synthesize"}`, {
-    method: "POST",
-    headers: voiceWorkerHeaders({ "content-type": "application/json", accept: "audio/*" }),
-    body: JSON.stringify(body),
-    signal,
-  });
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(() => controller.abort(new Error("Voice Worker synthesis timed out")), voiceWorkerTimeoutMs);
+  let res;
+  try {
+    res = await fetch(`${getVoiceWorkerUrl()}${preview ? "/preview" : "/synthesize"}`, {
+      method: "POST",
+      headers: voiceWorkerHeaders({ "content-type": "application/json", accept: "audio/*" }),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
   if (!res.ok) throw Object.assign(new Error(`Voice Worker synthesis failed with HTTP ${res.status}`), { status: res.status });
   const blob = await res.blob();
   return { blob, contentType: res.headers.get("content-type") || blob.type || "audio/wav", metadata: parseWorkerMetadata(res.headers), request: body };
+}
+
+export function shouldFallbackToDeviceVoice(error) {
+  return error?.name === "AbortError" || error instanceof TypeError || [404, 408, 429, 500, 502, 503, 504].includes(Number(error?.status));
 }
 
 export function splitTextForVoiceWorker(text = "", maxChars = safeVoiceWorkerChunkChars) {

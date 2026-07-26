@@ -1,9 +1,10 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
 import BottomNav from "./components/BottomNav.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import NetworkBanner from "./components/NetworkBanner.jsx";
+import PageLoadingSkeleton from "./components/PageLoadingSkeleton.jsx";
 import ProtectedAdminRoute from "./components/ProtectedAdminRoute.jsx";
 import { useTelegramBackButton } from "./hooks/useTelegram";
 
@@ -38,7 +39,7 @@ function AppRoutes() {
   useTelegramBackButton();
 
   return (
-    <Suspense fallback={<div className="page-shell loading-state">Завантажуємо NovelVerse...</div>}>
+    <Suspense fallback={<PageLoadingSkeleton />}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/library" element={<Library />} />
@@ -74,14 +75,21 @@ function AppRoutes() {
   );
 }
 
+function ApplicationShell() {
+  const location = useLocation();
+  return (
+    <ErrorBoundary resetKey={location.pathname}>
+      <AppRoutes />
+      <NetworkBanner />
+      <BottomNav />
+    </ErrorBoundary>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
-      <ErrorBoundary>
-        <AppRoutes />
-        <NetworkBanner />
-        <BottomNav />
-      </ErrorBoundary>
+      <ApplicationShell />
     </BrowserRouter>
   );
 }

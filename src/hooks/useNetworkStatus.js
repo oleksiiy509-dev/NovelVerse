@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentUser } from "../lib/userFeatures";
 import { getQueuedProgress, removeQueuedProgress } from "../lib/offlineStorage";
 import { supabase } from "../lib/supabase";
+import { diagnosticLogger } from "../lib/diagnosticLogger";
 
 function isNewer(localItem, remoteItem) {
   if (!remoteItem?.updated_at) return true;
@@ -14,16 +15,29 @@ export function useNetworkStatus() {
 
   useEffect(() => {
     let messageTimer;
+    let disposed = false;
+    let syncing = false;
     async function syncQueue() {
-      const user = await getCurrentUser(supabase);
-      if (!user) return;
-      const queued = await getQueuedProgress().catch(() => []);
-      for (const item of queued) {
-        const { queue_id, ...record } = item;
-        const { data: remote } = await supabase.from("reading_progress").select("updated_at").eq("user_id", user.id).eq("novel_id", record.novel_id).maybeSingle();
-        if (!isNewer(record, remote)) { await removeQueuedProgress(queue_id).catch(() => null); continue; }
-        const { error } = await supabase.from("reading_progress").upsert({ ...record, user_id: user.id }, { onConflict: "user_id,novel_id" });
-        if (!error) await removeQueuedProgress(queue_id).catch(() => null);
+      if (syncing || disposed || !navigator.onLine) return;
+      syncing = true;
+      try {
+        const user = await getCurrentUser(supabase);
+        if (!user || disposed) return;
+        const queued = await getQueuedProgress();
+        for (const item of queued) {
+          if (disposed || !navigator.onLine) break;
+          const { queue_id, ...record } = item;
+          const { data: remote, error: readError } = await supabase.from("reading_progress").select("updated_at").eq("user_id", user.id).eq("novel_id", record.novel_id).maybeSingle();
+          if (readError) throw readError;
+          if (!isNewer(record, remote)) { await removeQueuedProgress(queue_id); continue; }
+          const { error } = await supabase.from("reading_progress").upsert({ ...record, user_id: user.id }, { onConflict: "user_id,novel_id" });
+          if (error) throw error;
+          await removeQueuedProgress(queue_id);
+        }
+      } catch (error) {
+        diagnosticLogger.warn("offline-sync", "Reading progress sync was deferred", { error });
+      } finally {
+        syncing = false;
       }
     }
     function flash(nextOnline, nextMessage) {
@@ -36,9 +50,9 @@ export function useNetworkStatus() {
     function handleOffline() { flash(false, "Ви офлайн. Доступні завантажені глави."); }
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-    if (online) syncQueue();
-    return () => { clearTimeout(messageTimer); window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
-  }, [online]);
+    if (navigator.onLine) syncQueue();
+    return () => { disposed = true; clearTimeout(messageTimer); window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
+  }, []);
 
   return { online, message };
 }
