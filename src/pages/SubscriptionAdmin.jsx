@@ -1,0 +1,18 @@
+import { useMemo, useState } from "react";
+import { calculateAnalytics, PLAN_CATALOG } from "../lib/subscriptions";
+import "../styles/Subscription.css";
+
+const sample = { subscriptions: [{ status: "active", plan_id: "premium", current_period_end: "2027-01-01", converted_from_trial: true, trial_started_at: "2026-06-01" }, { status: "trialing", plan_id: "free_trial", trial_ends_at: "2027-01-01", trial_started_at: "2026-07-01" }, { status: "cancelled", plan_id: "basic", trial_started_at: "2026-05-01" }], payments: [{ status: "paid", amount: 1299 }], listening: [{ book_title: "Shadow Slave", minutes: 428 }, { book_title: "Lord of Mysteries", minutes: 312 }] };
+
+export default function SubscriptionAdmin() {
+  const [trialDays, setTrialDays] = useState(30); const [trialAds, setTrialAds] = useState(false); const [promo, setPromo] = useState("SUMMER25");
+  const analytics = useMemo(() => calculateAnalytics(sample, new Date("2026-07-26")), []);
+  const metrics = [["Active subscribers", analytics.activeSubscribers], ["Trial users", analytics.trialUsers], ["Conversion", `${analytics.conversionRate}%`], ["Cancellations", analytics.cancellations], ["Revenue", `$${(analytics.revenue / 100).toFixed(2)}`]];
+  return <main className="subscription-admin admin-shell"><header className="admin-header"><div><span className="eyebrow">SUBSCRIPTIONS</span><h1>Revenue command center</h1><p>Plans, access and growth in one place.</p></div><button type="button">Export report</button></header>
+    <section className="metric-grid">{metrics.map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong><small>Live billing view</small></article>)}</section>
+    <section className="admin-sub-grid"><article className="admin-card"><h2>Plan configuration</h2>{Object.entries(PLAN_CATALOG).map(([id, plan]) => <div className="plan-row" key={id}><span><strong>{plan.name}</strong><small>{plan.features.length} permissions</small></span><label>USD<input aria-label={`${plan.name} price`} defaultValue={plan.price.toFixed(2)} /></label><button type="button">Edit</button></div>)}</article>
+      <article className="admin-card"><h2>Trial & advertising</h2><label className="field">Free trial duration<input type="number" min="1" value={trialDays} onChange={(e) => setTrialDays(e.target.value)} /><small>Days before automatic expiration and billing</small></label><label className="switch-row"><span><strong>Ads during free trial</strong><small>Basic always contains advertisements</small></span><input type="checkbox" checked={trialAds} onChange={(e) => setTrialAds(e.target.checked)} /></label><label className="switch-row"><span><strong>Beta features</strong><small>Premium+ members only</small></span><input type="checkbox" defaultChecked /></label></article>
+      <article className="admin-card"><h2>Promotions & regions</h2><label className="field">Active discount code<input value={promo} onChange={(e) => setPromo(e.target.value)} /></label><div className="region-row"><span>United States</span><strong>USD · 100%</strong></div><div className="region-row"><span>Ukraine</span><strong>UAH · 55%</strong></div><button type="button">Add regional price</button></article>
+      <article className="admin-card"><h2>Most listened</h2>{analytics.mostListenedBooks.map((book, index) => <div className="book-rank" key={book.title}><b>0{index + 1}</b><span>{book.title}</span><strong>{book.minutes} min</strong></div>)}</article></section>
+  </main>;
+}

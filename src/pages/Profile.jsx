@@ -108,6 +108,7 @@ function Profile() {
         </div>
       </div>
       <div className="profile-actions">
+        <button onClick={() => navigate("/subscription")}>✦ Membership & billing</button>
         <button onClick={() => navigate("/library")}>📚 Відкрити бібліотеку</button>
         <button onClick={() => navigate("/admin")}>⚙️ Адмін-панель</button>
         <button onClick={logout} className="profile-actions__danger">🚪 Вийти</button>
