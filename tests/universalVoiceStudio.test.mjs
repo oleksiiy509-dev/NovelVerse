@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { exportVoicePreset, importVoicePreset, inferUniversalProfile, resolveCharacterVoice, universalVoiceProfiles, voiceProviderAdapters } from "../src/lib/universalVoiceStudio.js";
+import { applyVoicePreset, assignVoice, createVoiceReport, exportVoicePreset, importVoicePreset, inferUniversalProfile, migrateVoiceStudioState, normalizeVoiceProfile, resolveCharacterVoice, universalVoiceProfiles, validateVoiceStudio, versionVoiceProfile, voiceProviderAdapters, voicePresets } from "../src/lib/universalVoiceStudio.js";
 
 test("Universal Voice Studio includes required provider-neutral profiles", () => {
   const ids = universalVoiceProfiles.map((profile) => profile.id);
@@ -36,6 +36,36 @@ test("voice evolution gradually changes parameters without provider coupling", (
 test("presets can be exported and imported", () => {
   const json = exportVoicePreset(universalVoiceProfiles, { c1: { assignmentMode: "custom", profileId: "robot" } });
   const parsed = importVoicePreset(json);
-  assert.equal(parsed.version, 1);
+  assert.equal(parsed.version, 2);
   assert.equal(parsed.assignments.c1.profileId, "robot");
+});
+
+test("bulk assignment preserves existing cast and supports locks", () => {
+  const assigned = assignVoice({ old: { profileId: "narrator" } }, ["c1", "c2"], "robot", { locked: true });
+  assert.equal(assigned.old.profileId, "narrator");
+  assert.equal(assigned.c1.profileId, "robot");
+  assert.equal(assigned.c2.locked, true);
+});
+
+test("all production presets configure a normalized profile", () => {
+  assert.deepEqual(Object.keys(voicePresets), ["Audiobook", "Cinematic", "Horror", "Fantasy", "Calm", "Action", "Neutral"]);
+  const cinematic = applyVoicePreset({ id: "hero", name: "Hero" }, "Cinematic");
+  assert.equal(cinematic.preset, "Cinematic");
+  assert.equal(cinematic.narrationStyle, "cinematic");
+});
+
+test("validation catches missing, duplicate, provider, language, and settings conflicts", () => {
+  const issues = validateVoiceStudio({ narratorId: "missing", profiles: [{ id: "a", name: "A", role: "narrator", provider: "unknown", language: "xx", rate: 8 }, { id: "b", role: "narrator" }], assignments: { c1: { profileId: "gone" } } });
+  for (const code of ["missing_voice", "duplicate_narrator", "unsupported_provider", "invalid_language", "incompatible_settings"]) assert.ok(issues.some(issue => issue.code === code), code);
+});
+
+test("v1 persistence migrates, profiles version, and reports unused voices", () => {
+  const migrated = migrateVoiceStudioState({ version: 1, profiles: [{ id: "narrator", label: "Narrator", provider: "browser", voice: "system-default" }], assignments: {} });
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.profiles[0].voiceId, "system-default");
+  const changed = versionVoiceProfile(normalizeVoiceProfile(migrated.profiles[0]), { rate: 1.2 });
+  assert.equal(changed.profile.version, 2);
+  assert.equal(changed.historyEntry.version, 1);
+  const report = createVoiceReport({ ...migrated, characters: [] });
+  assert.equal(report.unusedVoices.length, 0);
 });
