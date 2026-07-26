@@ -15,6 +15,15 @@ export function createBetaState() {
   return { version: 1, projects: [], archivedProjects: [], queue: [], notifications: [], errors: [], checkpoints: {}, settings: { pipeline: { autoResume: true }, narration: {}, production: {}, soundDesign: {}, mixer: {}, worker: {}, performance: { cache: true } }, firstLaunchComplete: false };
 }
 
+export function resetBetaSettings() { return clone(createBetaState().settings); }
+export function exportBetaSettings(settings) { return new Blob([JSON.stringify({ schemaVersion: 1, settings }, null, 2)], { type: "application/json" }); }
+export function importBetaSettings(text) {
+  const parsed = typeof text === "string" ? JSON.parse(text) : text;
+  if (parsed?.schemaVersion !== 1 || !parsed.settings || typeof parsed.settings !== "object" || Array.isArray(parsed.settings)) throw new Error("Unsupported or invalid settings file.");
+  const defaults = resetBetaSettings();
+  return Object.fromEntries(Object.keys(defaults).map((group) => [group, { ...defaults[group], ...(parsed.settings[group] || {}) }]));
+}
+
 export class BetaRepository {
   constructor(storage = globalThis.localStorage || memoryStorage(), key = BETA_STORAGE_KEY) { this.storage = storage; this.key = key; this.state = safeRead(storage, key, createBetaState()); }
   save() { this.storage.setItem(this.key, JSON.stringify(this.state)); return this.snapshot(); }
@@ -33,16 +42,21 @@ function checksum(value) { const text = JSON.stringify(value); let hash = 216613
 export function preserveManualState(previous = {}, generated = {}) { return { ...generated, manualEdits: previous.manualEdits || generated.manualEdits, voiceAssignments: previous.voiceAssignments || generated.voiceAssignments, soundAssignments: previous.soundAssignments || generated.soundAssignments, mixerEdits: previous.mixerEdits || generated.mixerEdits, scenes: (generated.scenes || []).map((scene) => previous.scenes?.find((item) => item.id === scene.id && item.locked) || scene) }; }
 
 export class BackgroundQueue {
-  constructor({ repository = new BetaRepository(), runners = {}, onUpdate = () => {}, clock = () => Date.now() } = {}) { this.repository = repository; this.runners = runners; this.onUpdate = onUpdate; this.clock = clock; this.stopped = false; }
+  constructor({ repository = new BetaRepository(), runners = {}, onUpdate = () => {}, clock = () => Date.now() } = {}) { this.repository = repository; this.runners = runners; this.onUpdate = onUpdate; this.clock = clock; this.cancelled = new Set(); this.running = new Map(); }
   add({ projectId, chapterIds, wholeNovel = false }) { const job = { id: crypto.randomUUID(), projectId, chapterIds, wholeNovel, status: "queued", stageIndex: 0, progress: 0, createdAt: nowIso(), warnings: [], error: "", elapsedMs: 0, remainingMs: null }; this.repository.state.queue.push(job); this.repository.save(); this.onUpdate(clone(job)); return job; }
-  stop(jobId) { const job = this.find(jobId); if (job) { job.status = "cancelled"; this.stopped = true; this.persist(job); } }
-  pause(jobId) { const job = this.find(jobId); if (job?.status === "running") { job.status = "queued"; this.stopped = true; this.persist(job); } }
+  stop(jobId) { const job = this.find(jobId); if (job) { job.status = "cancelled"; this.cancelled.add(jobId); this.persist(job); } }
+  pause(jobId) { const job = this.find(jobId); if (job?.status === "running") { job.status = "queued"; this.cancelled.add(jobId); this.persist(job); } }
   find(id) { return this.repository.state.queue.find((job) => job.id === id); }
   persist(job) { this.repository.checkpoint(job.projectId, `pipeline:${job.status}`, job); this.repository.save(); this.onUpdate(clone(job)); }
   async run(jobId, context = {}) {
-    const job = this.find(jobId); if (!job) throw new Error("Queue job not found."); this.stopped = false; job.status = "running"; job.startedAt ||= this.clock(); this.persist(job);
+    if (this.running.has(jobId)) return this.running.get(jobId);
+    const execution = this.execute(jobId, context).finally(() => this.running.delete(jobId));
+    this.running.set(jobId, execution); return execution;
+  }
+  async execute(jobId, context = {}) {
+    const job = this.find(jobId); if (!job) throw new Error("Queue job not found."); this.cancelled.delete(jobId); job.status = "running"; job.startedAt ||= this.clock(); this.persist(job);
     for (; job.stageIndex < BETA_STAGES.length; job.stageIndex += 1) {
-      if (this.stopped || job.status === "cancelled") return clone(job);
+      if (this.cancelled.has(jobId) || job.status === "cancelled") return clone(job);
       const stage = BETA_STAGES[job.stageIndex]; job.currentStage = stage.id; this.persist(job);
       try { const output = await (this.runners[stage.id] || (async () => ({})))({ ...context, job: clone(job), stage, previous: job.outputs?.[stage.id] }); job.outputs = { ...job.outputs, [stage.id]: output }; }
       catch (error) { job.status = "failed"; job.error = error.message || String(error); this.repository.state.errors.unshift({ id: crypto.randomUUID(), jobId, stage: stage.id, message: job.error, createdAt: nowIso() }); this.persist(job); return clone(job); }
@@ -54,9 +68,11 @@ export class BackgroundQueue {
 }
 
 export async function collectDiagnostics({ workerUrl = "http://127.0.0.1:8787/health", database, storage, fetcher = globalThis.fetch } = {}) {
-  const probe = async (task) => { try { await task(); return "online"; } catch { return "offline"; } };
+  const probe = async (task) => { const started = Date.now(); try { await task(); return { status: "online", latencyMs: Date.now() - started }; } catch (error) { return { status: "offline", latencyMs: Date.now() - started, suggestion: error?.name === "AbortError" ? "Check that the service responds promptly." : "Check the service connection and configuration." }; } };
   const audio = typeof globalThis.AudioContext !== "undefined" || typeof globalThis.webkitAudioContext !== "undefined";
-  return { checkedAt: nowIso(), worker: await probe(async () => { const response = await fetcher(workerUrl); if (!response.ok) throw new Error(); }), piper: await probe(async () => { const response = await fetcher(`${workerUrl}/piper`); if (!response.ok) throw new Error(); }), database: await probe(async () => database?.()), storage: await probe(async () => storage?.()), audioContext: audio ? "available" : "unavailable", browserCompatible: Boolean(globalThis.Promise && globalThis.Blob), userAgent: globalThis.navigator?.userAgent || "unknown" };
+  const timeoutFetch = async (url) => { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 5000); try { const response = await fetcher(url, { signal: controller.signal }); if (!response.ok) throw new Error(`HTTP ${response.status}`); } finally { clearTimeout(timer); } };
+  const results = { worker: await probe(() => timeoutFetch(workerUrl)), piper: await probe(() => timeoutFetch(`${workerUrl}/piper`)), database: await probe(async () => database?.()), storage: await probe(async () => storage?.()) };
+  return { checkedAt: nowIso(), ...Object.fromEntries(Object.entries(results).map(([key, value]) => [key, value.status])), details: results, audioContext: audio ? "available" : "unavailable", browserCompatible: Boolean(globalThis.Promise && globalThis.Blob && globalThis.AbortController), online: globalThis.navigator?.onLine !== false, userAgent: globalThis.navigator?.userAgent || "unknown" };
 }
 
 export function performanceSnapshot(queue = [], cache = {}) { const memory = globalThis.performance?.memory; return { ramBytes: memory?.usedJSHeapSize ?? null, queueSize: queue.filter(({ status }) => ["queued", "running"].includes(status)).length, cacheHits: cache.hits || 0, cacheMisses: cache.misses || 0, renderDurationMs: cache.renderDurationMs || 0 }; }

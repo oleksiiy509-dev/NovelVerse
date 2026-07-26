@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BackgroundQueue, BetaRepository, BETA_STAGES, buildExport, collectDiagnostics, performanceSnapshot, preserveManualState } from "../src/lib/betaIntegration.js";
+import { BackgroundQueue, BetaRepository, BETA_STAGES, buildExport, collectDiagnostics, exportBetaSettings, importBetaSettings, performanceSnapshot, preserveManualState, resetBetaSettings } from "../src/lib/betaIntegration.js";
+import { DiagnosticLogger } from "../src/lib/diagnosticLogger.js";
 
 function storage() { const values = new Map(); return { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) }; }
 function setup(runners = {}) { const repository = new BetaRepository(storage(), "test"); return { repository, queue: new BackgroundQueue({ repository, runners }) }; }
@@ -47,4 +48,26 @@ test("manual assignments, mixer edits, and locked scenes survive regeneration", 
 
 test("failure is persisted in the Error Center and performance reports queue size", async () => {
   const { repository, queue } = setup({ analyze: async () => { throw new Error("Worker offline"); } }); repository.upsertProject({ id: "p1", name: "Book" }); const result = await queue.run(queue.add({ projectId: "p1", wholeNovel: true }).id); assert.equal(result.status, "failed"); assert.equal(repository.state.errors[0].message, "Worker offline"); assert.equal(performanceSnapshot(repository.state.queue).queueSize, 0);
+});
+
+test("settings round-trip through a versioned export and reject invalid files", async () => {
+  const settings = resetBetaSettings(); settings.pipeline.autoResume = false;
+  assert.deepEqual(importBetaSettings(await exportBetaSettings(settings).text()), settings);
+  assert.throws(() => importBetaSettings('{"schemaVersion":2}'), /invalid settings/i);
+});
+
+test("diagnostic logs redact private fields and stay memory bounded", () => {
+  const logger = new DiagnosticLogger(2);
+  logger.info("worker", "one", { token: "private", nested: { password: "private" } });
+  logger.warn("storage", "two"); logger.error("pipeline", "three");
+  const report = logger.export();
+  assert.equal(report.entries.length, 2);
+  assert.equal(JSON.stringify(report).includes("private"), false);
+});
+
+test("starting the same pipeline job twice shares one execution", async () => {
+  let calls = 0; const runners = Object.fromEntries(BETA_STAGES.map(({ id }) => [id, async () => { calls += 1; await new Promise((resolve) => setTimeout(resolve, 1)); }]));
+  const { repository, queue } = setup(runners); repository.upsertProject({ id: "p1", name: "Book" }); const job = queue.add({ projectId: "p1" });
+  const first = queue.run(job.id); const second = queue.run(job.id); await Promise.all([first, second]);
+  assert.equal(calls, BETA_STAGES.length);
 });
