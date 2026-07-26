@@ -32,6 +32,7 @@ const NarrationStudio = lazy(() => import("./pages/NarrationStudio.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
 const BetaDashboard = lazy(() => import("./pages/BetaDashboard.jsx"));
 const ExportStudio = lazy(() => import("./pages/ExportStudio.jsx"));
+const PublishingStudio = lazy(() => import("./pages/PublishingStudio.jsx"));
 
 function AppRoutes() {
   useTelegramBackButton();
@@ -64,6 +65,7 @@ function AppRoutes() {
           <Route path="/admin/audio-studio" element={<AiAudioStudio />} />
           <Route path="/admin/narration-studio" element={<NarrationStudio />} />
           <Route path="/admin/export-studio" element={<ExportStudio />} />
+          <Route path="/admin/publishing" element={<PublishingStudio />} />
           <Route path="/admin/novels/:novelId/characters" element={<AdminCharacters />} />
         </Route>
         <Route path="*" element={<NotFound />} />
