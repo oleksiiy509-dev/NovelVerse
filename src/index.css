@@ -80,6 +80,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 .error-state { border-color: rgba(248, 113, 113, .35); color: #fecaca; background: rgba(127, 29, 29, .35); }
 .skeleton { position: relative; overflow: hidden; background: linear-gradient(110deg, var(--surface) 8%, var(--surface-2) 18%, var(--surface) 33%); background-size: 200% 100%; border-radius: var(--radius-md); animation: skeleton-breathe 1.6s ease-in-out infinite; }
 .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); animation: shimmer 1.4s infinite; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.page-loading__title { width: min(22rem, 70%); height: 3rem; margin-bottom: 1.25rem; }
+.page-loading__toolbar { width: 100%; height: 4rem; margin-bottom: 1.25rem; }
+.page-loading__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 1rem; }
+.page-loading__card { min-height: 15rem; }
 @keyframes shimmer { to { transform: translateX(100%); } }
 @keyframes skeleton-breathe { 0%, 100% { opacity: .72; } 50% { opacity: 1; } }
 @media (max-width: 640px) { .page-shell { width: min(100% - 20px, 1120px); padding-top: max(12px, var(--safe-top)); padding-bottom: calc(128px + var(--safe-bottom)); } button { min-height: 44px; } }

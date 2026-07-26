@@ -1,5 +1,5 @@
 const MAX_ENTRIES = 500;
-const PRIVATE_KEYS = /token|password|secret|authorization|email/i;
+const PRIVATE_KEYS = /token|password|secret|authorization|email|cookie|session|api[-_]?key/i;
 
 function sanitize(value, seen = new WeakSet()) {
   if (value == null || typeof value !== "object") return value;
@@ -13,7 +13,7 @@ function sanitize(value, seen = new WeakSet()) {
 export class DiagnosticLogger {
   constructor(limit = MAX_ENTRIES) { this.limit = limit; this.entries = []; }
   log(level, category, message, context = {}) {
-    const entry = { timestamp: new Date().toISOString(), level, category, message: String(message), context: sanitize(context) };
+    const entry = { timestamp: new Date().toISOString(), level, category: String(category || "application"), message: String(message), context: sanitize(context) };
     this.entries.push(entry);
     if (this.entries.length > this.limit) this.entries.splice(0, this.entries.length - this.limit);
     return entry;
