@@ -30,6 +30,7 @@ const AdminSceneStudio = lazy(() => import("./pages/AdminSceneStudio.jsx"));
 const AiAudioStudio = lazy(() => import("./pages/AiAudioStudio.jsx"));
 const NarrationStudio = lazy(() => import("./pages/NarrationStudio.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
+const BetaDashboard = lazy(() => import("./pages/BetaDashboard.jsx"));
 
 function AppRoutes() {
   useTelegramBackButton();
@@ -45,6 +46,7 @@ function AppRoutes() {
         <Route path="/reader/:id" element={<Reader />} />
         <Route path="/novel/:id" element={<Novel />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/beta" element={<BetaDashboard />} />
         <Route element={<ProtectedAdminRoute />}>
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/novels" element={<AdminNovels />} />
