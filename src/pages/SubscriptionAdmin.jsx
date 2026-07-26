@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { calculateAnalytics, PLAN_CATALOG } from "../lib/subscriptions";
+import { PROVIDERS } from "../lib/commerce";
 import "../styles/Subscription.css";
 
 const sample = { subscriptions: [{ status: "active", plan_id: "premium", current_period_end: "2027-01-01", converted_from_trial: true, trial_started_at: "2026-06-01" }, { status: "trialing", plan_id: "free_trial", trial_ends_at: "2027-01-01", trial_started_at: "2026-07-01" }, { status: "cancelled", plan_id: "basic", trial_started_at: "2026-05-01" }], payments: [{ status: "paid", amount: 1299 }], listening: [{ book_title: "Shadow Slave", minutes: 428 }, { book_title: "Lord of Mysteries", minutes: 312 }] };
 
 export default function SubscriptionAdmin() {
-  const [trialDays, setTrialDays] = useState(30); const [trialAds, setTrialAds] = useState(false); const [promo, setPromo] = useState("SUMMER25");
+  const [trialDays, setTrialDays] = useState(30); const [trialAds, setTrialAds] = useState(false); const [promo, setPromo] = useState("SUMMER25"); const [providers, setProviders] = useState(() => Object.fromEntries(PROVIDERS.map(id => [id, id !== "paypal"])));
   const analytics = useMemo(() => calculateAnalytics(sample, new Date("2026-07-26")), []);
   const metrics = [["Active subscribers", analytics.activeSubscribers], ["Trial users", analytics.trialUsers], ["Conversion", `${analytics.conversionRate}%`], ["Cancellations", analytics.cancellations], ["Revenue", `$${(analytics.revenue / 100).toFixed(2)}`]];
   return <main className="subscription-admin admin-shell"><header className="admin-header"><div><span className="eyebrow">SUBSCRIPTIONS</span><h1>Revenue command center</h1><p>Plans, access and growth in one place.</p></div><button type="button">Export report</button></header>
@@ -14,5 +15,11 @@ export default function SubscriptionAdmin() {
       <article className="admin-card"><h2>Trial & advertising</h2><label className="field">Free trial duration<input type="number" min="1" value={trialDays} onChange={(e) => setTrialDays(e.target.value)} /><small>Days before automatic expiration and billing</small></label><label className="switch-row"><span><strong>Ads during free trial</strong><small>Basic always contains advertisements</small></span><input type="checkbox" checked={trialAds} onChange={(e) => setTrialAds(e.target.checked)} /></label><label className="switch-row"><span><strong>Beta features</strong><small>Premium+ members only</small></span><input type="checkbox" defaultChecked /></label></article>
       <article className="admin-card"><h2>Promotions & regions</h2><label className="field">Active discount code<input value={promo} onChange={(e) => setPromo(e.target.value)} /></label><div className="region-row"><span>United States</span><strong>USD · 100%</strong></div><div className="region-row"><span>Ukraine</span><strong>UAH · 55%</strong></div><button type="button">Add regional price</button></article>
       <article className="admin-card"><h2>Most listened</h2>{analytics.mostListenedBooks.map((book, index) => <div className="book-rank" key={book.title}><b>0{index + 1}</b><span>{book.title}</span><strong>{book.minutes} min</strong></div>)}</article></section>
+    <section className="commerce-grid" aria-label="Commerce configuration">
+      <article className="admin-card"><h2>Payment providers</h2><p className="card-note">Credentials remain in the server vault.</p>{PROVIDERS.map(id => <label className="switch-row" key={id}><span><strong>{id.replaceAll("_", " ")}</strong><small>{providers[id] ? "Accepting payments" : "Disabled"}</small></span><input type="checkbox" checked={providers[id]} onChange={() => setProviders(current => ({...current, [id]: !current[id]}))} /></label>)}</article>
+      <article className="admin-card"><h2>Billing controls</h2><div className="setting-pills"><span>Monthly</span><span>Quarterly</span><span>Yearly</span><span>Lifetime</span></div><label className="field">Grace period<input type="number" defaultValue="7" min="0" /><small>Days of access after failed renewal</small></label><label className="field">Retry schedule<input defaultValue="1, 3, 5 days" /></label></article>
+      <article className="admin-card"><h2>Revenue operations</h2>{["Taxes & currencies","Gift subscriptions","Referral rewards","Ad campaigns","Fraud review"].map(item=><div className="operation-row" key={item}><span>{item}</span><button type="button">Manage</button></div>)}</article>
+      <article className="admin-card"><h2>Financial reports</h2><p className="card-note">Reconcile provider settlements.</p><label className="field">Reporting period<select defaultValue="monthly"><option>daily</option><option>weekly</option><option>monthly</option><option>yearly</option></select></label><div className="report-actions"><button type="button">CSV</button><button type="button">Excel</button><button type="button">PDF</button></div></article>
+    </section>
   </main>;
 }
