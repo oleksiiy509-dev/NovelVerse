@@ -36,6 +36,7 @@ const ExportStudio = lazy(() => import("./pages/ExportStudio.jsx"));
 const PublishingStudio = lazy(() => import("./pages/PublishingStudio.jsx"));
 const Subscription = lazy(() => import("./pages/Subscription.jsx"));
 const SubscriptionAdmin = lazy(() => import("./pages/SubscriptionAdmin.jsx"));
+const CreatorPortal = lazy(() => import("./pages/CreatorPortal.jsx"));
 
 function AppRoutes() {
   useTelegramBackButton();
@@ -54,7 +55,8 @@ function AppRoutes() {
         <Route path="/login" element={<Login />} />
         <Route path="/beta" element={<BetaDashboard />} />
         <Route element={<ProtectedAdminRoute />}>
-          <Route path="/admin" element={<Admin />} />
+          <Route path="/admin" element={<CreatorPortal />} />
+          <Route path="/admin/legacy" element={<Admin />} />
           <Route path="/admin/novels" element={<AdminNovels />} />
           <Route path="/admin/novels/add" element={<AddNovel />} />
           <Route path="/admin/novels/edit/:id" element={<EditNovel />} />
