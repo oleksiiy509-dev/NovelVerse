@@ -31,7 +31,7 @@ export default defineConfig([
     },
     rules: {
       'react-hooks/immutability': 'off',
-      'react-refresh/only-export-components': ['warn', { allowExportNames: ['useLanguage'] }],
+      'react-refresh/only-export-components': 'warn',
     },
   },
 ])

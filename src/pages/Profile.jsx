@@ -5,7 +5,7 @@ import { getCurrentUser, readList, userKey } from "../lib/userFeatures";
 import { useTelegram } from "../hooks/useTelegram";
 import "../styles/Profile.css";
 import LanguageSettings from "../components/LanguageSettings";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage } from "../hooks/useLanguage";
 
 function Profile() {
   const { t } = useLanguage();

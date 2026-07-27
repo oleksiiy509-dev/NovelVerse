@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import "./BottomNav.css";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage } from "../hooks/useLanguage";
 
 function BottomNav() {
   const { t } = useLanguage();

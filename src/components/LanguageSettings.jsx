@@ -1,5 +1,5 @@
 import { SUPPORTED_LANGUAGES } from "../lib/globalLanguage";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage } from "../hooks/useLanguage";
 
 export default function LanguageSettings() {
   const { preferences, setPreferences, detectedLanguage, t } = useLanguage();
