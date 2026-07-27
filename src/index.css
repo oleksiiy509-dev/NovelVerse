@@ -16,6 +16,8 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+.skip-link { position: fixed; top: max(8px, var(--safe-top)); left: max(8px, var(--safe-left)); z-index: 1000; padding: .75rem 1rem; border-radius: var(--radius-sm); background: var(--text); color: var(--bg); font-weight: 900; text-decoration: none; transform: translateY(-160%); transition: transform .18s ease; }
+.skip-link:focus { transform: translateY(0); }
 body.telegram-webapp { min-height: var(--tg-viewport-stable-height, 100vh); background: var(--tg-bg, var(--bg)); color: var(--tg-text, var(--text)); }
 body.telegram-webapp #root {
   min-height: var(--tg-viewport-stable-height, 100vh);
@@ -44,6 +46,7 @@ body {
   overflow-x: hidden;
 }
 img { max-width: 100%; display: block; }
+main { scroll-margin-top: 1rem; }
 button, input, textarea, select { font: inherit; }
 button {
   border: 0;
@@ -90,6 +93,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--primary); box-sh
 @media (max-width: 640px) { .page-shell { width: min(100% - 20px, 1120px); padding-top: max(12px, var(--safe-top)); padding-bottom: calc(128px + var(--safe-bottom)); } button { min-height: 44px; } }
 @media (max-width: 380px) { .page-shell { width: min(100% - 16px, 1120px); padding-bottom: calc(136px + var(--safe-bottom)); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+@media (forced-colors: active) { button, input, textarea, select, .bottom-nav, .empty-state, .error-state { border: 1px solid ButtonText; } }
 
 body.telegram-webapp {
   min-height: var(--tg-viewport-height, 100vh);

@@ -9,6 +9,7 @@ function Library() {
 
   const [novels, setNovels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -43,6 +44,7 @@ function Library() {
 
       if (error) {
         console.error("Library load failed.", error);
+        setError("Не вдалося завантажити бібліотеку. Перевірте з’єднання та спробуйте ще раз.");
         setLoading(false);
         return;
       }
@@ -70,7 +72,7 @@ function Library() {
   }
 
   if (loading) {
-    return <div className="library page-shell"><div className="loading-state">Завантаження...</div></div>;
+    return <main className="library page-shell" aria-busy="true"><span className="sr-only">Завантаження бібліотеки</span><div className="library__loading" aria-hidden="true">{Array.from({ length: 3 }, (_, index) => <div className="skeleton library__skeleton" key={index} />)}</div></main>;
   }
 
   return (
@@ -81,8 +83,10 @@ function Library() {
         <button className="library__downloads-link" onClick={() => navigate("/downloads")}>⬇️ Завантаження</button>
       </header>
 
-      {novels.length === 0 ? (
-        <div className="empty-state">У бібліотеці поки немає новел.</div>
+      {error ? (
+        <section className="error-state" role="alert"><h2>Бібліотека недоступна</h2><p>{error}</p><button type="button" onClick={() => window.location.reload()}>Спробувати знову</button></section>
+      ) : novels.length === 0 ? (
+        <section className="empty-state"><div className="empty-state__icon" aria-hidden="true">📚</div><h2>Створіть свою бібліотеку</h2><p>Зберігайте новели, щоб швидко повертатися до читання.</p><button type="button" onClick={() => navigate("/catalog")}>Переглянути каталог</button></section>
       ) : (
         <section className="library__grid" aria-label="Збережені новели">
           {novels.map((item) => {
@@ -93,7 +97,7 @@ function Library() {
               <article className="library-card" key={item.id}>
                 <img
                   src={coverSrc || defaultCover}
-                  alt={novel.title || "NovelVerse"}
+                  alt={`Обкладинка «${novel.title || "NovelVerse"}»`}
                   loading="lazy"
                   onError={(event) => { event.currentTarget.src = defaultCover; }}
                 />
@@ -110,7 +114,7 @@ function Library() {
 
                 <div className="library-card__actions">
                   <button onClick={() => navigate(`/novel/${novel.id}`)}>📖 Відкрити</button>
-                  <button onClick={() => removeFromLibrary(item.id)}>🗑 Видалити</button>
+                  <button aria-label={`Видалити «${novel.title}» з бібліотеки`} onClick={() => removeFromLibrary(item.id)}>🗑 Видалити</button>
                 </div>
               </article>
             );

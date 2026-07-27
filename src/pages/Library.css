@@ -2,6 +2,11 @@
 .library__header { background: linear-gradient(135deg, rgba(12,24,43,.94), rgba(30,46,70,.82)); border: 1px solid rgba(212,175,55,.22); border-radius: 24px; box-shadow: var(--shadow-card); margin-bottom: 18px; padding: 18px; }
 .library__header p { color: var(--muted); margin: 4px 0 0; }
 .library__grid { display: grid; gap: 14px; }
+.library__loading { display: grid; gap: 14px; }
+.library__skeleton { min-height: 154px; border-radius: 24px; }
+.empty-state__icon { font-size: 2.5rem; }
+.empty-state h2, .error-state h2 { color: var(--text); margin: .4rem 0; }
+.empty-state p, .error-state p { margin: .35rem auto 1rem; }
 .library-card { align-items: center; background: linear-gradient(135deg, rgba(15,27,45,.96), rgba(8,17,31,.92)); border: 1px solid rgba(148,163,184,.2); border-radius: 24px; box-shadow: var(--shadow-card); display: grid; grid-template-columns: 86px minmax(0, 1fr) auto; gap: 14px; padding: 12px; animation: library-in .32s ease both; transition: transform .24s ease, border-color .24s ease, box-shadow .24s ease; }
 .library-card:hover { border-color: rgba(212,175,55,.34); box-shadow: var(--shadow-elevated); transform: translateY(-3px); }
 .library-card img { aspect-ratio: 2/3; border-radius: 16px; height: 129px; object-fit: cover; width: 86px; }
