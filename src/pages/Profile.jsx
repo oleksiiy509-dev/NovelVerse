@@ -4,8 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { getCurrentUser, readList, userKey } from "../lib/userFeatures";
 import { useTelegram } from "../hooks/useTelegram";
 import "../styles/Profile.css";
+import LanguageSettings from "../components/LanguageSettings";
+import { useLanguage } from "../contexts/LanguageContext";
 
 function Profile() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const { isTelegram, user: telegramUser, localUser } = useTelegram();
   const [user, setUser] = useState(null);
@@ -80,7 +83,7 @@ function Profile() {
 
   return (
     <div className="profile-page page-shell">
-      <h1>Профіль</h1>
+      <h1>{t("profile")}</h1>
       <div className="profile-card">
         <div className="profile-card__compact">
           <img src={avatarUrl} alt="Аватар" className="profile-card__avatar" />
@@ -107,6 +110,7 @@ function Profile() {
           <span>🕘 Історія читання: {historyCount} записів</span>
         </div>
       </div>
+      <LanguageSettings />
       <div className="profile-actions">
         <button onClick={() => navigate("/subscription")}>✦ Membership & billing</button>
         <button onClick={() => navigate("/library")}>📚 Відкрити бібліотеку</button>

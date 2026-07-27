@@ -37,6 +37,7 @@ const PublishingStudio = lazy(() => import("./pages/PublishingStudio.jsx"));
 const Subscription = lazy(() => import("./pages/Subscription.jsx"));
 const SubscriptionAdmin = lazy(() => import("./pages/SubscriptionAdmin.jsx"));
 const CreatorPortal = lazy(() => import("./pages/CreatorPortal.jsx"));
+const LanguageDashboard = lazy(() => import("./pages/LanguageDashboard.jsx"));
 
 function AppRoutes() {
   useTelegramBackButton();
@@ -73,6 +74,7 @@ function AppRoutes() {
           <Route path="/admin/export-studio" element={<ExportStudio />} />
           <Route path="/admin/publishing" element={<PublishingStudio />} />
           <Route path="/admin/subscriptions" element={<SubscriptionAdmin />} />
+          <Route path="/admin/languages" element={<LanguageDashboard />} />
           <Route path="/admin/novels/:novelId/characters" element={<AdminCharacters />} />
         </Route>
         <Route path="*" element={<NotFound />} />
