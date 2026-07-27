@@ -20,6 +20,15 @@ export function readLanguagePreferences(storage = localStorage) {
   }
 }
 
+export function writeLanguagePreferences(preferences, storage = localStorage) {
+  try {
+    storage.setItem(LANGUAGE_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function applyDetectedLanguage(preferences, detectedLanguage) {
   if (!preferences.autoDetect) return preferences;
 

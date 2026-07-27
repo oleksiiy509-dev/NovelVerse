@@ -7,5 +7,6 @@ export const TelegramContext = createContext({
   localUser: null,
   initData: "",
   ready: false,
+  initializationError: null,
   verifiedAuthentication: false,
 });

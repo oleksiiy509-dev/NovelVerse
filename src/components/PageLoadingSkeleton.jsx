@@ -1,3 +1,7 @@
+const PLACEHOLDER_CARDS = Array.from({ length: 6 }, (_, index) => (
+  <div className="skeleton page-loading__card" key={index} />
+));
+
 function PageLoadingSkeleton() {
   return (
     <main className="page-shell page-loading" aria-busy="true" aria-label="Завантаження сторінки">
@@ -5,7 +9,7 @@ function PageLoadingSkeleton() {
       <div className="skeleton page-loading__title" />
       <div className="skeleton page-loading__toolbar" />
       <div className="page-loading__grid">
-        {Array.from({ length: 6 }, (_, index) => <div className="skeleton page-loading__card" key={index} />)}
+        {PLACEHOLDER_CARDS}
       </div>
     </main>
   );

@@ -5,23 +5,29 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'coverage', 'voice-worker/coverage']),
+  {
+    name: 'novelverse/javascript',
+    files: ['**/*.{js,mjs,cjs}'],
+    extends: [js.configs.recommended],
+  },
+  {
+    name: 'novelverse/tooling',
+    files: ['*.config.js', 'tests/**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   {
     name: 'novelverse/voice-worker',
     files: ['voice-worker/**/*.{js,mjs,cjs}'],
-    extends: [js.configs.recommended],
     languageOptions: {
-      globals: {
-        ...globals.node,
-        process: 'readonly',
-        Buffer: 'readonly',
-      },
+      globals: globals.node,
     },
   },
   {
     name: 'novelverse/application',
-    files: ['**/*.{js,jsx}'],
-    ignores: ['voice-worker/**'],
+    files: ['src/**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -35,7 +41,7 @@ export default defineConfig([
     },
     rules: {
       'react-hooks/immutability': 'off',
-      'react-refresh/only-export-components': 'warn',
+      'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
     },
   },
 ])

@@ -10,6 +10,7 @@ import {
   DEFAULT_LANGUAGE_PREFERENCES,
   LANGUAGE_PREFERENCES_STORAGE_KEY,
   readLanguagePreferences,
+  writeLanguagePreferences,
 } from "../src/contexts/languageUtils.js";
 
 test("language detection follows Telegram, device, browser, English priority", () => {
@@ -30,6 +31,14 @@ test("language preferences load persisted values and recover malformed storage",
   const storage = { getItem: (key) => key === LANGUAGE_PREFERENCES_STORAGE_KEY ? '{"readingLanguage":"de"}' : null };
   assert.equal(readLanguagePreferences(storage).readingLanguage, "de");
   assert.deepEqual(readLanguagePreferences({ getItem: () => "{" }), DEFAULT_LANGUAGE_PREFERENCES);
+});
+
+test("language preferences handle unavailable storage without crashing", () => {
+  let persisted;
+  const storage = { setItem: (key, value) => { persisted = [key, value]; } };
+  assert.equal(writeLanguagePreferences({ readingLanguage: "de" }, storage), true);
+  assert.deepEqual(persisted, [LANGUAGE_PREFERENCES_STORAGE_KEY, '{"readingLanguage":"de"}']);
+  assert.equal(writeLanguagePreferences({}, { setItem: () => { throw new Error("quota exceeded"); } }), false);
 });
 
 test("content and audio fall back preferred, English, original", () => {
