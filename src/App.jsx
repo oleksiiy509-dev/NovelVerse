@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
 import BottomNav from "./components/BottomNav.jsx";
@@ -85,11 +85,21 @@ function AppRoutes() {
 
 function ApplicationShell() {
   const location = useLocation();
+  const isFocusedExperience = location.pathname.startsWith("/reader/") || location.pathname === "/login";
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [location.pathname]);
+
   return (
     <ErrorBoundary resetKey={location.pathname}>
-      <AppRoutes />
+      <a className="skip-link" href="#main-content">Перейти до основного вмісту</a>
+      <span className="sr-only" aria-live="polite" key={location.pathname}>Сторінку відкрито</span>
+      <div id="main-content" tabIndex="-1">
+        <AppRoutes />
+      </div>
       <NetworkBanner />
-      <BottomNav />
+      {!isFocusedExperience && <BottomNav />}
     </ErrorBoundary>
   );
 }
