@@ -9,7 +9,12 @@ const LanguageContext = createContext(null);
 export function LanguageProvider({ children }) {
   const { user } = useTelegram();
   const [savedPreferences, setSavedPreferences] = useState(readLanguagePreferences);
-  const detected = detectLanguage({ telegramLanguageCode: user?.language_code, deviceLanguage: navigator.languages?.[0], browserLanguage: navigator.language });
+  const telegramLanguageCode = user?.language_code;
+  const detected = useMemo(() => detectLanguage({
+    telegramLanguageCode,
+    deviceLanguage: navigator.languages?.[0],
+    browserLanguage: navigator.language,
+  }), [telegramLanguageCode]);
   const preferences = useMemo(
     () => applyDetectedLanguage(savedPreferences, detected),
     [savedPreferences, detected],
