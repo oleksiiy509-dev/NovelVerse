@@ -3,11 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { TelegramProvider } from './contexts/TelegramContext.jsx'
+import { LanguageProvider } from './contexts/LanguageContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <TelegramProvider>
-      <App />
+      <LanguageProvider><App /></LanguageProvider>
     </TelegramProvider>
   </StrictMode>,
 )
