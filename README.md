@@ -41,3 +41,9 @@ External services are not required by unit tests. A release still requires the c
 Apply the Supabase migrations in timestamp order, deploy the Edge Functions, configure environment values, and deploy the Vite output behind HTTPS. `vercel.json` supplies SPA rewrites, baseline response headers, and immutable caching for hashed assets. See [deployment guidance](DEPLOYMENT.md) before promoting a candidate.
 
 NovelVerse 1.0 RC is a candidate for controlled validation, not an instruction to publish or merge automatically.
+
+## Public beta readiness
+
+Sprint 5 closes the repository-level public-beta blockers identified in the production audit: routes are split into lazy chunks, offline reading progress is retained and replayed after reconnection, player position is persisted, and Telegram theme/viewport/back-button adapters are installed. The database hardening migration must be applied before beta: it limits administrator identity to trusted `app_metadata`, completes RLS coverage for commerce configuration, hardens subscription entitlement evaluation, and adds indexes for progress, subscription, notification, billing, and redemption access paths.
+
+Before public traffic, operators must still complete the environment-dependent gates in [`docs/RELEASE_AUDIT.md`](docs/RELEASE_AUDIT.md): staging RLS verification, real-device accessibility and background-audio tests, a full provider-backed audiobook render/listening pass, monitoring, and backup restoration. Repository checks alone cannot certify those external systems.
