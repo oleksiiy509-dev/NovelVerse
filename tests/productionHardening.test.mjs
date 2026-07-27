@@ -8,6 +8,9 @@ import { DiagnosticLogger } from "../src/lib/diagnosticLogger.js";
 import { AUDIOBOOK_STAGE_GRAPH } from "../src/lib/audiobookPipeline.js";
 
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+const downloadsSource = await readFile(new URL("../src/pages/Downloads.jsx", import.meta.url), "utf8");
+const betaSource = await readFile(new URL("../src/pages/BetaDashboard.jsx", import.meta.url), "utf8");
+const editNovelSource = await readFile(new URL("../src/pages/EditNovel.jsx", import.meta.url), "utf8");
 const vercelConfig = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
 
 test("every declared reader and admin route is mounted exactly once", () => {
@@ -16,8 +19,23 @@ test("every declared reader and admin route is mounted exactly once", () => {
   assert.ok(matchesApplicationRoute("/reader/chapter-1"));
   assert.ok(matchesApplicationRoute("/subscription"));
   assert.ok(matchesApplicationRoute("/admin/subscriptions"));
+  assert.ok(matchesApplicationRoute("/admin/languages"));
+  assert.ok(matchesApplicationRoute("/admin/legacy"));
   assert.ok(matchesApplicationRoute("/admin/novels/42/characters"));
   assert.equal(matchesApplicationRoute("/admin/not-real"), false);
+});
+
+test("audited controls cannot navigate to missing records or remain inert", () => {
+  assert.match(downloadsSource, /disabled=\{!item\.chapters\?\.\[0\]\?\.chapter_id\}/);
+  assert.doesNotMatch(downloadsSource, /reader\/\$\{item\.chapters\[0\]\?\.chapter_id\}/);
+  assert.match(betaSource, /Opened \$\{project\.name\}/);
+  assert.doesNotMatch(betaSource, /<button>Open<\/button>/);
+});
+
+test("admin edit requests expose loading, error, and retry states", () => {
+  assert.match(editNovelSource, /aria-busy=\{loading\}/);
+  assert.match(editNovelSource, /role="alert"/);
+  assert.match(editNovelSource, /onClick=\{retry\}/);
 });
 
 test("release audiobook graph reaches a final export through render and mixer", () => {

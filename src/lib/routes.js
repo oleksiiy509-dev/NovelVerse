@@ -4,12 +4,12 @@ export const readerRoutes = Object.freeze([
 ]);
 
 export const adminRoutes = Object.freeze([
-  "/admin", "/admin/novels", "/admin/novels/add", "/admin/novels/edit/:id",
+  "/admin", "/admin/legacy", "/admin/novels", "/admin/novels/add", "/admin/novels/edit/:id",
   "/admin/chapters", "/admin/chapters/add", "/admin/chapters/edit/:id",
   "/admin/taxonomy", "/admin/characters", "/admin/ai-brain",
   "/admin/voice-studio", "/admin/scene-studio", "/admin/audio-studio",
   "/admin/narration-studio", "/admin/export-studio", "/admin/publishing",
-  "/admin/subscriptions",
+  "/admin/subscriptions", "/admin/languages",
   "/admin/novels/:novelId/characters",
 ]);
 
