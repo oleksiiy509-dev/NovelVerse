@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { catalogs } from "../i18n/catalogs";
-import { detectLanguage, normalizeLanguage } from "../lib/globalLanguage";
+import { detectLanguage } from "../lib/globalLanguage";
 import { useTelegram } from "../hooks/useTelegram";
 import { applyDetectedLanguage, readLanguagePreferences, writeLanguagePreferences } from "./languageUtils";
 import { LanguageContext } from "./LanguageContextValue";
+import { translate } from "./languageTranslation";
 
 export function LanguageProvider({ children }) {
   const { user } = useTelegram();
@@ -34,7 +34,7 @@ export function LanguageProvider({ children }) {
   const value = useMemo(() => ({
     preferences, detectedLanguage: detected,
     setPreferences,
-    t: (key) => catalogs[normalizeLanguage(preferences.interfaceLanguage)]?.[key] || catalogs.en[key] || key,
+    t: (key) => translate(preferences.interfaceLanguage, key),
   }), [preferences, detected, setPreferences]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
