@@ -1,36 +1,37 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { catalogs } from "../i18n/catalogs";
-import { DEFAULT_LANGUAGE, detectLanguage, normalizeLanguage } from "../lib/globalLanguage";
+import { detectLanguage, normalizeLanguage } from "../lib/globalLanguage";
 import { useTelegram } from "../hooks/useTelegram";
+import { applyDetectedLanguage, LANGUAGE_PREFERENCES_STORAGE_KEY, readLanguagePreferences } from "./languageUtils";
 
-const STORAGE_KEY = "novelverse:language-preferences:v1";
-const defaults = { interfaceLanguage: DEFAULT_LANGUAGE, readingLanguage: DEFAULT_LANGUAGE, audioLanguage: DEFAULT_LANGUAGE, autoDetect: true };
 const LanguageContext = createContext(null);
-
-function readPreferences() {
-  try { return { ...defaults, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") }; } catch { return defaults; }
-}
 
 export function LanguageProvider({ children }) {
   const { user } = useTelegram();
-  const [preferences, setPreferences] = useState(readPreferences);
+  const [savedPreferences, setSavedPreferences] = useState(readLanguagePreferences);
   const detected = detectLanguage({ telegramLanguageCode: user?.language_code, deviceLanguage: navigator.languages?.[0], browserLanguage: navigator.language });
+  const preferences = useMemo(
+    () => applyDetectedLanguage(savedPreferences, detected),
+    [savedPreferences, detected],
+  );
+
+  const setPreferences = useCallback((next) => {
+    setSavedPreferences((current) => ({
+      ...applyDetectedLanguage(current, detected),
+      ...next,
+    }));
+  }, [detected]);
 
   useEffect(() => {
-    if (!preferences.autoDetect) return;
-    setPreferences((current) => ({ ...current, interfaceLanguage: detected, readingLanguage: detected, audioLanguage: detected }));
-  }, [detected, preferences.autoDetect]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+    localStorage.setItem(LANGUAGE_PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
     document.documentElement.lang = preferences.interfaceLanguage;
   }, [preferences]);
 
   const value = useMemo(() => ({
     preferences, detectedLanguage: detected,
-    setPreferences: (next) => setPreferences((current) => ({ ...current, ...next })),
+    setPreferences,
     t: (key) => catalogs[normalizeLanguage(preferences.interfaceLanguage)]?.[key] || catalogs.en[key] || key,
-  }), [preferences, detected]);
+  }), [preferences, detected, setPreferences]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
