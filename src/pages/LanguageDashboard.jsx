@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { SUPPORTED_LANGUAGES, buildLanguageAnalytics } from "../lib/globalLanguage";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage } from "../hooks/useLanguage";
 import "../styles/LanguagePlatform.css";
 
 const coverage = {
