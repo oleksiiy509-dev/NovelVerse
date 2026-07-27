@@ -271,8 +271,6 @@ function Reader() {
   const selectedRangeExists = chapterRanges.some((range) => range.key === selectedRangeKey);
   const openRangeKey = selectedRangeExists ? selectedRangeKey : currentRangeKey;
 
-  const loadChapterRef = useRef(null);
-
   const loadAdjacentChapters = useCallback(async (activeChapter) => {
     try {
       const [previousResult, nextResult] = await Promise.all([
@@ -377,16 +375,12 @@ function Reader() {
   }, [id, loadAdjacentChapters, loadChapterMetadata]);
 
   useEffect(() => {
-    loadChapterRef.current = loadChapter;
-  }, [loadChapter]);
-
-  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      loadChapterRef.current?.();
+      loadChapter();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [id]);
+  }, [loadChapter]);
 
   useEffect(() => {
     localStorage.setItem("readerSettings", JSON.stringify(settings));
