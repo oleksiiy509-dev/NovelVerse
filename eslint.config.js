@@ -7,6 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist']),
   {
+    name: 'novelverse/voice-worker',
     files: ['voice-worker/**/*.{js,mjs,cjs}'],
     extends: [js.configs.recommended],
     languageOptions: {
@@ -18,6 +19,7 @@ export default defineConfig([
     },
   },
   {
+    name: 'novelverse/application',
     files: ['**/*.{js,jsx}'],
     ignores: ['voice-worker/**'],
     extends: [
