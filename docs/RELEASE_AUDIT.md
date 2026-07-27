@@ -1,6 +1,6 @@
 # NovelVerse 1.0 RC release audit
 
-**Audit date:** 2026-07-26  
+**Audit date:** 2026-07-27
 **Candidate:** `1.0.0-rc.1`  
 **Decision:** Ready for staged release-candidate deployment; not approved for an automatic stable release.
 
@@ -60,6 +60,10 @@ The nine-stage dependency graph is tested end to end and for restart, partial re
 **Manual gate:** complete keyboard-only, VoiceOver/TalkBack, 200% zoom, light/dark high-contrast, iOS/Android Telegram, slow-network, offline-resume, and audio-interruption checks. Automated source tests are not a substitute for WCAG conformance testing.
 
 ## Release gates and remaining issues
+
+### Sprint 5 production-readiness result
+
+No repository-level production blockers remain after removing user-controlled admin signals, routing player progress through the offline queue, completing commerce RLS coverage, hardening the subscription security-definer function, and indexing audited hot paths. This status means **ready for staged public-beta validation**, not an unconditional production launch: credentialed database, provider, device, and operations checks below remain mandatory and cannot be performed by an isolated source checkout.
 
 ### Passed in the repository
 

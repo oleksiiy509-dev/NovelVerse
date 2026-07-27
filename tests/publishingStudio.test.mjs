@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { addChapter, approveChapter, archiveNovel, assertAdmin, createNovel, createReport, diagnostics, generateAudiobook, publishNovel, qualityControl, regenerateChapter, reorderChapters, restoreNovel, rollbackNovel } from "../src/lib/publishingStudio.js";
-const admin={role:"admin"};
+const admin={app_metadata:{role:"admin"}};
 function ready(){let n=createNovel({title:"Book",author:"Author",description:"Description"});n=addChapter(n,{title:"One",audio:"one.mp3",voices:["voice"],assets:[],renderStatus:"completed"});return approveChapter(n,n.chapters[0].id)}
 test("publishing runs QC, creates sequential immutable versions, and describes index updates",()=>{let n=ready();let first=publishNovel(n,admin);assert.equal(first.version.number,1);assert.equal(first.novel.status,"Published");assert.deepEqual(first.updates,["catalog","audiobook","metadata","search","cache","latest releases"]);let second=publishNovel(first.novel,admin);assert.equal(second.version.number,2);assert.equal(second.novel.versions.length,2)});
 test("rollback restores a selected snapshot but retains version history",()=>{const one=publishNovel(ready(),admin).novel;const changed={...one,title:"Changed"};const two=publishNovel(changed,admin).novel;const rolled=rollbackNovel(two,1,admin);assert.equal(rolled.title,"Book");assert.equal(rolled.currentVersion,1);assert.equal(rolled.versions.length,2)});

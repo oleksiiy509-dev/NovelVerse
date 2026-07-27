@@ -13,7 +13,7 @@ NovelVerse is a Vite React single-page app (SPA) with Supabase and Telegram Mini
 4. Add the required Environment Variables in the Vercel project settings:
    - `VITE_SUPABASE_URL` — your Supabase project URL, for example `https://your-project-ref.supabase.co`.
    - `VITE_SUPABASE_ANON_KEY` — the public Supabase anon/publishable frontend key only.
-   - `VITE_ADMIN_EMAILS` — comma-separated admin email allowlist used by the frontend convenience check.
+   - Assign administrators through trusted Supabase `app_metadata` only (for example, with a server-side service-role operation). Never use frontend environment variables or `user_metadata` as authorization.
 5. Optional public Telegram variable:
    - `VITE_TELEGRAM_BOT_USERNAME` — bot username without `@`; used only for browser fallback login links outside Telegram.
 6. Do **not** add `service_role`, `SUPABASE_SERVICE`, private keys, bot tokens, or passwords to Vercel frontend variables.
@@ -34,7 +34,9 @@ NovelVerse is a Vite React single-page app (SPA) with Supabase and Telegram Mini
 3. Verify email/password sign-in, sign-up, and admin login from the deployed domain.
 4. Verify public Storage URLs for the `covers` bucket load from the deployed app.
 5. Keep Row Level Security enabled. Do not weaken RLS policies for deployment; admin writes must remain protected by Supabase Auth and database policies.
-6. Frontend Telegram profile data is not verified authentication. Treat Telegram `initDataUnsafe` as display/profile convenience only unless a trusted backend validates `initData` with the bot token.
+6. Apply `202607270001_production_readiness.sql` before beta traffic, then verify `is_admin()` with reader and admin JWTs. Confirm a forged `user_metadata.role` cannot write protected rows, while trusted `app_metadata.role=admin` can.
+7. Run `EXPLAIN (ANALYZE, BUFFERS)` in staging for reading-progress upserts, entitlement checks, pending billing attempts, and notification history. Confirm the Sprint 5 indexes are used with production-like row counts.
+8. Frontend Telegram profile data is not verified authentication. Treat Telegram `initDataUnsafe` as display/profile convenience only unless a trusted backend validates `initData` with the bot token.
 
 ## C. Telegram BotFather
 

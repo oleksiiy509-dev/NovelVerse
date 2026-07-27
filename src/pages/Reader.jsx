@@ -12,6 +12,7 @@ import { getPreviewSettings, voiceProfiles } from "../lib/voiceEngine/voiceProfi
 import { assignVoiceToProfile, buildPersistentCharacterRegistry, loadCharacterRegistry, mergeCharacterAliases, resetCharacterToAutomatic, resolveCharacterVoiceForSegment, updateCharacterProfile } from "../lib/characterVoiceEngine";
 import { defaultPiperVoiceId, getVoiceWorkerHealth, synthesizeVoiceWorkerAudio, splitTextForVoiceWorker } from "../lib/voiceWorker";
 import { useTelegramBackButton, useTelegramMainButton } from "../hooks/useTelegram";
+import { diagnosticLogger } from "../lib/diagnosticLogger";
 import "../styles/Reader.css";
 
 const defaultSettings = { fontSize: 20, lineHeight: 1.9, textWidth: 760, theme: "dark", fontFamily: "serif" };
@@ -489,8 +490,14 @@ function Reader() {
     const record = { novel_id: chapter.novel_id, chapter_id: chapter.id, audio_sentence_index: currentSentenceIndex, audio_paragraph_index: currentSentenceIndex, audio_progress: sentenceProgress, scroll_y: window.scrollY, progress: readingProgress };
     const audioKey = userKey(user?.id, "audioProgress");
     const localAudio = readList(audioKey).filter((item) => item.chapter_id !== chapter.id);
-    writeCloudBackedList(audioKey, [{ ...record, updated_at: new Date().toISOString() }, ...localAudio].slice(0, 50), telegramCloudSetItem);
-    if (user) supabase.from("reading_progress").upsert({ ...record, user_id: user.id, updated_at: new Date().toISOString() }, { onConflict: "user_id,novel_id" });
+    const updatedAt = new Date().toISOString();
+    writeCloudBackedList(audioKey, [{ ...record, updated_at: updatedAt }, ...localAudio].slice(0, 50), telegramCloudSetItem)
+      .catch((error) => diagnosticLogger.warn("reader-progress", "Audio progress cloud backup was deferred", { error }));
+    syncReadingProgress(supabase, user, { ...record, updated_at: updatedAt }, telegramCloudSetItem)
+      .then((result) => {
+        if (result.error) diagnosticLogger.warn("reader-progress", "Reading progress was queued after a sync failure", { error: result.error });
+      })
+      .catch((error) => diagnosticLogger.warn("reader-progress", "Reading progress persistence failed", { error }));
   }, [chapter, currentSentenceIndex, sentenceProgress, readingProgress, user]);
 
   useEffect(() => {

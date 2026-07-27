@@ -70,7 +70,7 @@ function Login() {
   return (
     <main className="login">
       <h1>{adminOnly ? "🛡️ Вхід адміністратора" : "🔐 Авторизація"}</h1>
-      {adminOnly && <p>Доступ до панелі мають лише користувачі з роллю <strong>admin</strong>, прапорцем <strong>is_admin</strong> або email у <strong>VITE_ADMIN_EMAILS</strong>.</p>}
+      {adminOnly && <p>Доступ до панелі мають лише користувачі з серверною роллю <strong>admin</strong>.</p>}
       {!adminOnly && isTelegram && (
         <section className="login__telegram">
           <h2>Telegram</h2>

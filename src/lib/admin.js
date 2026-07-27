@@ -1,13 +1,9 @@
-export const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || "")
-  .split(",")
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean);
-
 export function isAdminUser(user) {
   if (!user) return false;
-  const role = user.user_metadata?.role || user.app_metadata?.role;
-  const email = user.email?.toLowerCase();
-  return role === "admin" || user.user_metadata?.is_admin === true || ADMIN_EMAILS.includes(email);
+  // app_metadata can only be changed by a trusted Supabase service-role client.
+  // user_metadata and frontend email allowlists are user-controlled and must
+  // never be treated as authorization signals.
+  return user.app_metadata?.role === "admin" || user.app_metadata?.is_admin === true;
 }
 
 export async function requireAdmin(supabase) {

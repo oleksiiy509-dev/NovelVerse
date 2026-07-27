@@ -42,3 +42,11 @@ All mutations must inspect and surface the returned `error`; list queries must s
 - IndexedDB fallback uses localStorage and is therefore quota-limited; audio blobs should be kept in IndexedDB in supported browsers.
 - Local Piper availability depends on the operator-installed executable/model and browser access to the configured worker URL. HTTPS deployments may block an HTTP localhost worker under browser mixed-content policy.
 - Export audio in the current v1 workspace is a deterministic project render/packaging workflow, not a replacement for external mastering or distributor validation.
+
+## Sprint 5 public-beta hardening (2026-07-27)
+
+Authorization has one trust boundary: administrative UI checks and PostgreSQL policies accept only Supabase `app_metadata`, which is assigned by a privileged backend. User-editable profile metadata and build-time email lists are display/configuration data, never permissions. Subscription access remains a database decision through `has_subscription_feature`; its security-definer function fixes the search path and derives the subject exclusively from `auth.uid()`.
+
+Reader progress has a single resilience path. It is written locally first, queued in IndexedDB (with localStorage fallback) when offline or after a Supabase error, and replayed by the single-flight network synchronizer on startup and browser `online` events. Remote timestamps prevent stale queued state from replacing newer server state. Audio sentence position and scroll position use the same queue-aware persistence instead of an unobserved direct mutation.
+
+The Sprint 5 migration completes RLS coverage for commerce configuration and operational tables and adds indexes matching subscription entitlement, notification, listening, billing retry, redemption, and reading-progress queries. Apply migrations in timestamp order and validate their query plans and policies against a staging copy with realistic volume before beta promotion.
