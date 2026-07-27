@@ -8,11 +8,13 @@ function ContinueReading() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
     async function load() {
       setLoading(true);
+      setError("");
       const user = await getCurrentUser(supabase);
       const progress = Object.values(readObject(userKey(user?.id, "readingProgress"))).sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)).slice(0, 4);
       if (!progress.length) {
@@ -32,7 +34,7 @@ function ContinueReading() {
       if (active) setItems(progress.map((entry) => ({ ...entry, novel: novelsById.get(entry.novel_id), chapter: chaptersById.get(entry.chapter_id) })));
       setLoading(false);
     }
-    load().catch(() => setLoading(false));
+    load().catch(() => { if (active) { setError("Не вдалося завантажити історію читання."); setLoading(false); } });
     return () => { active = false; };
   }, []);
 
@@ -42,8 +44,9 @@ function ContinueReading() {
     <section className="home__section continue-reading" aria-labelledby="continue-reading-title">
       <div className="home__section-heading"><div><p className="home__eyebrow">Pick up where you left off</p><h2 id="continue-reading-title">Продовжити читання</h2></div></div>
       {loading && <div className="continue-reading__grid">{Array.from({ length: 3 }).map((_, index) => <div className="skeleton continue-reading__skeleton" key={index} />)}</div>}
-      {!loading && !visibleItems.length && <div className="empty-state"><h3>Історія читання порожня</h3><p>Відкрийте будь-яку главу — прогрес зʼявиться тут автоматично.</p></div>}
-      {!loading && !!visibleItems.length && <div className="continue-reading__grid">{visibleItems.map((item) => <article className="continue-reading__card" key={`${item.novel_id}-${item.chapter_id}`}><img src={item.novel?.image || defaultCover} alt="" onError={(event) => { event.currentTarget.src = defaultCover; }} /><div><h3>{item.novel?.title || `Новела ${item.novel_id}`}</h3><p>{item.chapter?.title || item.chapter_title || "Поточна глава"}</p><div className="continue-reading__progress"><span style={{ width: `${Math.max(0, Math.min(100, item.progress || 0))}%` }} /></div><button onClick={() => navigate(`/reader/${item.chapter_id}`)}>Продовжити</button></div></article>)}</div>}
+      {!loading && error && <div className="error-state" role="alert"><p>{error}</p></div>}
+      {!loading && !error && !visibleItems.length && <div className="empty-state"><h3>Історія читання порожня</h3><p>Відкрийте будь-яку главу — прогрес зʼявиться тут автоматично.</p></div>}
+      {!loading && !error && !!visibleItems.length && <div className="continue-reading__grid">{visibleItems.map((item) => <article className="continue-reading__card" key={`${item.novel_id}-${item.chapter_id}`}><img src={item.novel?.image || defaultCover} alt="" onError={(event) => { event.currentTarget.src = defaultCover; }} /><div><h3>{item.novel?.title || `Новела ${item.novel_id}`}</h3><p>{item.chapter?.title || item.chapter_title || "Поточна глава"}</p><div className="continue-reading__progress" role="progressbar" aria-label="Прогрес читання" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.max(0, Math.min(100, item.progress || 0))}><span style={{ width: `${Math.max(0, Math.min(100, item.progress || 0))}%` }} /></div><button type="button" onClick={() => navigate(`/reader/${item.chapter_id}`)}>Продовжити</button></div></article>)}</div>}
     </section>
   );
 }

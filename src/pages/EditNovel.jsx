@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "../lib/supabase";
 import NovelForm from "../components/NovelForm";
+import { useAdminRecord } from "../hooks/useAdminRecord";
 import "../styles/AdminPanel.css";
-function EditNovel() { const { id } = useParams(); const [novel, setNovel] = useState(null); useEffect(()=>{ supabase.from("novels").select("*").eq("id", id).single().then(({data,error})=> error ? alert(error.message) : setNovel(data)); }, [id]); return <main className="admin-shell"><h1>✏️ Редагувати новелу</h1>{novel ? <NovelForm key={id} initialNovel={novel} novelId={id} /> : <p className="loading-state">Завантаження...</p>}</main>; }
+function EditNovel() { const { id } = useParams(); const { data: novel, error, loading, retry } = useAdminRecord("novels", id); return <main className="admin-shell" aria-busy={loading}><h1>✏️ Редагувати новелу</h1>{loading ? <p className="loading-state" role="status">Завантаження…</p> : error ? <section className="error-state" role="alert"><h2>Новелу не завантажено</h2><p>{error}</p><button type="button" onClick={retry}>Спробувати ще раз</button></section> : <NovelForm key={id} initialNovel={novel} novelId={id} />}</main>; }
 export default EditNovel;
