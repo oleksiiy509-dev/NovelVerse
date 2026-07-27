@@ -30,7 +30,8 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {
-      "react-hooks/immutability": "off",
+      'react-hooks/immutability': 'off',
+      'react-refresh/only-export-components': ['warn', { allowExportNames: ['useLanguage'] }],
     },
   },
 ])
