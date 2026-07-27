@@ -5,11 +5,31 @@ import {
   localizeNotification, searchLocalizedBooks, selectAudioVersion, selectVoice, transitionTranslation,
 } from "../src/lib/globalLanguage.js";
 import { catalogs } from "../src/i18n/catalogs.js";
+import {
+  applyDetectedLanguage,
+  DEFAULT_LANGUAGE_PREFERENCES,
+  LANGUAGE_PREFERENCES_STORAGE_KEY,
+  readLanguagePreferences,
+} from "../src/contexts/languageUtils.js";
 
 test("language detection follows Telegram, device, browser, English priority", () => {
   assert.equal(detectLanguage({ telegramLanguageCode: "uk-UA", deviceLanguage: "de-DE", browserLanguage: "es" }), "uk");
   assert.equal(detectLanguage({ telegramLanguageCode: "xx", deviceLanguage: "de-DE", browserLanguage: "es" }), "de");
   assert.equal(detectLanguage({}), "en");
+});
+
+test("language preferences apply automatic detection without mutating saved preferences", () => {
+  const saved = { ...DEFAULT_LANGUAGE_PREFERENCES, readingLanguage: "es" };
+  const detected = applyDetectedLanguage(saved, "uk");
+  assert.deepEqual(detected, { ...saved, interfaceLanguage: "uk", readingLanguage: "uk", audioLanguage: "uk" });
+  assert.equal(saved.readingLanguage, "es");
+  assert.equal(applyDetectedLanguage({ ...saved, autoDetect: false }, "uk").readingLanguage, "es");
+});
+
+test("language preferences load persisted values and recover malformed storage", () => {
+  const storage = { getItem: (key) => key === LANGUAGE_PREFERENCES_STORAGE_KEY ? '{"readingLanguage":"de"}' : null };
+  assert.equal(readLanguagePreferences(storage).readingLanguage, "de");
+  assert.deepEqual(readLanguagePreferences({ getItem: () => "{" }), DEFAULT_LANGUAGE_PREFERENCES);
 });
 
 test("content and audio fall back preferred, English, original", () => {
