@@ -5,14 +5,20 @@ import { TelegramContext } from "./TelegramContextValue";
 export function TelegramProvider({ children }) {
   const [webApp, setWebApp] = useState(null);
   const [ready, setReady] = useState(false);
+  const [initializationError, setInitializationError] = useState(null);
 
   useEffect(() => {
     let active = true;
-    initTelegramMiniApp().then((app) => {
-      if (!active) return;
-      setWebApp(app);
-      setReady(true);
-    });
+    initTelegramMiniApp()
+      .then((app) => {
+        if (active) setWebApp(app);
+      })
+      .catch((error) => {
+        if (active) setInitializationError(error);
+      })
+      .finally(() => {
+        if (active) setReady(true);
+      });
     return () => { active = false; };
   }, []);
 
@@ -24,8 +30,9 @@ export function TelegramProvider({ children }) {
     profileFields: getTelegramProfileFields(),
     initData: getTelegramInitData(),
     ready,
+    initializationError,
     verifiedAuthentication: false,
-  }), [webApp, ready]);
+  }), [webApp, ready, initializationError]);
 
   return <TelegramContext.Provider value={value}>{children}</TelegramContext.Provider>;
 }

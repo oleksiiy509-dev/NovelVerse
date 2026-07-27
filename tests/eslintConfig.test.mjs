@@ -2,12 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("React Refresh is configured once inside the application rules object", async () => {
+test("React Refresh is enforced without warnings inside the application rules object", async () => {
   const config = await readFile(new URL("../eslint.config.js", import.meta.url), "utf8");
   const refreshRule = "'react-refresh/only-export-components'";
 
   assert.equal(config.split(refreshRule).length - 1, 1);
-  assert.match(config, /rules:\s*\{[\s\S]*?'react-refresh\/only-export-components':\s*'warn',[\s\S]*?\}/);
+  assert.match(config, /rules:\s*\{[\s\S]*?'react-refresh\/only-export-components':\s*\['error',\s*\{ allowConstantExport: true \}\],[\s\S]*?\}/);
+});
+
+test("lint rejects warnings and gives tooling Node globals", async () => {
+  const config = await readFile(new URL("../eslint.config.js", import.meta.url), "utf8");
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+
+  assert.match(packageJson.scripts.lint, /--max-warnings 0$/);
+  assert.match(config, /name: 'novelverse\/tooling'[\s\S]*?globals: globals\.node/);
 });
 
 test("the application Flat Config has no rule keys at the top level", async () => {
