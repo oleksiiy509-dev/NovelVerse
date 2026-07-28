@@ -86,7 +86,10 @@ Deno.serve(async (req) => {
 
     const chapterId = String(body.chapter_id || body.chapterId || "");
     const language = String(body.language || "auto");
-    const provider = String(body.provider || cfg.provider);
+    // Older callers use "default" as a voice/provider sentinel. Resolve that
+    // sentinel server-side so it cannot be rejected as an unsupported provider.
+    const requestedProvider = String(body.provider || "").trim().toLowerCase();
+    const provider = !requestedProvider || requestedProvider === "default" || requestedProvider === "auto" ? cfg.provider : requestedProvider;
     const priority = Number(body.priority || 5);
     const preview = body.preview || null;
     if (!chapterId) return safeError("CHAPTER_ID_REQUIRED", "Chapter id is required.", 400, requestId);
