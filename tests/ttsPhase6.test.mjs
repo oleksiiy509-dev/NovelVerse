@@ -69,6 +69,13 @@ test("Phase 7 health diagnostics and preview workflow are production safe", () =
   assert.doesNotMatch(endpoint, /signed_url.*console\.log|OPENAI_API_KEY.*json/);
 });
 
+test("chapter generation resolves admin status from the caller-scoped role RPC", () => {
+  assert.match(endpoint, /global: \{ headers: \{ Authorization: authorization \} \}/);
+  assert.match(endpoint, /callerClient\.rpc\("is_admin"\)/);
+  assert.match(endpoint, /allowed: !error && data === true/);
+  assert.doesNotMatch(endpoint, /user_metadata\?\.role|app_metadata\?\.role|user_metadata\?\.is_admin/);
+});
+
 test("Phase 7 normalizes user-facing TTS errors", () => {
   for (const code of ["TTS_API_KEY_MISSING", "TTS_RATE_LIMITED", "TTS_PROVIDER_UNAVAILABLE", "STORAGE_UPLOAD_FAILED", "SIGNED_URL_FAILED"]) assert.match(provider + endpoint + readFileSync("src/lib/chapterAudio.js", "utf8"), new RegExp(code));
   assert.doesNotMatch(provider, /body\.slice/);

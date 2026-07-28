@@ -10,11 +10,19 @@ const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-
 type JsonBody = Record<string, unknown>;
 function json(body: JsonBody, status = 200, requestId = crypto.randomUUID()) { return new Response(JSON.stringify({ request_id: requestId, ...body }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 function stripMarkup(value = "") { return String(value).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<\s*br\s*\/?\s*>/gi, "\n").replace(/<\s*\/\s*(p|div|h[1-6]|li|blockquote)\s*>/gi, "\n\n").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim(); }
-function isAdmin(user: any) { return user?.user_metadata?.role === "admin" || user?.app_metadata?.role === "admin" || user?.user_metadata?.is_admin === true; }
 function env(name: string) { return Deno.env.get(name) || ""; }
 function parsePositiveInt(name: string, fallback: number) { const value = Number(env(name) || fallback); return Number.isFinite(value) && value > 0 ? value : fallback; }
 function logEvent(fields: JsonBody) { console.log(JSON.stringify({ deployment_version: deploymentVersion, ...fields })); }
 function safeError(code: string, message: string, status = 400, requestId: string, extra: JsonBody = {}) { logEvent({ request_id: requestId, status: "failed", error_code: code, duration_ms: extra.duration_ms }); return json({ status: "failed", error: { code, message }, ...extra }, status, requestId); }
+
+async function resolveAdmin(supabaseUrl: string, apiKey: string, authorization: string) {
+  const callerClient = createClient(supabaseUrl, apiKey, {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await callerClient.rpc("is_admin");
+  return { allowed: !error && data === true, error };
+}
 
 function readConfig() {
   const provider = env("NOVELVERSE_TTS_PROVIDER") || env("NOVELVERSE_AUDIO_PROVIDER") || "piper";
@@ -56,7 +64,11 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
     const { data: userData, error: userError } = await adminClient.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
     if (userError || !userData.user) return safeError("UNAUTHORIZED", "Sign in before requesting audio diagnostics or rendering.", 401, requestId);
-    const admin = isAdmin(userData.user);
+    // Resolve authorization through the caller-scoped database RPC. user_roles is
+    // the source of truth; auth user metadata and editable profiles are not.
+    const adminResolution = await resolveAdmin(supabaseUrl, env("SUPABASE_ANON_KEY") || serviceKey, authHeader);
+    const admin = adminResolution.allowed;
+    if (adminResolution.error) logEvent({ request_id: requestId, user_id: userData.user.id, status: "admin_check_failed", error_code: "ADMIN_LOOKUP_FAILED" });
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || (body.health ? "health" : body.previewText ? "preview" : "render"));
     const cfg = readConfig();
