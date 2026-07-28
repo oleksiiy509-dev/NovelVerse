@@ -11,6 +11,13 @@ export function validateBook(book) {
   if (!book.title?.trim()) errors.title = "Title is required";
   if (!book.author?.trim()) errors.author = "Author is required";
   if (book.status === "Scheduled" && !book.scheduledAt) errors.scheduledAt = "Choose a publication date";
+  if (book.status === "Published") {
+    if (!book.description?.trim()) errors.description = "Description is required to publish";
+    if (!book.genres?.length) errors.genres = "Choose at least one genre to publish";
+    if (!book.coverUrl) errors.coverUrl = "A cover is required to publish";
+    if (!book.chapters?.length) errors.chapters = "Import at least one chapter to publish";
+    if (book.chapters?.some((chapter) => chapter.audioStatus !== "Ready" || !chapter.audioUrl)) errors.audio = "Generate audio for every chapter before publishing";
+  }
   return errors;
 }
 

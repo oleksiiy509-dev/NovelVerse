@@ -17,7 +17,8 @@ test("duplicates content while resetting generated audio", () => {
 
 test("validates publishing metadata and scheduled release", () => {
   assert.deepEqual(validateBook({ title: "", author: "", status: "Scheduled", scheduledAt: "" }), { title: "Title is required", author: "Author is required", scheduledAt: "Choose a publication date" });
-  assert.deepEqual(validateBook({ title: "Book", author: "Writer", status: "Published" }), {});
+  assert.deepEqual(validateBook({ title: "Book", author: "Writer", description: "Synopsis", genres: ["Fantasy"], coverUrl: "/cover.jpg", chapters: [{ audioStatus: "Ready", audioUrl: "/chapter.wav" }], status: "Published" }), {});
+  assert.equal(validateBook({ title: "Book", author: "Writer", status: "Published" }).audio, undefined);
 });
 
 test("maps and orders Supabase records into editor fields", () => {

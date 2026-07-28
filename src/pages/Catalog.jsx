@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import NovelGrid from "../components/NovelGrid";
 import "../styles/Catalog.css";
+import { loadPublishedManagedBooks, managedBookToCatalog } from "../lib/bookWorkflow";
 
 const PAGE_SIZE = 12;
 const NOVEL_COLUMNS = "id,title,author,rating,chapters,views,status,genres,image,description,created_at,bookmarks";
@@ -44,6 +45,7 @@ function Catalog() {
   useEffect(() => { loadFacets(); }, []);
 
   async function loadFacets() {
+    if (!isSupabaseConfigured) return;
     const { data } = await supabase.from("novels").select("author,genres").order("author");
     const source = data || [];
     setFacets({
@@ -71,6 +73,13 @@ function Catalog() {
     replace ? setLoading(true) : setLoadingMore(true);
     setError("");
     const start = nextPage * PAGE_SIZE;
+    if (!isSupabaseConfigured) {
+      try {
+        const rows = (await loadPublishedManagedBooks()).map(managedBookToCatalog);
+        setNovels(rows); setFacets({ authors: uniqueBy(rows.map((book) => book.author)), genres: uniqueBy(rows.flatMap((book) => splitGenres(book.genres))) }); setHasMore(false);
+      } catch { setError(CATALOG_ERROR_MESSAGE); }
+      setLoading(false); setLoadingMore(false); return;
+    }
     const end = start + PAGE_SIZE - 1;
     const runQuery = (columns, orderOption) => {
       let query = supabase
@@ -95,10 +104,13 @@ function Catalog() {
       setError(CATALOG_ERROR_MESSAGE);
       setHasMore(false);
     } else {
-      const rows = result.data || [];
+      let rows = result.data || [];
+      if (nextPage === 0) {
+        try { rows = [...(await loadPublishedManagedBooks()).map(managedBookToCatalog), ...rows]; } catch { /* legacy novels remain available if the managed catalog is not migrated yet */ }
+      }
       setNovels((current) => replace ? rows : [...current, ...rows]);
       setPage(nextPage);
-      setHasMore(rows.length === PAGE_SIZE);
+      setHasMore((result.data || []).length === PAGE_SIZE);
     }
     setLoading(false);
     setLoadingMore(false);
@@ -118,7 +130,7 @@ function Catalog() {
 
   useEffect(() => {
     const query = normalize(search);
-    if (!query) return undefined;
+    if (!query || !isSupabaseConfigured) return undefined;
     const timeout = setTimeout(async () => {
       const term = `%${escapeFilter(query)}%`;
       const buildSuggestionsQuery = (orderColumn) => supabase
