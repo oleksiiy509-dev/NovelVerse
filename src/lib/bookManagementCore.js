@@ -22,6 +22,10 @@ export function validateBook(book) {
 }
 
 export function mapSupabaseBookRecord(row, defaults) {
+  const relatedLanguages = Array.isArray(row.book_languages) ? row.book_languages : [];
+  const versions = relatedLanguages.length
+    ? relatedLanguages.map((version) => ({ id: version.id, language: version.language, status: version.status }))
+    : row.language ? [{ id: `novel-language-${row.id}`, language: row.language, status: "Complete" }] : [];
   return {
     ...defaults,
     ...row,
@@ -31,7 +35,7 @@ export function mapSupabaseBookRecord(row, defaults) {
     scheduledAt: row.scheduled_at || "",
     genres: row.genres || [],
     tags: row.tags || [],
-    versions: (row.book_languages || []).map((version) => ({ id: version.id, language: version.language, status: version.status })),
+    versions,
     chapters: [...(row.chapters || [])]
       .sort((a, b) => (a.position || 0) - (b.position || 0))
       .map((chapter, index) => ({

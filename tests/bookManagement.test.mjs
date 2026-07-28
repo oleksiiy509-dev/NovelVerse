@@ -39,6 +39,11 @@ test("maps and orders Supabase records into editor fields", () => {
   assert.deepEqual(result.versions, [{ id: "uk", language: "Ukrainian", status: "Review" }]);
 });
 
+test("falls back to the novel language when no language relationship exists", () => {
+  const result = mapSupabaseBookRecord({ id: "book", language: "English" }, {});
+  assert.deepEqual(result.versions, [{ id: "novel-language-book", language: "English", status: "Complete" }]);
+});
+
 test("detects English, Ukrainian, and Russian chapter headings", async () => {
   const { splitIntoChapters } = await import("../src/lib/admin.js");
   const chapters = splitIntoChapters("Глава 1 — Начало\nПервый текст\n\nРозділ 2. Далі\nДругий текст\n\nChapter 3: End\nLast text");
@@ -77,6 +82,7 @@ test("managed books use the canonical novels table and chapter relationship", ()
   assert.doesNotMatch(`${management}\n${workflow}\n${migrations}`, /public\.books|from\(["']books["']\)/);
   assert.match(management, /from\("novels"\)/);
   assert.match(management, /novel_id: book\.id/);
-  assert.match(migrations, /references public\.novels\(id\)/);
+  assert.doesNotMatch(management, /book_languages/);
+  assert.doesNotMatch(migrations, /create table if not exists public\.book_languages/);
   assert.doesNotMatch(migrations, /create table if not exists public\.books/);
 });
