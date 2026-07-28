@@ -69,7 +69,7 @@ test("deployment applies baseline security and immutable asset headers", () => {
 
 test("route-level loading and recovery UI remain installed", () => {
   assert.match(appSource, /PageLoadingSkeleton/);
-  assert.match(appSource, /resetKey=\{location\.pathname\}/);
+  assert.match(appSource, /resetKey={location\.pathname}/);
   assert.match(appSource, /path="\*"/);
 });
 

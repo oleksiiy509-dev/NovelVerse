@@ -59,7 +59,10 @@ function CreatorPortal() {
   const title = section === "Overview" ? "Production Overview" : section;
 
   useEffect(() => {
-    setSection(creatorRoute.section);
+    const timeoutId = window.setTimeout(() => {
+      setSection(creatorRoute.section);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [creatorRoute.section]);
 
   const flash = useCallback((message) => { setNotice(message); window.setTimeout(() => setNotice(""), 2600); }, []);

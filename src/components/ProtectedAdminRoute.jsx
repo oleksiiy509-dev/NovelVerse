@@ -5,10 +5,13 @@ import { requireAdmin } from "../lib/admin";
 
 function ProtectedAdminRoute() {
   const location = useLocation();
-  const [state, setState] = useState({ loading: true, allowed: false });
+  const [state, setState] = useState(() => ({
+    loading: isSupabaseConfigured,
+    allowed: !isSupabaseConfigured,
+  }));
 
   useEffect(() => {
-    if (!isSupabaseConfigured) { setState({ loading: false, allowed: true }); return undefined; }
+    if (!isSupabaseConfigured) return undefined;
     let mounted = true;
     requireAdmin(supabase).then(({ allowed }) => {
       if (mounted) setState({ loading: false, allowed });
