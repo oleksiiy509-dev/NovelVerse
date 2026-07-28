@@ -42,8 +42,6 @@ function Catalog() {
   const [error, setError] = useState("");
   const loadMoreRef = useRef(null);
 
-  useEffect(() => { loadFacets(); }, []);
-
   async function loadFacets() {
     if (!isSupabaseConfigured) return;
     const { data } = await supabase.from("novels").select("author,genres").order("author");
@@ -53,6 +51,13 @@ function Catalog() {
       genres: uniqueBy(source.flatMap((novel) => splitGenres(novel.genres))),
     });
   }
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadFacets();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   const applyQuery = useCallback((builder) => {
     const query = normalize(search);
@@ -116,7 +121,12 @@ function Catalog() {
     setLoadingMore(false);
   }, [applyQuery, sortOption]);
 
-  useEffect(() => { loadNovels(0, true); }, [loadNovels]);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadNovels(0, true);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadNovels]);
 
   useEffect(() => {
     const node = loadMoreRef.current;

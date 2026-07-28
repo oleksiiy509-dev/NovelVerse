@@ -22,8 +22,14 @@ export function useAdminRecord(table, id) {
 
   useEffect(() => {
     mounted.current = true;
-    load();
-    return () => { mounted.current = false; requestId.current += 1; };
+    const timeoutId = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => {
+      window.clearTimeout(timeoutId);
+      mounted.current = false;
+      requestId.current += 1;
+    };
   }, [load]);
 
   return { ...state, retry: load };

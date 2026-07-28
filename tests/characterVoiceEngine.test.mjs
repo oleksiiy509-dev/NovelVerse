@@ -37,9 +37,8 @@ test("persists assignment across chapters and keeps narrator profile", () => {
 test("alias merging prevents duplicates", () => {
   localStorage.clear();
   buildPersistentCharacterRegistry({ novelId: "aliases", content: 'Alice said hello. Alice waved. Alicia said hi. Alicia smiled.' });
-  let registry = loadCharacterRegistry("aliases");
-  registry = updateCharacterProfile("aliases", "alice", { aliases: ["Alice", "Alicia"] });
-  registry = mergeCharacterAliases("aliases", "alice", "alicia");
+  updateCharacterProfile("aliases", "alice", { aliases: ["Alice", "Alicia"] });
+  const registry = mergeCharacterAliases("aliases", "alice", "alicia");
   assert.equal(registry.characters.filter((c) => c.name === "Alicia").length, 0);
   assert.ok(registry.characters.find((c) => c.id === "alice").aliases.includes("Alicia"));
 });

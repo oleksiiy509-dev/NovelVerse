@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { audioModes, defaultAudioLanguage, defaultAudioVoice, formatFileSize, getAudioDownloadKey, getAudioPositionKey, getChapterAudioMetadata, getSavedAudioMode, saveAudioMode } from "../lib/chapterAudio";
@@ -798,10 +798,27 @@ function Reader() {
     setLocalVoiceState("idle"); setAudioAnnouncement("Локальне Piper озвучення глави завершено."); handleChapterFinished();
   }
 
+  const restartLocalVoiceFromChunk = useEffectEvent(playLocalVoiceFromChunk);
+
+  const localVoiceSettingsKey = JSON.stringify({
+    rate: narrationSettings.rate,
+    pitch: narrationSettings.pitch,
+    volume: narrationSettings.volume,
+    pauseLength: narrationSettings.pauseLength,
+    sentencePause: narrationSettings.sentencePause,
+    paragraphPause: narrationSettings.paragraphPause,
+    emotion: narrationSettings.emotion,
+    aiDirector2: narrationSettings.aiDirector2,
+  });
+  const previousLocalVoiceSettingsKeyRef = useRef(localVoiceSettingsKey);
+
   useEffect(() => {
+    const settingsChanged = previousLocalVoiceSettingsKeyRef.current !== localVoiceSettingsKey;
+    previousLocalVoiceSettingsKeyRef.current = localVoiceSettingsKey;
+    if (!settingsChanged) return;
     if (localVoiceState !== "playing") return;
-    playLocalVoiceFromChunk(localVoiceChunkIndex);
-  }, [narrationSettings.rate, narrationSettings.pitch, narrationSettings.volume, narrationSettings.pauseLength, narrationSettings.sentencePause, narrationSettings.paragraphPause, narrationSettings.emotion, narrationSettings.aiDirector2]);
+    restartLocalVoiceFromChunk(localVoiceChunkIndex);
+  }, [localVoiceChunkIndex, localVoiceSettingsKey, localVoiceState]);
 
   function retryLocalVoice() { playLocalVoiceFromChunk(localVoiceChunkIndex); }
 
