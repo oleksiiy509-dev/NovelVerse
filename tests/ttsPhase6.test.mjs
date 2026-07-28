@@ -81,6 +81,19 @@ test("chapter generation resolves admin status from the caller-scoped role RPC",
   assert.doesNotMatch(endpoint, /user_metadata\?\.role|app_metadata\?\.role|user_metadata\?\.is_admin/);
 });
 
+test("chapter generation validates the bigint payload and logs the public chapters lookup", () => {
+  const frontend = readFileSync("src/lib/chapterAudio.js", "utf8");
+  assert.match(frontend, /chapter_id: chapterId/);
+  assert.match(endpoint, /body\.chapter_id \?\? body\.chapterId/);
+  assert.match(endpoint, /\^\[1-9\]\\d\*\$/);
+  assert.match(endpoint, /chapter_id_is_uuid/);
+  assert.match(endpoint, /from public\.chapters where id = \$1 limit 1/);
+  assert.match(endpoint, /schema\("public"\)\.from\("chapters"\)/);
+  assert.match(endpoint, /received_chapter_id/);
+  assert.match(endpoint, /lookup_result/);
+  assert.match(endpoint, /CHAPTER_LOOKUP_FAILED/);
+});
+
 test("Phase 7 normalizes user-facing TTS errors", () => {
   for (const code of ["TTS_API_KEY_MISSING", "TTS_RATE_LIMITED", "TTS_PROVIDER_UNAVAILABLE", "STORAGE_UPLOAD_FAILED", "SIGNED_URL_FAILED"]) assert.match(provider + endpoint + readFileSync("src/lib/chapterAudio.js", "utf8"), new RegExp(code));
   assert.doesNotMatch(provider, /body\.slice/);
