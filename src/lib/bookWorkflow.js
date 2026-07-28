@@ -1,7 +1,9 @@
 import { isSupabaseConfigured, supabase } from "./supabase.js";
 import { callChapterAudioGeneration, getChapterAudioMetadata } from "./chapterAudio.js";
 import { synthesizeVoiceWorkerAudio } from "./voiceWorker.js";
-import { splitIntoChapters, stripMarkup } from "./admin.js";
+import { markdownToText, splitIntoChapters, stripMarkup } from "./admin.js";
+import { MANAGED_VOICE_MAP } from "./managedLanguage.js";
+export { MANAGED_VOICE_MAP } from "./managedLanguage.js";
 
 const textDecoder = new TextDecoder();
 
@@ -48,11 +50,37 @@ async function textFromDocx(bytes) {
   return docxText(textDecoder.decode(document.bytes));
 }
 
+function decodeXml(value) {
+  const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+  return String(value).replace(/&#(x?[0-9a-f]+);|&([a-z]+);/gi, (_, numeric, named) => numeric
+    ? String.fromCodePoint(Number.parseInt(numeric.replace(/^x/i, ""), /^x/i.test(numeric) ? 16 : 10))
+    : entities[named.toLowerCase()] || " ");
+}
+
+function markupText(value) {
+  return decodeXml(String(value)
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?\s*>|<\/(?:p|div|h[1-6]|section|title)>/gi, "\n")
+    .replace(/<[^>]+>/g, ""))
+    .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function textFromEpub(bytes) {
+  const entries = await unzip(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  const pages = entries.filter(({ name }) => /\.(?:xhtml?|html?)$/i.test(name) && !/nav\.(?:xhtml?|html?)$/i.test(name));
+  if (!pages.length) throw new Error("The EPUB does not contain readable chapters");
+  return pages.map(({ bytes: page }) => markupText(textDecoder.decode(page))).filter(Boolean).join("\n\n");
+}
+
 async function chaptersFromNamedBytes(name, bytes) {
   const lower = name.toLowerCase();
   if (lower.endsWith(".docx")) return splitIntoChapters(await textFromDocx(bytes), name.replace(/\.docx$/i, ""));
   if (lower.endsWith(".txt")) return splitIntoChapters(textDecoder.decode(bytes), name.replace(/\.txt$/i, ""));
-  throw new Error(`${name} is not a TXT or DOCX document`);
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return splitIntoChapters(markdownToText(textDecoder.decode(bytes)), name.replace(/\.(md|markdown)$/i, ""));
+  if (/\.(html?|fb2)$/i.test(lower)) return splitIntoChapters(markupText(textDecoder.decode(bytes)), name.replace(/\.(html?|fb2)$/i, ""));
+  if (lower.endsWith(".epub")) return splitIntoChapters(await textFromEpub(bytes), name.replace(/\.epub$/i, ""));
+  throw new Error(`${name} is not a supported book document`);
 }
 
 export async function importBookFiles(files) {
@@ -61,7 +89,7 @@ export async function importBookFiles(files) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (file.name.toLowerCase().endsWith(".zip")) {
       const entries = await unzip(bytes.buffer);
-      for (const entry of entries.filter(({ name }) => /\.(txt|docx)$/i.test(name))) results.push(...await chaptersFromNamedBytes(entry.name, entry.bytes));
+      for (const entry of entries.filter(({ name }) => /\.(txt|docx|md|markdown|html?|fb2|epub)$/i.test(name))) results.push(...await chaptersFromNamedBytes(entry.name, entry.bytes));
     } else results.push(...await chaptersFromNamedBytes(file.name, bytes));
   }
   return results.filter(({ content }) => content?.trim());
@@ -71,15 +99,16 @@ function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); });
 }
 
-export async function generateManagedAudio(chapter) {
+export async function generateManagedAudio(chapter, bookLanguage = "English") {
   if (!stripMarkup(chapter.content)) throw new Error("Add chapter text before generating audio");
+  const voice = MANAGED_VOICE_MAP[bookLanguage] || MANAGED_VOICE_MAP.English;
   if (isSupabaseConfigured) {
-    await callChapterAudioGeneration(chapter.id, "auto", "default");
+    await callChapterAudioGeneration(chapter.id, voice.language, voice.voice);
     const metadata = await getChapterAudioMetadata(chapter.id);
     if (!metadata.playbackUrl) throw metadata.error || new Error("Audio generation did not return a playable file");
     return metadata.playbackUrl;
   }
-  const result = await synthesizeVoiceWorkerAudio({ text: stripMarkup(chapter.content), language: "en", voice: "en_US-lessac-medium" });
+  const result = await synthesizeVoiceWorkerAudio({ text: stripMarkup(chapter.content), ...voice });
   return blobToDataUrl(result.blob);
 }
 

@@ -37,3 +37,16 @@ test("maps and orders Supabase records into editor fields", () => {
   assert.equal(result.chapters[1].audioUrl, "/second.mp3");
   assert.deepEqual(result.versions, [{ id: "uk", language: "Ukrainian", status: "Review" }]);
 });
+
+test("detects English, Ukrainian, and Russian chapter headings", async () => {
+  const { splitIntoChapters } = await import("../src/lib/admin.js");
+  const chapters = splitIntoChapters("Глава 1 — Начало\nПервый текст\n\nРозділ 2. Далі\nДругий текст\n\nChapter 3: End\nLast text");
+  assert.deepEqual(chapters.map(({ title }) => title), ["Глава 1 — Начало", "Розділ 2. Далі", "Chapter 3: End"]);
+});
+
+test("maps managed audiobook voices for all production languages", async () => {
+  const { MANAGED_VOICE_MAP } = await import("../src/lib/managedLanguage.js");
+  assert.deepEqual(Object.fromEntries(Object.entries(MANAGED_VOICE_MAP).map(([name, voice]) => [name, voice.language])), {
+    English: "en", Ukrainian: "uk", Russian: "ru",
+  });
+});
