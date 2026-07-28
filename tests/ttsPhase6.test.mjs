@@ -17,8 +17,12 @@ test("OpenAI adapter constructs server-side speech requests without frontend sec
 
 test("generation resolves every default provider value to Piper", () => {
   assert.match(provider, /!requested \|\| requested === "default" \|\| requested === "auto" \? "piper" : requested/);
-  assert.match(endpoint, /resolveProviderId\(body\.provider\)/);
+  assert.match(endpoint, /resolveProviderId\(providerReceived\)/);
   assert.match(provider, /supportedProviderIds = \["mock", "piper", "openai"\]/);
+  assert.match(provider, /acceptedProviderValues = \["default", "auto", \.\.\.supportedProviderIds\]/);
+  assert.match(endpoint, /provider_received: providerReceived/);
+  assert.match(endpoint, /accepted_provider_values: acceptedProviderValues/);
+  assert.match(endpoint, /provider_resolved: provider/);
   assert.doesNotMatch(provider, /if \(env\("OPENAI_API_KEY"\)\) return "openai"/);
 });
 

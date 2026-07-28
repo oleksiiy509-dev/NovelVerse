@@ -32,6 +32,7 @@ export async function renderAudioSegment(providerId: string, request: AudioRende
 export async function generateSpeech(request: SpeechRequest): Promise<SpeechResult> { return renderAudioSegment(resolveProviderId(env("NOVELVERSE_TTS_PROVIDER") || await resolveDefaultProvider()), { segmentId: "legacy", text: request.text, language: request.language, speaker: "Narrator", castSlot: request.voice, voiceProfile: request.voice, emotion: "neutral", intensity: 0.5, pace: 1, pauses: { beforeMs: 0, afterMs: 0 }, emphasis: [], format: request.format }); }
 
 export const supportedProviderIds = ["mock", "piper", "openai"];
+export const acceptedProviderValues = ["default", "auto", ...supportedProviderIds];
 export function resolveProviderId(provider: unknown) {
   const requested = String(provider ?? "").trim().toLowerCase();
   return !requested || requested === "default" || requested === "auto" ? "piper" : requested;
