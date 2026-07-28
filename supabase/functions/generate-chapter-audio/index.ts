@@ -69,7 +69,11 @@ Deno.serve(async (req) => {
     const adminResolution = await resolveAdmin(supabaseUrl, env("SUPABASE_ANON_KEY") || serviceKey, authHeader);
     const admin = adminResolution.allowed;
     if (adminResolution.error) logEvent({ request_id: requestId, user_id: userData.user.id, status: "admin_check_failed", error_code: "ADMIN_LOOKUP_FAILED" });
-    const body = await req.json().catch(() => ({}));
+    const rawRequestBody = await req.text();
+    logEvent({ request_id: requestId, raw_request_body: rawRequestBody });
+    const body = (() => {
+      try { return JSON.parse(rawRequestBody); } catch { return {}; }
+    })();
     const action = String(body.action || (body.health ? "health" : body.previewText ? "preview" : "render"));
     const cfg = readConfig();
     logEvent({ request_id: requestId, user_id: userData.user.id, preview: action === "preview", provider: cfg.provider, model: cfg.model, status: "started" });
@@ -88,11 +92,14 @@ Deno.serve(async (req) => {
       request_id: requestId,
       user_id: userData.user.id,
       status: "provider_validation",
+      "request.provider": providerReceived,
       provider_received: providerReceived,
-      accepted_provider_values: acceptedProviderValues,
+      resolvedProvider: provider,
       provider_resolved: provider,
+      supportedProviders: supportedProviderIds,
+      accepted_provider_values: acceptedProviderValues,
     });
-    if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId);
+    if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId, { provider_received: providerReceived });
     if (provider === "openai" && !env("OPENAI_API_KEY")) return safeError("TTS_API_KEY_MISSING", "OpenAI TTS credentials are missing on the server.", 500, requestId);
     await ensurePrivateBucket(adminClient);
 
