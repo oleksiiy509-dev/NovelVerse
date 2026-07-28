@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { duplicateChapter, mapSupabaseBookRecord, reorderChapters, validateBook } from "../src/lib/bookManagementCore.js";
 
 test("reorders chapters and maintains sequential positions", () => {
@@ -49,4 +50,10 @@ test("maps managed audiobook voices for all production languages", async () => {
   assert.deepEqual(Object.fromEntries(Object.entries(MANAGED_VOICE_MAP).map(([name, voice]) => [name, voice.language])), {
     English: "en", Ukrainian: "uk", Russian: "ru",
   });
+});
+
+test("managed Supabase audio sends Piper as the provider instead of a voice id", () => {
+  const workflow = readFileSync("src/lib/bookWorkflow.js", "utf8");
+  assert.match(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, "piper"\)/);
+  assert.doesNotMatch(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, voice\.voice\)/);
 });
