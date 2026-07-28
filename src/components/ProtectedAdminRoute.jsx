@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { requireAdmin } from "../lib/admin";
 
 function ProtectedAdminRoute() {
@@ -8,6 +8,7 @@ function ProtectedAdminRoute() {
   const [state, setState] = useState({ loading: true, allowed: false });
 
   useEffect(() => {
+    if (!isSupabaseConfigured) { setState({ loading: false, allowed: true }); return undefined; }
     let mounted = true;
     requireAdmin(supabase).then(({ allowed }) => {
       if (mounted) setState({ loading: false, allowed });
