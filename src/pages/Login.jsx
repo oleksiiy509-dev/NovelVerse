@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTelegram } from "../hooks/useTelegram";
 import { supabase } from "../lib/supabase";
-import { isAdminUser } from "../lib/admin";
+import { requireAdmin } from "../lib/admin";
 import { openTelegramLogin } from "../lib/telegram";
 import "../styles/Login.css";
 
@@ -46,15 +46,18 @@ function Login() {
     if (submitting) return;
     setSubmitting(true);
     setMessage("");
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setMessage("Не вдалося увійти. Перевірте email і пароль.");
       setSubmitting(false);
       return;
     }
-    if (adminOnly && !isAdminUser(data.user)) {
+    const adminAccess = adminOnly ? await requireAdmin(supabase) : null;
+    if (adminOnly && !adminAccess?.allowed) {
       await supabase.auth.signOut();
-      setMessage("Цей акаунт не має прав адміністратора.");
+      setMessage(adminAccess?.error
+        ? "Не вдалося перевірити роль адміністратора. Переконайтеся, що міграції Supabase застосовані."
+        : "Цей акаунт не має прав адміністратора.");
       setSubmitting(false);
       return;
     }
