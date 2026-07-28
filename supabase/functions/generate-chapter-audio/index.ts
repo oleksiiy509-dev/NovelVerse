@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderPreview, renderChapterJob, sha256 } from "./renderer.ts";
-import { normalizeProviderError, supportedProviderIds, supportedVoices } from "./provider.ts";
+import { normalizeProviderError, resolveDefaultProvider, supportedProviderIds, supportedVoices } from "./provider.ts";
 
 // Backward-compatible static safeguards: admin_required unsupported_provider preview_too_large tts_job_too_large duplicate: true cache_hit: true
 const deploymentVersion = "tts-phase7-2026-07-21";
@@ -17,14 +17,13 @@ function logEvent(fields: JsonBody) { console.log(JSON.stringify({ deployment_ve
 function safeError(code: string, message: string, status = 400, requestId: string, extra: JsonBody = {}) { logEvent({ request_id: requestId, status: "failed", error_code: code, duration_ms: extra.duration_ms }); return json({ status: "failed", error: { code, message }, ...extra }, status, requestId); }
 
 function readConfig() {
-  const provider = env("NOVELVERSE_TTS_PROVIDER") || env("NOVELVERSE_AUDIO_PROVIDER") || "unconfigured";
-  const model = env("NOVELVERSE_TTS_MODEL");
+  const provider = env("NOVELVERSE_TTS_PROVIDER") || env("NOVELVERSE_AUDIO_PROVIDER") || "piper";
+  const model = env("NOVELVERSE_TTS_MODEL") || (env("OPENAI_API_KEY") ? "gpt-4o-mini-tts" : "");
   const defaultVoice = env("NOVELVERSE_TTS_DEFAULT_VOICE") || "alloy";
   const maxChars = parsePositiveInt("NOVELVERSE_TTS_MAX_CHARS_PER_JOB", 120000);
   const maxSegments = parsePositiveInt("NOVELVERSE_TTS_MAX_SEGMENTS_PER_JOB", 600);
   const previewMaxChars = parsePositiveInt("NOVELVERSE_TTS_PREVIEW_MAX_CHARS", 250);
   const errors: string[] = [];
-  if (!provider || provider === "unconfigured") errors.push("TTS_PROVIDER_NOT_CONFIGURED");
   if (!supportedProviderIds.includes(provider)) errors.push("UNSUPPORTED_TTS_PROVIDER");
   if (provider === "openai" && !env("OPENAI_API_KEY")) errors.push("TTS_API_KEY_MISSING");
   if (provider === "openai" && !model) errors.push("TTS_MODEL_NOT_CONFIGURED");
@@ -73,13 +72,17 @@ Deno.serve(async (req) => {
     if (!admin) return safeError("ADMIN_REQUIRED", "Admin permission is required to generate audio.", 403, requestId);
     if (!cfg.configured && cfg.provider !== "mock") return safeError(cfg.errors[0] || "TTS_PROVIDER_NOT_CONFIGURED", "TTS server configuration is incomplete.", 500, requestId, { configuration_errors: cfg.errors });
     await ensurePrivateBucket(adminClient);
+    const requestedProvider = String(body.provider || "").trim().toLowerCase();
+    if (!requestedProvider || requestedProvider === "default" || requestedProvider === "auto") cfg.provider = await resolveDefaultProvider();
+    const provider = !requestedProvider || requestedProvider === "default" || requestedProvider === "auto" ? cfg.provider : requestedProvider;
+    if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId);
 
     if (action === "preview") {
       const text = stripMarkup(String(body.text || body.previewText || ""));
       const voice = String(body.voice || cfg.defaultVoice);
       if (!text) return safeError("TEXT_REQUIRED", "Enter a short preview text.", 400, requestId);
       if (text.length > cfg.previewMaxChars) return safeError("TEXT_TOO_LONG", `Preview text must be ${cfg.previewMaxChars} characters or fewer.`, 413, requestId, { max_chars: cfg.previewMaxChars, character_count: text.length });
-      const result = await renderPreview(adminClient, { requestId, userId: userData.user.id, provider: cfg.provider, model: cfg.model, voice, text, language: String(body.language || "auto"), bucket: audioBucket, expiresInSeconds: 900 });
+      const result = await renderPreview(adminClient, { requestId, userId: userData.user.id, provider, model: cfg.model, voice, text, language: String(body.language || "auto"), bucket: audioBucket, expiresInSeconds: 900 });
       logEvent({ request_id: requestId, user_id: userData.user.id, preview: true, provider: cfg.provider, model: cfg.model, character_count: text.length, segment_count: 1, status: "ready", duration_ms: Date.now() - started });
       return json({ status: "preview_ready", provider: cfg.provider, model: cfg.model, voice, character_count: text.length, expires_at: result.expiresAt, audio: { storage_path: result.storagePath, signed_url: result.signedUrl } }, 200, requestId);
     }
@@ -88,12 +91,9 @@ Deno.serve(async (req) => {
     const language = String(body.language || "auto");
     // Older callers use "default" as a voice/provider sentinel. Resolve that
     // sentinel server-side so it cannot be rejected as an unsupported provider.
-    const requestedProvider = String(body.provider || "").trim().toLowerCase();
-    const provider = !requestedProvider || requestedProvider === "default" || requestedProvider === "auto" ? cfg.provider : requestedProvider;
     const priority = Number(body.priority || 5);
     const preview = body.preview || null;
     if (!chapterId) return safeError("CHAPTER_ID_REQUIRED", "Chapter id is required.", 400, requestId);
-    if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId);
     const { data: chapter, error: chapterError } = await adminClient.from("chapters").select("id, novel_id, title, content").eq("id", chapterId).single();
     if (chapterError || !chapter) return safeError("CHAPTER_NOT_FOUND", "Chapter was not found.", 404, requestId);
     if (!stripMarkup(chapter.content)) return safeError("EMPTY_CHAPTER", "Chapter has no renderable text.", 422, requestId);
