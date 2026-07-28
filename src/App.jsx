@@ -57,6 +57,11 @@ function AppRoutes() {
         <Route path="/beta" element={<BetaDashboard />} />
         <Route element={<ProtectedAdminRoute />}>
           <Route path="/admin" element={<CreatorPortal />} />
+          <Route path="/admin/books" element={<CreatorPortal />} />
+          <Route path="/admin/books/new" element={<CreatorPortal />} />
+          <Route path="/admin/books/:id" element={<CreatorPortal />} />
+          <Route path="/admin/books/:id/chapters" element={<CreatorPortal />} />
+          <Route path="/admin/books/:id/audio" element={<CreatorPortal />} />
           <Route path="/admin/legacy" element={<Admin />} />
           <Route path="/admin/novels" element={<AdminNovels />} />
           <Route path="/admin/novels/add" element={<AddNovel />} />

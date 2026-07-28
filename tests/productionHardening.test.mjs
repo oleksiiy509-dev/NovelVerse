@@ -21,6 +21,11 @@ test("every declared reader and admin route is mounted exactly once", () => {
   assert.ok(matchesApplicationRoute("/admin/subscriptions"));
   assert.ok(matchesApplicationRoute("/admin/languages"));
   assert.ok(matchesApplicationRoute("/admin/legacy"));
+  assert.ok(matchesApplicationRoute("/admin/books"));
+  assert.ok(matchesApplicationRoute("/admin/books/new"));
+  assert.ok(matchesApplicationRoute("/admin/books/book-42"));
+  assert.ok(matchesApplicationRoute("/admin/books/book-42/chapters"));
+  assert.ok(matchesApplicationRoute("/admin/books/book-42/audio"));
   assert.ok(matchesApplicationRoute("/admin/novels/42/characters"));
   assert.equal(matchesApplicationRoute("/admin/not-real"), false);
 });
