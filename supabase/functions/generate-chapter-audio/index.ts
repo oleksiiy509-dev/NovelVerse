@@ -14,6 +14,12 @@ function env(name: string) { return Deno.env.get(name) || ""; }
 function parsePositiveInt(name: string, fallback: number) { const value = Number(env(name) || fallback); return Number.isFinite(value) && value > 0 ? value : fallback; }
 function logEvent(fields: JsonBody) { console.log(JSON.stringify({ deployment_version: deploymentVersion, ...fields })); }
 function safeError(code: string, message: string, status = 400, requestId: string, extra: JsonBody = {}) { logEvent({ request_id: requestId, status: "failed", error_code: code, duration_ms: extra.duration_ms }); return json({ status: "failed", error: { code, message }, ...extra }, status, requestId); }
+function normalizeChapterId(value: unknown) {
+  const received = typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+  // public.chapters.id is bigint in the production schema. A UUID here is a
+  // book/user identifier and must not be used to look up a chapter.
+  return { received, valid: /^[1-9]\d*$/.test(received), isUuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(received) };
+}
 
 async function resolveAdmin(supabaseUrl: string, apiKey: string, authorization: string) {
   const callerClient = createClient(supabaseUrl, apiKey, {
@@ -113,15 +119,20 @@ Deno.serve(async (req) => {
       return json({ status: "preview_ready", provider, model: cfg.model, voice, character_count: text.length, expires_at: result.expiresAt, audio: { storage_path: result.storagePath, signed_url: result.signedUrl } }, 200, requestId);
     }
 
-    const chapterId = String(body.chapter_id || body.chapterId || "");
+    const chapterIdentifier = normalizeChapterId(body.chapter_id ?? body.chapterId);
+    const chapterId = chapterIdentifier.received;
     const language = String(body.language || "auto");
     // Older callers use "default" as a voice/provider sentinel. Resolve that
     // sentinel server-side so it cannot be rejected as an unsupported provider.
     const priority = Number(body.priority || 5);
     const preview = body.preview || null;
+    logEvent({ request_id: requestId, status: "chapter_lookup_started", received_chapter_id: chapterId, chapter_id_is_uuid: chapterIdentifier.isUuid, sql_query: "select id, novel_id, title, content from public.chapters where id = $1 limit 1", sql_parameters: [chapterId] });
     if (!chapterId) return safeError("CHAPTER_ID_REQUIRED", "Chapter id is required.", 400, requestId);
-    const { data: chapter, error: chapterError } = await adminClient.from("chapters").select("id, novel_id, title, content").eq("id", chapterId).single();
-    if (chapterError || !chapter) return safeError("CHAPTER_NOT_FOUND", "Chapter was not found.", 404, requestId);
+    if (!chapterIdentifier.valid) return safeError("INVALID_CHAPTER_ID", "Chapter id must be a positive bigint chapter identifier, not a UUID.", 400, requestId, { received_chapter_id: chapterId, chapter_id_is_uuid: chapterIdentifier.isUuid });
+    const { data: chapter, error: chapterError } = await adminClient.schema("public").from("chapters").select("id, novel_id, title, content").eq("id", chapterId).maybeSingle();
+    logEvent({ request_id: requestId, status: "chapter_lookup_finished", received_chapter_id: chapterId, lookup_result: chapter ? { found: true, chapter_id: chapter.id, novel_id: chapter.novel_id } : { found: false }, lookup_error: chapterError ? { code: chapterError.code, message: chapterError.message } : null });
+    if (chapterError) return safeError("CHAPTER_LOOKUP_FAILED", "Chapter lookup failed.", 500, requestId);
+    if (!chapter) return safeError("CHAPTER_NOT_FOUND", "Chapter was not found.", 404, requestId);
     if (!stripMarkup(chapter.content)) return safeError("EMPTY_CHAPTER", "Chapter has no renderable text.", 422, requestId);
     const [{ data: segments }, { data: cast }, { data: directorPlan }] = await Promise.all([adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"), adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id), adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle()]);
     if (!segments?.length) return safeError("VOICE_SEGMENTS_REQUIRED", "Analyze chapter voice segments before rendering audio.", 409, requestId);
