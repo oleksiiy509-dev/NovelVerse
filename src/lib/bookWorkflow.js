@@ -116,7 +116,7 @@ export async function loadPublishedManagedBooks() {
   if (!isSupabaseConfigured) {
     try { return (JSON.parse(localStorage.getItem("novelverse.book-management.v1") || "[]") || []).filter((book) => book.status === "Published"); } catch { return []; }
   }
-  const { data, error } = await supabase.from("books").select("id,title,author,description,genres,status,cover_url,created_at,chapters(id)").eq("status", "Published").order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("novels").select("id,title,author,description,genres,status,cover_url,created_at,chapters(id)").eq("status", "Published").order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
 }
