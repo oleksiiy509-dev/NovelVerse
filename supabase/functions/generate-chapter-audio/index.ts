@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderPreview, renderChapterJob, sha256 } from "./renderer.ts";
-import { normalizeProviderError, resolveDefaultProvider, supportedProviderIds, supportedVoices } from "./provider.ts";
+import { normalizeProviderError, resolveProviderId, supportedProviderIds, supportedVoices } from "./provider.ts";
 
 // Backward-compatible static safeguards: admin_required unsupported_provider preview_too_large tts_job_too_large duplicate: true cache_hit: true
 const deploymentVersion = "tts-phase7-2026-07-21";
@@ -25,7 +25,7 @@ async function resolveAdmin(supabaseUrl: string, apiKey: string, authorization: 
 }
 
 function readConfig() {
-  const provider = env("NOVELVERSE_TTS_PROVIDER") || env("NOVELVERSE_AUDIO_PROVIDER") || "piper";
+  const provider = resolveProviderId(env("NOVELVERSE_TTS_PROVIDER") || env("NOVELVERSE_AUDIO_PROVIDER"));
   const model = env("NOVELVERSE_TTS_MODEL") || (env("OPENAI_API_KEY") ? "gpt-4o-mini-tts" : "");
   const defaultVoice = env("NOVELVERSE_TTS_DEFAULT_VOICE") || "alloy";
   const maxChars = parsePositiveInt("NOVELVERSE_TTS_MAX_CHARS_PER_JOB", 120000);
@@ -82,12 +82,10 @@ Deno.serve(async (req) => {
       return json({ ...basic, model: cfg.model || null, default_voice: cfg.defaultVoice, limits: { max_chars: cfg.maxChars, max_segments: cfg.maxSegments, preview_max_chars: cfg.previewMaxChars }, storage_bucket: storage, database_tables: tables, errors: cfg.errors }, 200, requestId);
     }
     if (!admin) return safeError("ADMIN_REQUIRED", "Admin permission is required to generate audio.", 403, requestId);
-    if (!cfg.configured && cfg.provider !== "mock") return safeError(cfg.errors[0] || "TTS_PROVIDER_NOT_CONFIGURED", "TTS server configuration is incomplete.", 500, requestId, { configuration_errors: cfg.errors });
-    await ensurePrivateBucket(adminClient);
-    const requestedProvider = String(body.provider || "").trim().toLowerCase();
-    if (!requestedProvider || requestedProvider === "default" || requestedProvider === "auto") cfg.provider = await resolveDefaultProvider();
-    const provider = !requestedProvider || requestedProvider === "default" || requestedProvider === "auto" ? cfg.provider : requestedProvider;
+    const provider = resolveProviderId(body.provider);
     if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId);
+    if (provider === "openai" && !env("OPENAI_API_KEY")) return safeError("TTS_API_KEY_MISSING", "OpenAI TTS credentials are missing on the server.", 500, requestId);
+    await ensurePrivateBucket(adminClient);
 
     if (action === "preview") {
       const text = stripMarkup(String(body.text || body.previewText || ""));
@@ -95,8 +93,8 @@ Deno.serve(async (req) => {
       if (!text) return safeError("TEXT_REQUIRED", "Enter a short preview text.", 400, requestId);
       if (text.length > cfg.previewMaxChars) return safeError("TEXT_TOO_LONG", `Preview text must be ${cfg.previewMaxChars} characters or fewer.`, 413, requestId, { max_chars: cfg.previewMaxChars, character_count: text.length });
       const result = await renderPreview(adminClient, { requestId, userId: userData.user.id, provider, model: cfg.model, voice, text, language: String(body.language || "auto"), bucket: audioBucket, expiresInSeconds: 900 });
-      logEvent({ request_id: requestId, user_id: userData.user.id, preview: true, provider: cfg.provider, model: cfg.model, character_count: text.length, segment_count: 1, status: "ready", duration_ms: Date.now() - started });
-      return json({ status: "preview_ready", provider: cfg.provider, model: cfg.model, voice, character_count: text.length, expires_at: result.expiresAt, audio: { storage_path: result.storagePath, signed_url: result.signedUrl } }, 200, requestId);
+      logEvent({ request_id: requestId, user_id: userData.user.id, preview: true, provider, model: cfg.model, character_count: text.length, segment_count: 1, status: "ready", duration_ms: Date.now() - started });
+      return json({ status: "preview_ready", provider, model: cfg.model, voice, character_count: text.length, expires_at: result.expiresAt, audio: { storage_path: result.storagePath, signed_url: result.signedUrl } }, 200, requestId);
     }
 
     const chapterId = String(body.chapter_id || body.chapterId || "");
