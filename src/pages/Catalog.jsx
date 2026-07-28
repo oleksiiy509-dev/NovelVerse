@@ -42,16 +42,6 @@ function Catalog() {
   const loadMoreRef = useRef(null);
 
   useEffect(() => { loadFacets(); }, []);
-  useEffect(() => {
-    const node = loadMoreRef.current;
-    if (!node || !hasMore) return undefined;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting && !loading && !loadingMore) loadNovels(page + 1);
-    }, { rootMargin: "280px" });
-    observer.observe(node);
-    return () => observer.disconnect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMore, loading, loadingMore, page, search, filters, sort]);
 
   async function loadFacets() {
     const { data } = await supabase.from("novels").select("author,genres").order("author");
@@ -76,13 +66,12 @@ function Catalog() {
     return builder;
   }, [search, filters]);
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const sortOption = sortOptions[sort] || sortOptions.newest;
   const loadNovels = useCallback(async (nextPage = 0, replace = false) => {
     replace ? setLoading(true) : setLoadingMore(true);
     setError("");
     const start = nextPage * PAGE_SIZE;
     const end = start + PAGE_SIZE - 1;
-    const option = sortOptions[sort] || sortOptions.newest;
     const runQuery = (columns, orderOption) => {
       let query = supabase
         .from("novels")
@@ -96,7 +85,7 @@ function Catalog() {
       return applyQuery(query.range(start, end));
     };
 
-    let result = await runQuery(NOVEL_COLUMNS, option);
+    let result = await runQuery(NOVEL_COLUMNS, sortOption);
 
     if (isMissingColumnError(result.error, "created_at")) {
       result = await runQuery(FALLBACK_NOVEL_COLUMNS, { column: "id", ascending: false, fallback: "id" });
@@ -113,9 +102,19 @@ function Catalog() {
     }
     setLoading(false);
     setLoadingMore(false);
-  }, [applyQuery, sort]);
+  }, [applyQuery, sortOption]);
 
   useEffect(() => { loadNovels(0, true); }, [loadNovels]);
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !hasMore) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !loading && !loadingMore) loadNovels(page + 1);
+    }, { rootMargin: "280px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadNovels, page]);
 
   useEffect(() => {
     const query = normalize(search);
