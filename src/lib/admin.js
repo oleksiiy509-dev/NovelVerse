@@ -1,16 +1,13 @@
-export function isAdminUser(user) {
-  if (!user) return false;
-  // app_metadata can only be changed by a trusted Supabase service-role client.
-  // user_metadata and frontend email allowlists are user-controlled and must
-  // never be treated as authorization signals.
-  return user.app_metadata?.role === "admin" || user.app_metadata?.is_admin === true;
-}
-
 export async function requireAdmin(supabase) {
   const { data, error } = await supabase.auth.getUser();
   if (error) return { user: null, allowed: false, error };
   const user = data?.user || null;
-  return { user, allowed: isAdminUser(user), error: null };
+  if (!user) return { user: null, allowed: false, error: null };
+
+  // The RPC is the only authorization source: it checks public.user_roles and,
+  // atomically, claims the first admin role when a deployment has none.
+  const { data: allowed, error: roleError } = await supabase.rpc("bootstrap_first_admin");
+  return { user, allowed: roleError ? false : allowed === true, error: roleError || null };
 }
 
 export function slugify(value = "file") {

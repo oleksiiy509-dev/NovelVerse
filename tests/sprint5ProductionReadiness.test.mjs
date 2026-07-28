@@ -2,17 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { isAdminUser } from "../src/lib/admin.js";
 import { canUsePublishingStudio } from "../src/lib/publishingStudio.js";
 
 const migration = await readFile(new URL("../supabase/migrations/202607270001_production_readiness.sql", import.meta.url), "utf8");
 const reader = await readFile(new URL("../src/pages/Reader.jsx", import.meta.url), "utf8");
 
-test("admin authorization ignores client-editable profile fields", () => {
+test("publishing authorization ignores client-editable profile fields", () => {
   const forged = { email: "admin@example.com", role: "admin", user_metadata: { role: "admin", is_admin: true } };
-  assert.equal(isAdminUser(forged), false);
   assert.equal(canUsePublishingStudio(forged), false);
-  assert.equal(isAdminUser({ app_metadata: { role: "admin" } }), true);
   assert.equal(canUsePublishingStudio({ app_metadata: { is_admin: true } }), true);
 });
 
