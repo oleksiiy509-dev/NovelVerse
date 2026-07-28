@@ -103,7 +103,7 @@ export async function generateManagedAudio(chapter, bookLanguage = "English") {
   if (!stripMarkup(chapter.content)) throw new Error("Add chapter text before generating audio");
   const voice = MANAGED_VOICE_MAP[bookLanguage] || MANAGED_VOICE_MAP.English;
   if (isSupabaseConfigured) {
-    await callChapterAudioGeneration(chapter.id, voice.language, voice.voice);
+    await callChapterAudioGeneration(chapter.id, voice.language, "piper");
     const metadata = await getChapterAudioMetadata(chapter.id);
     if (!metadata.playbackUrl) throw metadata.error || new Error("Audio generation did not return a playable file");
     return metadata.playbackUrl;
