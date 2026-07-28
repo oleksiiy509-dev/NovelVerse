@@ -18,6 +18,34 @@ supabase db push
 supabase functions deploy generate-chapter-audio
 ```
 
+`OPENAI_API_KEY`, `NOVELVERSE_TTS_PROVIDER`, and `NOVELVERSE_TTS_MODEL` are
+required for the OpenAI provider. `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` are supplied automatically by hosted Supabase Edge
+Functions. The remaining `NOVELVERSE_TTS_*` values above are optional runtime
+overrides with safe defaults.
+
+Verify the linked production project rather than assuming a local function
+directory has been deployed:
+
+```bash
+supabase functions list --project-ref <project-ref>
+supabase secrets list --project-ref <project-ref>
+supabase functions logs generate-chapter-audio --project-ref <project-ref>
+```
+
+The render request body is JSON. `provider` may be omitted (recommended), set
+to `default`/`auto` to select the configured server provider, or set explicitly
+to `openai`/`mock`:
+
+```json
+{"chapter_id":"<chapter-uuid>","language":"auto","provider":"default","preview":null}
+```
+
+A successful full render returns HTTP 200 JSON with `status: "ready"`, a
+`job_id`, and render metadata. Configuration and validation failures return a
+non-2xx JSON response with `status: "failed"`, `request_id`, and an `error`
+object containing `code` and `message`.
+
 Use placeholders only in documentation. Rotate a compromised key in the OpenAI dashboard, then run `supabase secrets set OPENAI_API_KEY=<new-openai-api-key>` and redeploy the function.
 
 ## Deployment checks
