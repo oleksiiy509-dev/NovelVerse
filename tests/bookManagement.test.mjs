@@ -63,5 +63,20 @@ test("managed audio waits for the chapter UUID to be persisted", () => {
   const persistence = readFileSync("src/lib/bookManagement.js", "utf8");
   assert.match(management, /disabled=\{generating\.includes\(item\.id\) \|\| !chapterIsPersisted\}/);
   assert.match(management, /persistedChapterIds\.includes\(item\.id\)/);
-  assert.match(persistence, /id: item\.id, book_id: book\.id/);
+  assert.match(persistence, /id: item\.id, novel_id: book\.id/);
+});
+
+test("managed books use the canonical novels table and chapter relationship", () => {
+  const management = readFileSync("src/lib/bookManagement.js", "utf8");
+  const workflow = readFileSync("src/lib/bookWorkflow.js", "utf8");
+  const migrations = [
+    readFileSync("supabase/migrations/20260728080000_book_management_v1.sql", "utf8"),
+    readFileSync("supabase/migrations/20260728090000_public_audiobook_catalog.sql", "utf8"),
+  ].join("\n");
+
+  assert.doesNotMatch(`${management}\n${workflow}\n${migrations}`, /public\.books|from\(["']books["']\)/);
+  assert.match(management, /from\("novels"\)/);
+  assert.match(management, /novel_id: book\.id/);
+  assert.match(migrations, /references public\.novels\(id\)/);
+  assert.doesNotMatch(migrations, /create table if not exists public\.books/);
 });
