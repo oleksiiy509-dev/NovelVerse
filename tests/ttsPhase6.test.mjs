@@ -15,10 +15,11 @@ test("OpenAI adapter constructs server-side speech requests without frontend sec
   assert.doesNotMatch(readFileSync("src/lib/chapterAudio.js", "utf8"), /OPENAI_API_KEY|Authorization: `Bearer/);
 });
 
-test("generation resolves legacy default provider sentinel on the server", () => {
-  assert.match(endpoint, /requestedProvider === "default"/);
-  assert.match(endpoint, /requestedProvider === "auto"/);
-  assert.match(endpoint, /\? cfg\.provider : requestedProvider/);
+test("generation resolves every default provider value to Piper", () => {
+  assert.match(provider, /!requested \|\| requested === "default" \|\| requested === "auto" \? "piper" : requested/);
+  assert.match(endpoint, /resolveProviderId\(body\.provider\)/);
+  assert.match(provider, /supportedProviderIds = \["mock", "piper", "openai"\]/);
+  assert.doesNotMatch(provider, /if \(env\("OPENAI_API_KEY"\)\) return "openai"/);
 });
 
 test("missing API key and provider errors are normalized", () => {
