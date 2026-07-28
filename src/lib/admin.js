@@ -44,7 +44,7 @@ export function stripMarkup(value = "") {
 export function splitIntoChapters(text = "", fallbackTitle = "Chapter") {
   const clean = String(text).replace(/\r\n/g, "\n").trim();
   if (!clean) return [];
-  const chapterPattern = /(^|\n)(?:#{1,3}\s*)?(chapter|глава|розділ)\s+([\divxlcdm]+|\d+)[^\n]*/giu;
+  const chapterPattern = /(^|\n)\s*(?:#{1,6}\s*)?(chapter|глава|розділ|часть|part)\s*(?:№\s*)?([\divxlcdm]+|\d+|[а-яіїєґё]+)?(?:\s*[:.\-–—]\s*|\s+)?[^\n]*/giu;
   const matches = [...clean.matchAll(chapterPattern)];
   if (!matches.length) return [{ title: fallbackTitle, content: clean }];
   return matches.map((match, index) => {

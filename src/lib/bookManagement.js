@@ -4,7 +4,7 @@ export { duplicateChapter, reorderChapters, validateBook } from "./bookManagemen
 
 export const BOOK_STATUSES = ["Draft", "Review", "Scheduled", "Published", "Archived"];
 export const TRANSLATION_STATUSES = ["Not started", "In progress", "Review", "Complete"];
-export const LANGUAGES = ["English", "Ukrainian", "Spanish", "French", "German", "Japanese"];
+export const LANGUAGES = ["English", "Ukrainian", "Russian", "Spanish", "French", "German", "Japanese"];
 export const AGE_RATINGS = ["All ages", "7+", "13+", "16+", "18+"];
 const STORE_KEY = "novelverse.book-management.v1";
 
