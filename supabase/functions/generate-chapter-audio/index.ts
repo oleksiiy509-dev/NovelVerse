@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderPreview, renderChapterJob, sha256 } from "./renderer.ts";
-import { normalizeProviderError, resolveProviderId, supportedProviderIds, supportedVoices } from "./provider.ts";
+import { acceptedProviderValues, normalizeProviderError, resolveProviderId, supportedProviderIds, supportedVoices } from "./provider.ts";
 
 // Backward-compatible static safeguards: admin_required unsupported_provider preview_too_large tts_job_too_large duplicate: true cache_hit: true
 const deploymentVersion = "tts-phase7-2026-07-21";
@@ -82,7 +82,16 @@ Deno.serve(async (req) => {
       return json({ ...basic, model: cfg.model || null, default_voice: cfg.defaultVoice, limits: { max_chars: cfg.maxChars, max_segments: cfg.maxSegments, preview_max_chars: cfg.previewMaxChars }, storage_bucket: storage, database_tables: tables, errors: cfg.errors }, 200, requestId);
     }
     if (!admin) return safeError("ADMIN_REQUIRED", "Admin permission is required to generate audio.", 403, requestId);
-    const provider = resolveProviderId(body.provider);
+    const providerReceived = Object.prototype.hasOwnProperty.call(body, "provider") ? body.provider : null;
+    const provider = resolveProviderId(providerReceived);
+    logEvent({
+      request_id: requestId,
+      user_id: userData.user.id,
+      status: "provider_validation",
+      provider_received: providerReceived,
+      accepted_provider_values: acceptedProviderValues,
+      provider_resolved: provider,
+    });
     if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId);
     if (provider === "openai" && !env("OPENAI_API_KEY")) return safeError("TTS_API_KEY_MISSING", "OpenAI TTS credentials are missing on the server.", 500, requestId);
     await ensurePrivateBucket(adminClient);
