@@ -57,3 +57,11 @@ test("managed Supabase audio sends Piper as the provider instead of a voice id",
   assert.match(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, "piper"\)/);
   assert.doesNotMatch(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, voice\.voice\)/);
 });
+
+test("managed audio waits for the chapter UUID to be persisted", () => {
+  const management = readFileSync("src/components/BookManagement.jsx", "utf8");
+  const persistence = readFileSync("src/lib/bookManagement.js", "utf8");
+  assert.match(management, /disabled=\{generating\.includes\(item\.id\) \|\| !chapterIsPersisted\}/);
+  assert.match(management, /persistedChapterIds\.includes\(item\.id\)/);
+  assert.match(persistence, /id: item\.id, book_id: book\.id/);
+});
