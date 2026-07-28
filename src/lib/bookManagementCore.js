@@ -13,3 +13,28 @@ export function validateBook(book) {
   if (book.status === "Scheduled" && !book.scheduledAt) errors.scheduledAt = "Choose a publication date";
   return errors;
 }
+
+export function mapSupabaseBookRecord(row, defaults) {
+  return {
+    ...defaults,
+    ...row,
+    ageRating: row.age_rating,
+    coverUrl: row.cover_url || "",
+    bannerUrl: row.banner_url || "",
+    scheduledAt: row.scheduled_at || "",
+    genres: row.genres || [],
+    tags: row.tags || [],
+    versions: (row.book_languages || []).map((version) => ({ id: version.id, language: version.language, status: version.status })),
+    chapters: [...(row.chapters || [])]
+      .sort((a, b) => (a.position || 0) - (b.position || 0))
+      .map((chapter, index) => ({
+        id: chapter.id,
+        title: chapter.title,
+        content: chapter.content || "",
+        audioStatus: chapter.audio_status || "Missing",
+        audioUrl: chapter.audio_url || "",
+        updatedAt: chapter.updated_at || row.updated_at,
+        order: index + 1,
+      })),
+  };
+}
