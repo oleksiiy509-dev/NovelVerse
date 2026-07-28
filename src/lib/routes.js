@@ -4,7 +4,9 @@ export const readerRoutes = Object.freeze([
 ]);
 
 export const adminRoutes = Object.freeze([
-  "/admin", "/admin/legacy", "/admin/novels", "/admin/novels/add", "/admin/novels/edit/:id",
+  "/admin", "/admin/books", "/admin/books/new", "/admin/books/:id",
+  "/admin/books/:id/chapters", "/admin/books/:id/audio",
+  "/admin/legacy", "/admin/novels", "/admin/novels/add", "/admin/novels/edit/:id",
   "/admin/chapters", "/admin/chapters/add", "/admin/chapters/edit/:id",
   "/admin/taxonomy", "/admin/characters", "/admin/ai-brain",
   "/admin/voice-studio", "/admin/scene-studio", "/admin/audio-studio",
