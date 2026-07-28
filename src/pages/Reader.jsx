@@ -377,7 +377,7 @@ function Reader() {
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      loadChapter();
+      void loadChapter();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
