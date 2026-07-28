@@ -15,7 +15,7 @@ const vercelConfig = JSON.parse(await readFile(new URL("../vercel.json", import.
 
 test("every declared reader and admin route is mounted exactly once", () => {
   assert.equal(new Set(applicationRoutes).size, applicationRoutes.length);
-  for (const route of [...readerRoutes, ...adminRoutes]) assert.match(appSource, new RegExp(`path=[\"']${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\"']`), route);
+  for (const route of [...readerRoutes, ...adminRoutes]) assert.match(appSource, new RegExp(`path=["']${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`), route);
   assert.ok(matchesApplicationRoute("/reader/chapter-1"));
   assert.ok(matchesApplicationRoute("/subscription"));
   assert.ok(matchesApplicationRoute("/admin/subscriptions"));
