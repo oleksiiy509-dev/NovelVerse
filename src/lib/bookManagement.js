@@ -36,7 +36,7 @@ function writeLocal(books) { localStorage.setItem(STORE_KEY, JSON.stringify(book
 
 export async function loadManagedBooks() {
   if (!isSupabaseConfigured) return readLocal();
-  const { data, error } = await supabase.from("novels").select("*, chapters(*), book_languages(*)").order("updated_at", { ascending: false });
+  const { data, error } = await supabase.from("novels").select("*, chapters(*)").order("updated_at", { ascending: false });
   if (error) throw error;
   return (data || []).map(mapSupabaseBook);
 }
@@ -53,13 +53,6 @@ export async function saveManagedBook(book, allBooks) {
   const removedChapterIds = (existingChapters.data || []).map(({ id }) => id).filter((id) => !chapterIds.includes(id));
   if (removedChapterIds.length) { const result = await supabase.from("chapters").delete().in("id", removedChapterIds); if (result.error) throw result.error; }
 
-  const versions = book.versions.map((item) => ({ id: item.id, book_id: book.id, language: item.language, status: item.status }));
-  if (versions.length) { const result = await supabase.from("book_languages").upsert(versions); if (result.error) throw result.error; }
-  const versionIds = versions.map(({ id }) => id);
-  const existingVersions = await supabase.from("book_languages").select("id").eq("book_id", book.id);
-  if (existingVersions.error) throw existingVersions.error;
-  const removedVersionIds = (existingVersions.data || []).map(({ id }) => id).filter((id) => !versionIds.includes(id));
-  if (removedVersionIds.length) { const result = await supabase.from("book_languages").delete().in("id", removedVersionIds); if (result.error) throw result.error; }
   return allBooks;
 }
 
