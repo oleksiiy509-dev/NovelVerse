@@ -1,5 +1,6 @@
 -- Production reader progress persistence.
--- The production novels and chapters schema uses UUID primary keys.
+-- Production keeps authenticated users on UUIDs, while the legacy reader
+-- schema uses bigint identity keys for novels and chapters.
 
 begin;
 
@@ -8,8 +9,8 @@ create extension if not exists pgcrypto;
 create table if not exists public.reading_progress (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  novel_id uuid not null references public.novels(id) on delete cascade,
-  chapter_id uuid not null references public.chapters(id) on delete cascade,
+  novel_id bigint not null references public.novels(id) on delete cascade,
+  chapter_id bigint not null references public.chapters(id) on delete cascade,
   progress_percent numeric(5, 2) not null default 0
     check (progress_percent >= 0 and progress_percent <= 100),
   scroll_position double precision not null default 0

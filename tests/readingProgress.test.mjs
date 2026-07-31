@@ -9,11 +9,11 @@ const migration = await readFile(
   "utf8",
 );
 
-test("reading progress migration defines UUID relationships and indexes", () => {
+test("reading progress migration matches the production relationship types", () => {
   assert.match(migration, /id uuid primary key default gen_random_uuid\(\)/);
   assert.match(migration, /user_id uuid not null references auth\.users\(id\) on delete cascade/);
-  assert.match(migration, /novel_id uuid not null references public\.novels\(id\) on delete cascade/);
-  assert.match(migration, /chapter_id uuid not null references public\.chapters\(id\) on delete cascade/);
+  assert.match(migration, /novel_id bigint not null references public\.novels\(id\) on delete cascade/);
+  assert.match(migration, /chapter_id bigint not null references public\.chapters\(id\) on delete cascade/);
   assert.match(migration, /create unique index if not exists reading_progress_user_novel_idx/);
   assert.match(migration, /reading_progress_user_updated_idx/);
   assert.match(migration, /reading_progress_novel_idx/);
