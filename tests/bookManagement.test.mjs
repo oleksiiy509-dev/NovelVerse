@@ -88,3 +88,16 @@ test("managed books use the canonical novels table and chapter relationship", ()
   assert.doesNotMatch(migrations, /create table if not exists public\.book_languages/);
   assert.doesNotMatch(migrations, /create table if not exists public\.books/);
 });
+
+test("the managed books empty state depends on the books list", () => {
+  const management = readFileSync("src/components/BookManagement.jsx", "utf8");
+  assert.ok(management.includes("const selected = books.find((book) => String(book.id) === String(selectedId)) || books[0]"));
+  assert.match(management, /books\.length === 0 \? <div className="cms-empty"><b>No books yet<\/b>/);
+});
+
+test("reading progress availability is cached after a missing-table response", () => {
+  const networkStatus = readFileSync("src/hooks/useNetworkStatus.js", "utf8");
+  assert.match(networkStatus, /let readingProgressAvailable = true/);
+  assert.match(networkStatus, /!readingProgressAvailable/);
+  assert.match(networkStatus, /status === 404\) \{ readingProgressAvailable = false; return; \}/);
+});
