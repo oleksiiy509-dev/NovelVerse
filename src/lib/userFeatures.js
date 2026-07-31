@@ -1,5 +1,6 @@
 import { getTelegramLocalUser, syncTelegramDisplayProfile } from "./telegram";
 import { queueProgress } from "./offlineStorage";
+import { toReadingProgressRow } from "./readingProgress";
 
 export async function getCurrentUser(supabase) {
   const { data } = await supabase.auth.getUser();
@@ -73,15 +74,17 @@ export async function syncReadingProgress(supabase, user, payload, cloudSetItem)
 
   if (!user) return { data: record, error: null };
 
+  const progressRow = toReadingProgressRow(record);
+
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    await queueProgress(record).catch(() => null);
+    await queueProgress(progressRow).catch(() => null);
     return { data: record, error: null, queued: true };
   }
 
   const result = await supabase
     .from("reading_progress")
-    .upsert(record, { onConflict: "user_id,novel_id" });
-  if (result.error) await queueProgress(record).catch(() => null);
+    .upsert(progressRow, { onConflict: "user_id,novel_id" });
+  if (result.error) await queueProgress(progressRow).catch(() => null);
   return result;
 }
 

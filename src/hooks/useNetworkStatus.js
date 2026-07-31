@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentUser } from "../lib/userFeatures";
+import { toReadingProgressRow } from "../lib/readingProgress";
 import { getQueuedProgress, removeQueuedProgress } from "../lib/offlineStorage";
 import { supabase } from "../lib/supabase";
 import { diagnosticLogger } from "../lib/diagnosticLogger";
@@ -33,7 +34,8 @@ export function useNetworkStatus() {
           if (status === 404) { readingProgressAvailable = false; return; }
           if (readError) throw readError;
           if (!isNewer(record, remote)) { await removeQueuedProgress(queue_id); continue; }
-          const { error } = await supabase.from("reading_progress").upsert({ ...record, user_id: user.id }, { onConflict: "user_id,novel_id" });
+          const progressRow = toReadingProgressRow({ ...record, user_id: user.id });
+          const { error } = await supabase.from("reading_progress").upsert(progressRow, { onConflict: "user_id,novel_id" });
           if (error) throw error;
           await removeQueuedProgress(queue_id);
         }
