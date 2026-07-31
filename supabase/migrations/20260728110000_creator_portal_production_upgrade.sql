@@ -116,7 +116,26 @@ $migration$;
 create index if not exists novels_owner_updated_idx on public.novels(owner_id, updated_at desc);
 create index if not exists novels_status_published_idx on public.novels(status, published_at desc);
 create index if not exists novels_scheduled_idx on public.novels(scheduled_at) where scheduled_at is not null;
-create index if not exists novels_genres_idx on public.novels using gin(genres);
+-- Legacy production schemas store genres as text, which has no default GIN
+-- operator class.  Preserve that column and only add the array index when the
+-- existing type supports it.
+do $migration$
+declare
+  genres_type oid;
+begin
+  select attribute.atttypid into genres_type
+  from pg_attribute attribute
+  where attribute.attrelid = 'public.novels'::regclass
+    and attribute.attname = 'genres'
+    and not attribute.attisdropped;
+
+  if genres_type = 'text[]'::regtype::oid then
+    create index if not exists novels_genres_idx on public.novels using gin(genres);
+  elsif genres_type = 'text'::regtype::oid then
+    raise notice 'Skipping novels_genres_idx because public.novels.genres is text';
+  end if;
+end
+$migration$;
 create index if not exists novels_tags_idx on public.novels using gin(tags);
 create index if not exists chapters_novel_position_idx on public.chapters(novel_id, position);
 -- Do not impose uniqueness on legacy chapter numbers: imported editions can
