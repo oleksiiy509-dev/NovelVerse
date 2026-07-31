@@ -4,7 +4,19 @@ import { AGE_RATINGS, BOOK_STATUSES, LANGUAGES, TRANSLATION_STATUSES, createBook
 import { generateManagedAudio, importBookFiles } from "../lib/bookWorkflow";
 import { isSupabaseConfigured } from "../lib/supabase";
 
-const list = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
+const list = (value) => {
+  if (Array.isArray(value)) return value;
+  if (value == null || value === "") return [];
+  const text = String(value).trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // Plain comma-separated text is the legacy database format.
+  }
+  return text.split(",").map((item) => item.trim()).filter(Boolean);
+};
 const chapterDraftKey = (bookId, chapterId) => `novelverse.chapter-draft.${bookId}.${chapterId}`;
 export default function BookManagement({ onBooksChange, bookId, createNew = false, initialTab = "Metadata" }) {
   const navigate = useNavigate();
@@ -19,7 +31,7 @@ export default function BookManagement({ onBooksChange, bookId, createNew = fals
   const updateChapter = (patch) => update({ chapters: selected.chapters.map((item) => item.id === chapterId ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item) });
   const flash = useCallback((message) => { setNotice(message); window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setNotice(""), 2800); }, []);
 
-  useEffect(() => { loadManagedBooks().then((items) => { const loaded = createNew ? [createBook(), ...items] : items; setBooks(loaded); setPersistedChapterIds(isSupabaseConfigured ? items.flatMap((book) => book.chapters.map((item) => item.id)) : loaded.flatMap((book) => book.chapters.map((item) => item.id))); setSelectedId(createNew ? loaded[0].id : bookId || loaded[0]?.id || ""); setTab(initialTab); onBooksChange?.(loaded); }).catch((error) => flash(error.message)); return () => window.clearTimeout(timer.current); }, [bookId, createNew, flash, initialTab, onBooksChange]);
+  useEffect(() => { loadManagedBooks().then((items) => { const normalized = items.map((book) => ({ ...book, genres: list(book.genres) })); const loaded = createNew ? [createBook(), ...normalized] : normalized; setBooks(loaded); setPersistedChapterIds(isSupabaseConfigured ? normalized.flatMap((book) => book.chapters.map((item) => item.id)) : loaded.flatMap((book) => book.chapters.map((item) => item.id))); setSelectedId(createNew ? loaded[0].id : bookId || loaded[0]?.id || ""); setTab(initialTab); onBooksChange?.(loaded); }).catch((error) => flash(error.message)); return () => window.clearTimeout(timer.current); }, [bookId, createNew, flash, initialTab, onBooksChange]);
   useEffect(() => { if (!chapter) return; const id = window.setTimeout(() => { localStorage.setItem(chapterDraftKey(selectedId, chapter.id), JSON.stringify(chapter)); flash("Chapter autosaved"); }, 900); return () => window.clearTimeout(id); }, [chapter, flash, selectedId]);
 
   const persist = async () => { const found = validateBook(selected); setErrors(found); if (Object.keys(found).length) return; setSaving(true); try { await saveManagedBook(selected, books); setPersistedChapterIds((ids) => [...new Set([...ids, ...selected.chapters.map((item) => item.id)])]); onBooksChange?.(books); flash("All changes saved"); } catch (error) { flash(error.message); } finally { setSaving(false); } };
