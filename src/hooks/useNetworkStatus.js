@@ -27,7 +27,8 @@ export function useNetworkStatus() {
         for (const item of queued) {
           if (disposed || !navigator.onLine) break;
           const { queue_id, ...record } = item;
-          const { data: remote, error: readError } = await supabase.from("reading_progress").select("updated_at").eq("user_id", user.id).eq("novel_id", record.novel_id).maybeSingle();
+          const { data: remote, error: readError, status } = await supabase.from("reading_progress").select("updated_at").eq("user_id", user.id).eq("novel_id", record.novel_id).maybeSingle();
+          if (status === 404) return;
           if (readError) throw readError;
           if (!isNewer(record, remote)) { await removeQueuedProgress(queue_id); continue; }
           const { error } = await supabase.from("reading_progress").upsert({ ...record, user_id: user.id }, { onConflict: "user_id,novel_id" });
