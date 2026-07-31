@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const provider = readFileSync("supabase/functions/generate-chapter-audio/provider.ts", "utf8");
 const renderer = readFileSync("supabase/functions/generate-chapter-audio/renderer.ts", "utf8");
 const endpoint = readFileSync("supabase/functions/generate-chapter-audio/index.ts", "utf8");
+const voiceAnalyzer = readFileSync("supabase/functions/analyze-chapter-voice/index.ts", "utf8");
 const envExample = readFileSync(".env.example", "utf8");
 
 test("OpenAI adapter constructs server-side speech requests without frontend secrets", () => {
@@ -92,6 +93,18 @@ test("chapter generation validates the bigint payload and logs the public chapte
   assert.match(endpoint, /received_chapter_id/);
   assert.match(endpoint, /lookup_result/);
   assert.match(endpoint, /CHAPTER_LOOKUP_FAILED/);
+});
+
+test("voice segment failures retain original diagnostics without changing API errors", () => {
+  for (const field of ["function_name", "sql_query", "rpc_name", "request_payload", "original_error_message", "stack_trace"]) {
+    assert.match(endpoint, new RegExp(field));
+    assert.match(voiceAnalyzer, new RegExp(field));
+  }
+  assert.match(endpoint, /null, "analyze-chapter-voice"/);
+  assert.match(voiceAnalyzer, /catch \(error\) \{ logDiagnostic\(error, body, activeSql\)/);
+  assert.match(endpoint, /VOICE_SEGMENT_GENERATION_FAILED/);
+  assert.match(voiceAnalyzer, /segment_save_failed/);
+  assert.match(voiceAnalyzer, /voice_analysis_failed/);
 });
 
 test("Phase 7 normalizes user-facing TTS errors", () => {
