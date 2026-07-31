@@ -157,7 +157,8 @@ Deno.serve(async (req) => {
     }
     if (!admin) return safeError("ADMIN_REQUIRED", "Admin permission is required to generate audio.", 403, requestId);
     const providerReceived = Object.prototype.hasOwnProperty.call(body, "provider") ? body.provider : null;
-    const provider = resolveProviderId(providerReceived);
+    const providerRequested = String(providerReceived ?? "").trim().toLowerCase();
+    const provider = resolveProviderId(!providerRequested || providerRequested === "default" || providerRequested === "auto" ? cfg.provider : providerRequested);
     logEvent({
       request_id: requestId,
       user_id: userData.user.id,
