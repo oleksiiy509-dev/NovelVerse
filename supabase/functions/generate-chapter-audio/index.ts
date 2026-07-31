@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderPreview, renderChapterJob, sha256 } from "./renderer.ts";
-import { acceptedProviderValues, normalizeProviderError, resolveProviderId, supportedProviderIds, supportedVoices } from "./provider.ts";
+import { acceptedProviderValues, getProviderDiagnostics, normalizeProviderError, resolveProviderId, supportedProviderIds, supportedVoices } from "./provider.ts";
 import { directChapterPerformance, validateDirectorPlan } from "../../../src/lib/voiceDirector/director.js";
 
 // Backward-compatible static safeguards: admin_required unsupported_provider preview_too_large tts_job_too_large duplicate: true cache_hit: true
@@ -168,6 +168,7 @@ Deno.serve(async (req) => {
       provider_resolved: provider,
       supportedProviders: supportedProviderIds,
       accepted_provider_values: acceptedProviderValues,
+      ...getProviderDiagnostics(providerReceived),
     });
     if (!supportedProviderIds.includes(provider)) return safeError("UNSUPPORTED_TTS_PROVIDER", "Configured TTS provider is not supported.", 400, requestId, { provider_received: providerReceived });
     if (provider === "openai" && !env("OPENAI_API_KEY")) return safeError("TTS_API_KEY_MISSING", "OpenAI TTS credentials are missing on the server.", 500, requestId);
@@ -242,7 +243,8 @@ Deno.serve(async (req) => {
     return json({ status: preview ? "preview_ready" : "ready", job_id: job.id, cache_hit: false, ...result }, 200, requestId);
   } catch (error) {
     const normalized = normalizeProviderError(error);
-    logEvent({ request_id: requestId, status: "failed", error_code: normalized.code, duration_ms: Date.now() - started });
+    const exception = error instanceof Error ? error : new Error(String(error));
+    logEvent({ request_id: requestId, status: "failed", error_code: normalized.code, duration_ms: Date.now() - started, ...getProviderDiagnostics(), provider_initialization_error: exception.message, original_exception: { name: exception.name, message: exception.message }, stack_trace: exception.stack || null });
     return json({ status: "failed", error: { code: normalized.code, message: normalized.message } }, normalized.status, requestId);
   }
 });

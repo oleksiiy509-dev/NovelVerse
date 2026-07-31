@@ -34,6 +34,17 @@ test("missing API key and provider errors are normalized", () => {
   assert.match(provider, /provider_bad_request/);
 });
 
+test("provider failures log resolution, safe configuration, and original diagnostics", () => {
+  for (const field of ["selected_provider", "selected_model", "provider_configuration", "required_environment_variables", "missing_environment_variables", "missing_configuration", "provider_initialization_error", "original_exception", "stack_trace"]) {
+    assert.match(provider + endpoint, new RegExp(field));
+  }
+  assert.match(provider, /resolution_source/);
+  assert.match(provider, /missingEnvironmentVariables\.map\(\(name\) => `\$\{name\} is not set`\)/);
+  assert.match(provider, /api_key_configured/);
+  assert.match(provider, /token_configured/);
+  assert.doesNotMatch(provider, /provider_configuration:[\s\S]{0,200}api_key:/);
+});
+
 test("voice mapping fallback preserves NovelVerse cast identities", () => {
   for (const key of ["narrator", "young_male", "mature_male", "elderly_male", "young_female", "mature_female", "elderly_female", "child", "monster", "unknown"]) assert.match(provider, new RegExp(`${key}`));
   assert.match(provider, /voice fallback used for cast slot/);
