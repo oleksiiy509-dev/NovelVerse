@@ -52,7 +52,7 @@ async function resolveAdmin(supabaseUrl: string, apiKey: string, authorization: 
 }
 
 function readConfig() {
-  const provider = resolveProviderId(env("NOVELVERSE_TTS_PROVIDER") || env("NOVELVERSE_AUDIO_PROVIDER"));
+  const provider = resolveProviderId(env("NOVELVERSE_TTS_PROVIDER") || "openai");
   const model = env("NOVELVERSE_TTS_MODEL") || (env("OPENAI_API_KEY") ? "gpt-4o-mini-tts" : "");
   const defaultVoice = env("NOVELVERSE_TTS_DEFAULT_VOICE") || "alloy";
   const maxChars = parsePositiveInt("NOVELVERSE_TTS_MAX_CHARS_PER_JOB", 120000);
