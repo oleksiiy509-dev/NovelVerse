@@ -134,8 +134,13 @@ Deno.serve(async (req) => {
     if (chapterError) return safeError("CHAPTER_LOOKUP_FAILED", "Chapter lookup failed.", 500, requestId);
     if (!chapter) return safeError("CHAPTER_NOT_FOUND", "Chapter was not found.", 404, requestId);
     if (!stripMarkup(chapter.content)) return safeError("EMPTY_CHAPTER", "Chapter has no renderable text.", 422, requestId);
-    const [{ data: segments }, { data: cast }, { data: directorPlan }] = await Promise.all([adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"), adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id), adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle()]);
-    if (!segments?.length) return safeError("VOICE_SEGMENTS_REQUIRED", "Analyze chapter voice segments before rendering audio.", 409, requestId);
+    const [segmentResult, { data: cast }, { data: directorPlan }] = await Promise.all([adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"), adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id), adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle()]);
+    let segments = segmentResult.data;
+    if (!segments?.length) {
+      const { error: analysisError } = await adminClient.functions.invoke("analyze-chapter-voice", { body: { chapter_id: chapterId }, headers: { Authorization: authHeader } });
+      if (!analysisError) ({ data: segments } = await adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"));
+      if (analysisError || !segments?.length) return safeError("VOICE_SEGMENT_GENERATION_FAILED", "Chapter voice segments could not be generated.", 500, requestId);
+    }
     if (!directorPlan) return safeError("DIRECTOR_PLAN_REQUIRED", "Create a ready voice director plan before rendering audio.", 409, requestId);
     const selectedSegments = preview?.type === "sentence" ? segments.slice(Number(preview.segmentIndex || 0), Number(preview.segmentIndex || 0) + 1) : segments;
     const totalChars = selectedSegments.reduce((sum: number, s: any) => sum + String(s.text || "").length, 0);
