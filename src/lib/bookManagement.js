@@ -7,6 +7,7 @@ export const TRANSLATION_STATUSES = ["Not started", "In progress", "Review", "Co
 export const LANGUAGES = ["English", "Ukrainian", "Russian", "Spanish", "French", "German", "Japanese"];
 export const AGE_RATINGS = ["All ages", "7+", "13+", "16+", "18+"];
 const STORE_KEY = "novelverse.book-management.v1";
+const isClientUuid = (id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 
 export const seedBooks = [{
   id: "horizon", title: "The Last Horizon", author: "Mira Voss", description: "A starship cartographer discovers a border that should not exist.",
@@ -43,10 +44,21 @@ export async function loadManagedBooks() {
 
 export async function saveManagedBook(book, allBooks) {
   if (!isSupabaseConfigured) return writeLocal(allBooks);
-  const payload = { id: book.id, title: book.title, author: book.author, description: book.description, genres: book.genres, tags: book.tags, language: book.language, age_rating: book.ageRating, status: book.status, cover_url: book.coverUrl, banner_url: book.bannerUrl, scheduled_at: book.scheduledAt || null, updated_at: new Date().toISOString() };
-  const { error } = await supabase.from("novels").upsert(payload); if (error) throw error;
+  const payload = { title: book.title, author: book.author, description: book.description, genres: book.genres, tags: book.tags, language: book.language, age_rating: book.ageRating, status: book.status, cover_url: book.coverUrl, banner_url: book.bannerUrl, scheduled_at: book.scheduledAt || null, updated_at: new Date().toISOString() };
+  const novelQuery = isClientUuid(book.id)
+    ? supabase.from("novels").insert(payload).select("id").single()
+    : supabase.from("novels").upsert({ id: book.id, ...payload }).select("id").single();
+  const { data: savedNovel, error } = await novelQuery; if (error) throw error;
+  book.id = savedNovel.id;
   const chapters = book.chapters.map((item, index) => ({ id: item.id, novel_id: book.id, title: item.title, content: item.content, position: index + 1, audio_status: item.audioStatus, audio_url: item.audioUrl || null }));
-  if (chapters.length) { const result = await supabase.from("chapters").upsert(chapters); if (result.error) throw result.error; }
+  for (const [index, chapter] of chapters.entries()) {
+    const chapterQuery = isClientUuid(chapter.id)
+      ? supabase.from("chapters").insert({ ...chapter, id: undefined }).select("id").single()
+      : supabase.from("chapters").upsert(chapter).select("id").single();
+    const result = await chapterQuery; if (result.error) throw result.error;
+    chapter.id = result.data.id;
+    book.chapters[index].id = result.data.id;
+  }
   const chapterIds = chapters.map(({ id }) => id);
   const existingChapters = await supabase.from("chapters").select("id").eq("novel_id", book.id);
   if (existingChapters.error) throw existingChapters.error;

@@ -63,12 +63,14 @@ test("managed Supabase audio sends Piper as the provider instead of a voice id",
   assert.doesNotMatch(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, voice\.voice\)/);
 });
 
-test("managed audio waits for the chapter UUID to be persisted", () => {
+test("managed saves replace client UUIDs with production bigint ids", () => {
   const management = readFileSync("src/components/BookManagement.jsx", "utf8");
   const persistence = readFileSync("src/lib/bookManagement.js", "utf8");
   assert.match(management, /disabled=\{generating\.includes\(item\.id\) \|\| !chapterIsPersisted\}/);
   assert.match(management, /persistedChapterIds\.includes\(item\.id\)/);
-  assert.match(persistence, /id: item\.id, novel_id: book\.id/);
+  assert.match(persistence, /isClientUuid\(book\.id\)/);
+  assert.match(persistence, /insert\(\{ \.\.\.chapter, id: undefined \}\)/);
+  assert.match(persistence, /book\.chapters\[index\]\.id = result\.data\.id/);
 });
 
 test("managed books use the canonical novels table and chapter relationship", () => {
