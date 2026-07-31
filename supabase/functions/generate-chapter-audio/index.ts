@@ -13,6 +13,10 @@ function stripMarkup(value = "") { return String(value).replace(/<script[\s\S]*?
 function env(name: string) { return Deno.env.get(name) || ""; }
 function parsePositiveInt(name: string, fallback: number) { const value = Number(env(name) || fallback); return Number.isFinite(value) && value > 0 ? value : fallback; }
 function logEvent(fields: JsonBody) { console.log(JSON.stringify({ deployment_version: deploymentVersion, ...fields })); }
+function logVoiceSegmentDiagnostic(error: unknown, requestId: string, requestPayload: JsonBody, sqlQuery: string | null, rpcName: string | null) {
+  const value = error as { message?: string; stack?: string; code?: string; details?: string; hint?: string } | null;
+  console.error(JSON.stringify({ deployment_version: deploymentVersion, request_id: requestId, function_name: "generate-chapter-audio", sql_query: sqlQuery, rpc_name: rpcName, request_payload: requestPayload, original_error_message: value?.message || String(error), error_code: value?.code || null, error_details: value?.details || null, error_hint: value?.hint || null, stack_trace: value?.stack || new Error().stack || null }));
+}
 function safeError(code: string, message: string, status = 400, requestId: string, extra: JsonBody = {}) { logEvent({ request_id: requestId, status: "failed", error_code: code, duration_ms: extra.duration_ms }); return json({ status: "failed", error: { code, message }, ...extra }, status, requestId); }
 function normalizeChapterId(value: unknown) {
   const received = typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
@@ -135,11 +139,16 @@ Deno.serve(async (req) => {
     if (!chapter) return safeError("CHAPTER_NOT_FOUND", "Chapter was not found.", 404, requestId);
     if (!stripMarkup(chapter.content)) return safeError("EMPTY_CHAPTER", "Chapter has no renderable text.", 422, requestId);
     const [segmentResult, { data: cast }, { data: directorPlan }] = await Promise.all([adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"), adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id), adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle()]);
+    if (segmentResult.error) logVoiceSegmentDiagnostic(segmentResult.error, requestId, body, "select * from public.chapter_voice_segments where chapter_id = $1 order by segment_index", null);
     let segments = segmentResult.data;
     if (!segments?.length) {
       const { error: analysisError } = await adminClient.functions.invoke("analyze-chapter-voice", { body: { chapter_id: chapterId }, headers: { Authorization: authHeader } });
+      if (analysisError) logVoiceSegmentDiagnostic(analysisError, requestId, { chapter_id: chapterId }, null, "analyze-chapter-voice");
       if (!analysisError) ({ data: segments } = await adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"));
-      if (analysisError || !segments?.length) return safeError("VOICE_SEGMENT_GENERATION_FAILED", "Chapter voice segments could not be generated.", 500, requestId);
+      if (analysisError || !segments?.length) {
+        if (!analysisError) logVoiceSegmentDiagnostic(new Error("analyze-chapter-voice completed without persisted chapter voice segments"), requestId, { chapter_id: chapterId }, "select * from public.chapter_voice_segments where chapter_id = $1 order by segment_index", "analyze-chapter-voice");
+        return safeError("VOICE_SEGMENT_GENERATION_FAILED", "Chapter voice segments could not be generated.", 500, requestId);
+      }
     }
     if (!directorPlan) return safeError("DIRECTOR_PLAN_REQUIRED", "Create a ready voice director plan before rendering audio.", 409, requestId);
     const selectedSegments = preview?.type === "sentence" ? segments.slice(Number(preview.segmentIndex || 0), Number(preview.segmentIndex || 0) + 1) : segments;
