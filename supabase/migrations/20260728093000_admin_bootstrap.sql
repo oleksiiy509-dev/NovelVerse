@@ -1,5 +1,22 @@
--- Row-level policies are installed only after the preceding migration creates
--- both public.user_roles and public.is_admin().
+-- Keep the policy migration independently safe to replay. The preceding
+-- migration creates this helper first, while this idempotent definition also
+-- repairs databases where that migration was recorded without the function.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.user_roles
+    where user_id = auth.uid() and role = 'admin'
+  );
+$$;
+
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to authenticated;
 
 drop policy if exists "admins read roles" on public.user_roles;
 create policy "admins read roles"
