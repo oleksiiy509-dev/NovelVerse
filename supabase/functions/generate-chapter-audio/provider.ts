@@ -11,6 +11,40 @@ const OPENAI_TTS_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "f
 const DEFAULT_OPENAI_VOICE_MAP: Record<string, string> = { narrator: "alloy", narrator_neutral: "alloy", young_male: "echo", mature_male: "onyx", elderly_male: "onyx", young_female: "nova", mature_female: "shimmer", elderly_female: "sage", child: "fable", monster: "onyx", unknown: "alloy", unknown_neutral: "alloy" };
 
 function env(name: string, fallback = "") { return Deno.env.get(name) || fallback; }
+function configured(name: string) { return Boolean(Deno.env.get(name)?.trim()); }
+function providerResolution(provider: unknown) {
+  const explicit = String(provider ?? "").trim();
+  const primary = env("NOVELVERSE_TTS_PROVIDER");
+  const legacy = env("NOVELVERSE_AUDIO_PROVIDER");
+  const requested = explicit || primary || legacy || "default";
+  return {
+    requested_provider: requested,
+    resolution_source: explicit ? "request" : primary ? "NOVELVERSE_TTS_PROVIDER" : legacy ? "NOVELVERSE_AUDIO_PROVIDER" : "default",
+    selected_provider: resolveProviderId(requested),
+  };
+}
+export function getProviderDiagnostics(providerId?: unknown) {
+  const resolution = providerResolution(providerId);
+  const selectedModel = env("NOVELVERSE_TTS_MODEL", resolution.selected_provider === "openai" ? "gpt-4o-mini-tts" : "default");
+  const requiredEnvironmentVariables = resolution.selected_provider === "openai" ? ["OPENAI_API_KEY"] : resolution.selected_provider === "piper" ? ["NOVELVERSE_PIPER_URL"] : [];
+  const missingEnvironmentVariables = requiredEnvironmentVariables.filter((name) => !configured(name));
+  return {
+    ...resolution,
+    selected_model: selectedModel,
+    provider_configuration: resolution.selected_provider === "openai" ? {
+      api_key_configured: configured("OPENAI_API_KEY"), model: selectedModel,
+      default_voice: env("NOVELVERSE_TTS_DEFAULT_VOICE", "alloy"),
+      timeout_ms: Number(env("NOVELVERSE_TTS_TIMEOUT_MS", "45000")), retry_count: Number(env("NOVELVERSE_TTS_RETRY_COUNT", "2")),
+    } : resolution.selected_provider === "piper" ? {
+      worker_url: piperWorkerUrl(), worker_url_configured: configured("NOVELVERSE_PIPER_URL"),
+      token_configured: configured("NOVELVERSE_PIPER_TOKEN"), timeout_ms: Number(env("NOVELVERSE_TTS_TIMEOUT_MS", "45000")),
+      health_timeout_ms: Number(env("NOVELVERSE_PIPER_HEALTH_TIMEOUT_MS", "2000")),
+    } : { adapter: resolution.selected_provider },
+    required_environment_variables: requiredEnvironmentVariables,
+    missing_environment_variables: missingEnvironmentVariables,
+    missing_configuration: missingEnvironmentVariables.map((name) => `${name} is not set`),
+  };
+}
 function parseVoiceMap(provider: string) { try { return { ...DEFAULT_OPENAI_VOICE_MAP, ...JSON.parse(env(`NOVELVERSE_TTS_${provider.toUpperCase()}_VOICE_MAP`, "{}")) }; } catch { console.warn(`NovelVerse TTS ${provider} voice map is invalid JSON; using defaults.`); return DEFAULT_OPENAI_VOICE_MAP; } }
 export function resolveOpenAiVoice(request: Pick<AudioRenderSegmentRequest, "castSlot" | "voiceProfile">, configuredDefault = env("NOVELVERSE_TTS_DEFAULT_VOICE", "alloy")) { const map = parseVoiceMap("openai"); const candidates = [request.castSlot, request.voiceProfile, String(request.voiceProfile || "").replace(/_neutral$/, ""), "unknown", configuredDefault].filter(Boolean); const selected = candidates.map((key) => map[key] || key).find((voice) => OPENAI_TTS_VOICES.has(voice)); if (!selected) throw new Error("No supported OpenAI TTS voice is configured."); const exact = Boolean(map[request.castSlot] || map[request.voiceProfile] || OPENAI_TTS_VOICES.has(request.castSlot) || OPENAI_TTS_VOICES.has(request.voiceProfile)); if (!exact) console.warn(`NovelVerse TTS voice fallback used for cast slot ${request.castSlot || "unknown"}.`); return { voice: selected, fallback: !exact }; }
 export function buildOpenAiInstructions(request: AudioRenderSegmentRequest) { const p = request.performance || {}; return [`Language: ${request.language || "auto"}.`, `Speaker identity: ${request.speaker || "Narrator"}; keep it consistent for cast slot ${request.castSlot || "unknown"}.`, `Emotion: ${request.emotion || "neutral"}; intensity ${Math.max(0, Math.min(1, Number(request.intensity) || 0)).toFixed(2)}.`, `Pace multiplier: ${Math.max(0.25, Math.min(4, Number(request.pace) || 1)).toFixed(2)}.`, p.confidence !== undefined ? `Confidence: ${p.confidence}.` : "", p.breathiness !== undefined ? `Breathiness: ${p.breathiness}.` : "", p.roughness !== undefined ? `Roughness: ${p.roughness}.` : "", p.voiceAge ? `Voice age: ${p.voiceAge}.` : "", p.sceneMood ? `Scene mood: ${p.sceneMood}.` : "", request.emphasis?.length ? `Emphasize without spelling out markup: ${request.emphasis.join(", ")}.` : ""].filter(Boolean).join(" "); }
@@ -28,7 +62,7 @@ export async function resolveDefaultProvider() { return "piper"; }
 const providers = new Map<string, AudioProvider>(); providers.set("unconfigured", new UnconfiguredAudioProvider()); providers.set("mock", providers.get("unconfigured")!); providers.set("piper", new PiperTtsProvider()); providers.set("openai", new OpenAiTtsProvider());
 export function registerAudioProvider(provider: AudioProvider) { if (!provider?.id || !provider?.version || typeof provider.renderSegment !== "function") throw new Error("Invalid audio provider adapter."); providers.set(provider.id, provider); }
 export function getAudioProvider(providerId = env("NOVELVERSE_TTS_PROVIDER", env("NOVELVERSE_AUDIO_PROVIDER", "piper"))) { return providers.get(resolveProviderId(providerId)) || providers.get("unconfigured")!; }
-export async function renderAudioSegment(providerId: string, request: AudioRenderSegmentRequest): Promise<SpeechResult & { provider: string; providerVersion: string }> { const provider = getAudioProvider(providerId); try { const audio = await provider.renderSegment(request); return { ok: true, audio, contentType: provider.contentType, durationSeconds: provider.estimateDurationSeconds?.(request, audio), provider: provider.id, providerVersion: provider.version }; } catch (error) { const code = (error as any)?.code || (provider.id === "unconfigured" ? "provider_not_configured" : "provider_error"); return { ok: false, code, message: error instanceof Error ? error.message.replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]") : "Audio provider failed.", provider: provider.id, providerVersion: provider.version }; } }
+export async function renderAudioSegment(providerId: string, request: AudioRenderSegmentRequest): Promise<SpeechResult & { provider: string; providerVersion: string }> { const provider = getAudioProvider(providerId); try { const audio = await provider.renderSegment(request); return { ok: true, audio, contentType: provider.contentType, durationSeconds: provider.estimateDurationSeconds?.(request, audio), provider: provider.id, providerVersion: provider.version }; } catch (error) { const code = (error as any)?.code || (provider.id === "unconfigured" ? "provider_not_configured" : "provider_error"); const message = error instanceof Error ? error.message.replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]") : "Audio provider failed."; const stack = error instanceof Error ? error.stack || null : new Error(message).stack || null; console.error(JSON.stringify({ status: "provider_initialization_failed", error_code: code, ...getProviderDiagnostics(providerId), provider_adapter: provider.id, provider_version: provider.version, provider_initialization_error: message, original_exception: error instanceof Error ? { name: error.name, message } : String(error), stack_trace: stack })); return { ok: false, code, message, provider: provider.id, providerVersion: provider.version }; } }
 export async function generateSpeech(request: SpeechRequest): Promise<SpeechResult> { return renderAudioSegment(resolveProviderId(env("NOVELVERSE_TTS_PROVIDER") || await resolveDefaultProvider()), { segmentId: "legacy", text: request.text, language: request.language, speaker: "Narrator", castSlot: request.voice, voiceProfile: request.voice, emotion: "neutral", intensity: 0.5, pace: 1, pauses: { beforeMs: 0, afterMs: 0 }, emphasis: [], format: request.format }); }
 
 export const supportedProviderIds = ["mock", "piper", "openai"];
