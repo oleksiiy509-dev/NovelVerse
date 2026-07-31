@@ -4,6 +4,8 @@ import { getQueuedProgress, removeQueuedProgress } from "../lib/offlineStorage";
 import { supabase } from "../lib/supabase";
 import { diagnosticLogger } from "../lib/diagnosticLogger";
 
+let readingProgressAvailable = true;
+
 function isNewer(localItem, remoteItem) {
   if (!remoteItem?.updated_at) return true;
   return new Date(localItem.updated_at || 0).getTime() >= new Date(remoteItem.updated_at).getTime();
@@ -18,7 +20,7 @@ export function useNetworkStatus() {
     let disposed = false;
     let syncing = false;
     async function syncQueue() {
-      if (syncing || disposed || !navigator.onLine) return;
+      if (syncing || disposed || !navigator.onLine || !readingProgressAvailable) return;
       syncing = true;
       try {
         const user = await getCurrentUser(supabase);
@@ -28,7 +30,7 @@ export function useNetworkStatus() {
           if (disposed || !navigator.onLine) break;
           const { queue_id, ...record } = item;
           const { data: remote, error: readError, status } = await supabase.from("reading_progress").select("updated_at").eq("user_id", user.id).eq("novel_id", record.novel_id).maybeSingle();
-          if (status === 404) return;
+          if (status === 404) { readingProgressAvailable = false; return; }
           if (readError) throw readError;
           if (!isNewer(record, remote)) { await removeQueuedProgress(queue_id); continue; }
           const { error } = await supabase.from("reading_progress").upsert({ ...record, user_id: user.id }, { onConflict: "user_id,novel_id" });
