@@ -118,6 +118,16 @@ test("voice analysis accepts only service-role internal calls or existing browse
   assert.match(voiceAnalyzer, /if \(!isAdmin\(userData\.user\)\) return json\(\{ error: "admin_required" \}, 403\)/);
 });
 
+test("chapter rendering creates and validates a missing Director Plan through the shared pipeline", () => {
+  assert.match(endpoint, /import \{ directChapterPerformance, validateDirectorPlan \} from "\.\.\/\.\.\/\.\.\/src\/lib\/voiceDirector\/director\.js"/);
+  assert.match(endpoint, /directChapterPerformance\(\{ chapterId: chapter\.id/);
+  assert.match(endpoint, /validateDirectorPlan\(plan, segments\)/);
+  assert.match(endpoint, /status: "draft"/);
+  assert.match(endpoint, /update\(\{ status: "ready" \}\)/);
+  assert.match(endpoint, /if \(!directorPlan \|\| directorPlan\.status !== "ready"\) return safeError\("DIRECTOR_PLAN_REQUIRED"/);
+  assert.match(endpoint, /if \(!directorPlan\) \{[\s\S]*createDirectorPlan/);
+});
+
 test("Phase 7 normalizes user-facing TTS errors", () => {
   for (const code of ["TTS_API_KEY_MISSING", "TTS_RATE_LIMITED", "TTS_PROVIDER_UNAVAILABLE", "STORAGE_UPLOAD_FAILED", "SIGNED_URL_FAILED"]) assert.match(provider + endpoint + readFileSync("src/lib/chapterAudio.js", "utf8"), new RegExp(code));
   assert.doesNotMatch(provider, /body\.slice/);

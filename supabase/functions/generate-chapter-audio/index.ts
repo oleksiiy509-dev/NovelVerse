@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { renderPreview, renderChapterJob, sha256 } from "./renderer.ts";
 import { acceptedProviderValues, normalizeProviderError, resolveProviderId, supportedProviderIds, supportedVoices } from "./provider.ts";
+import { directChapterPerformance, validateDirectorPlan } from "../../../src/lib/voiceDirector/director.js";
 
 // Backward-compatible static safeguards: admin_required unsupported_provider preview_too_large tts_job_too_large duplicate: true cache_hit: true
 const deploymentVersion = "tts-phase7-2026-07-21";
@@ -76,6 +77,49 @@ async function checkTables(adminClient: any) {
   const results: Record<string, boolean> = {};
   await Promise.all(names.map(async (name) => { const { error } = await adminClient.from(name).select("id").limit(1); results[name] = !error; }));
   return results;
+}
+
+async function createDirectorPlan(adminClient: any, chapter: any, segments: any[], cast: any[], createdBy: string) {
+  const { data: characters, error: characterError } = await adminClient.from("voice_characters").select("*").eq("novel_id", chapter.novel_id);
+  if (characterError) throw characterError;
+  const plan = directChapterPerformance({ chapterId: chapter.id, novelId: chapter.novel_id, segments, cast, characters: characters || [] });
+  const validationWarnings = validateDirectorPlan(plan, segments);
+  if (validationWarnings.length) throw new Error(`DIRECTOR_PLAN_INVALID: ${validationWarnings.join(" ")}`);
+
+  // A plan is not made renderable until its scenes and segment settings have
+  // all been persisted. This preserves the existing ready-plan validation.
+  const { data: savedPlan, error: planError } = await adminClient.from("chapter_director_plans").insert({
+    chapter_id: chapter.id, novel_id: chapter.novel_id, analysis_version: segments[0]?.analysis_version || null,
+    director_version: plan.version, language: plan.language, scene_count: plan.statistics.sceneCount,
+    total_segments: plan.statistics.totalSegments, average_intensity: plan.statistics.averageIntensity,
+    status: "draft", warnings: plan.warnings, statistics: plan.statistics, content_hash: plan.contentHash,
+    manually_edited: false, created_by: createdBy,
+  }).select("*").single();
+  if (planError) throw planError;
+  const sceneRows = plan.scenes.map((scene: any) => ({
+    director_plan_id: savedPlan.id, chapter_id: chapter.id, novel_id: chapter.novel_id,
+    scene_index: scene.sceneIndex, scene_type: scene.sceneType, title: scene.title,
+    start_segment_index: scene.startSegmentIndex, end_segment_index: scene.endSegmentIndex,
+    intensity: scene.intensity, pace: scene.pace, atmosphere_profile: scene.atmosphereProfile,
+    ambience_volume: scene.ambienceVolume, manually_edited: false,
+  }));
+  const { data: savedScenes, error: sceneError } = await adminClient.from("director_scenes").insert(sceneRows).select("id, scene_index");
+  if (sceneError) throw sceneError;
+  const sceneByIndex = new Map((savedScenes || []).map((scene: any) => [scene.scene_index, scene.id]));
+  const settingRows = plan.segmentSettings.map((setting: any) => ({
+    director_plan_id: savedPlan.id,
+    scene_id: sceneByIndex.get(plan.scenes.find((scene: any) => setting.segmentIndex >= scene.startSegmentIndex && setting.segmentIndex <= scene.endSegmentIndex)?.sceneIndex) || null,
+    voice_segment_id: setting.voiceSegmentId, segment_index: setting.segmentIndex, cast_slot: setting.castSlot,
+    voice_profile: setting.voiceProfile, emotion: setting.emotion, intensity: setting.intensity,
+    delivery_style: setting.deliveryStyle, rate: setting.rate, pitch: setting.pitch, energy: setting.energy,
+    volume: setting.volume, pause_before_ms: setting.pauseBeforeMs, pause_after_ms: setting.pauseAfterMs,
+    emphasis: setting.emphasis, sound_cues: setting.soundCues, manually_edited: false,
+  }));
+  const { error: settingError } = await adminClient.from("director_segment_settings").insert(settingRows);
+  if (settingError) throw settingError;
+  const { data: readyPlan, error: readyError } = await adminClient.from("chapter_director_plans").update({ status: "ready" }).eq("id", savedPlan.id).select("*, director_segment_settings(*)").single();
+  if (readyError) throw readyError;
+  return readyPlan;
 }
 
 Deno.serve(async (req) => {
@@ -154,7 +198,7 @@ Deno.serve(async (req) => {
     if (chapterError) return safeError("CHAPTER_LOOKUP_FAILED", "Chapter lookup failed.", 500, requestId);
     if (!chapter) return safeError("CHAPTER_NOT_FOUND", "Chapter was not found.", 404, requestId);
     if (!stripMarkup(chapter.content)) return safeError("EMPTY_CHAPTER", "Chapter has no renderable text.", 422, requestId);
-    const [segmentResult, { data: cast }, { data: directorPlan }] = await Promise.all([adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"), adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id), adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle()]);
+    const [segmentResult, { data: cast }] = await Promise.all([adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"), adminClient.from("novel_voice_cast").select("*").eq("novel_id", chapter.novel_id)]);
     if (segmentResult.error) await logVoiceSegmentDiagnostic(segmentResult.error, requestId, body, "select * from public.chapter_voice_segments where chapter_id = $1 order by segment_index", null);
     let segments = segmentResult.data;
     if (!segments?.length) {
@@ -171,7 +215,19 @@ Deno.serve(async (req) => {
         return safeError("VOICE_SEGMENT_GENERATION_FAILED", "Chapter voice segments could not be generated.", analysisStatus, requestId);
       }
     }
-    if (!directorPlan) return safeError("DIRECTOR_PLAN_REQUIRED", "Create a ready voice director plan before rendering audio.", 409, requestId);
+    let { data: directorPlan, error: directorPlanError } = await adminClient.from("chapter_director_plans").select("*, director_segment_settings(*)").eq("chapter_id", chapterId).eq("status", "ready").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (directorPlanError) throw directorPlanError;
+    if (!directorPlan) {
+      try {
+        directorPlan = await createDirectorPlan(adminClient, chapter, segments, cast || [], userData.user.id);
+      } catch (error) {
+        await logVoiceSegmentDiagnostic(error, requestId, { chapter_id: chapterId }, null, "voice-director-local-v1");
+        return safeError("DIRECTOR_PLAN_GENERATION_FAILED", "A ready voice director plan could not be generated.", 500, requestId);
+      }
+    }
+    // Keep the renderer's ready-plan requirement explicit; automatic generation
+    // satisfies the requirement rather than bypassing it.
+    if (!directorPlan || directorPlan.status !== "ready") return safeError("DIRECTOR_PLAN_REQUIRED", "Create a ready voice director plan before rendering audio.", 409, requestId);
     const selectedSegments = preview?.type === "sentence" ? segments.slice(Number(preview.segmentIndex || 0), Number(preview.segmentIndex || 0) + 1) : segments;
     const totalChars = selectedSegments.reduce((sum: number, s: any) => sum + String(s.text || "").length, 0);
     if (preview && totalChars > cfg.previewMaxChars) return safeError("TEXT_TOO_LONG", "Preview segment is too long.", 413, requestId, { max_chars: cfg.previewMaxChars });
