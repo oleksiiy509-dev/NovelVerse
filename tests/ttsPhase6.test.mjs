@@ -17,7 +17,7 @@ test("OpenAI adapter constructs server-side speech requests without frontend sec
 });
 
 test("generation resolves default request values through the configured production provider", () => {
-  assert.match(provider, /!requested \|\| requested === "default" \|\| requested === "auto" \? "piper" : requested/);
+  assert.match(provider, /!requested \|\| requested === "default" \|\| requested === "auto" \? "openai" : requested/);
   assert.match(endpoint, /providerRequested === "default" \|\| providerRequested === "auto" \? cfg\.provider : providerRequested/);
   assert.match(provider, /supportedProviderIds = \["mock", "piper", "openai"\]/);
   assert.match(provider, /acceptedProviderValues = \["default", "auto", \.\.\.supportedProviderIds\]/);
