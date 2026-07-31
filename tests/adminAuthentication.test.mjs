@@ -4,7 +4,10 @@ import test from "node:test";
 
 import { requireAdmin } from "../src/lib/admin.js";
 
-const migration = await readFile(new URL("../supabase/migrations/20260728093000_admin_bootstrap.sql", import.meta.url), "utf8");
+const migration = await Promise.all([
+  "20260728092900_admin_roles_functions.sql",
+  "20260728093000_admin_bootstrap.sql",
+].map((file) => readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), "utf8"))).then((files) => files.join("\n"));
 
 function client({ user = { id: "user-1" }, allowed = false, roleError = null } = {}) {
   return {
