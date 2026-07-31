@@ -159,7 +159,10 @@ Deno.serve(async (req) => {
     let segments = segmentResult.data;
     if (!segments?.length) {
       const analysisPayload = { chapter_id: chapterId };
-      const { error: analysisError } = await adminClient.functions.invoke("analyze-chapter-voice", { body: analysisPayload, headers: { Authorization: authHeader, "x-request-id": requestId } });
+      // This is an internal function-to-function call. Forwarding the browser
+      // token makes the analyzer re-authorize a user from metadata and can
+      // reject an admin already verified through the user_roles RPC above.
+      const { error: analysisError } = await adminClient.functions.invoke("analyze-chapter-voice", { body: analysisPayload, headers: { Authorization: `Bearer ${serviceKey}`, "x-request-id": requestId } });
       const analysisStatus = (analysisError as { context?: Response } | null)?.context?.status || 500;
       if (analysisError) await logVoiceSegmentDiagnostic(analysisError, requestId, analysisPayload, null, "analyze-chapter-voice");
       if (!analysisError) ({ data: segments } = await adminClient.from("chapter_voice_segments").select("*").eq("chapter_id", chapterId).order("segment_index"));

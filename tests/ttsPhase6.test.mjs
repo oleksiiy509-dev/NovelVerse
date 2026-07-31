@@ -110,6 +110,14 @@ test("voice segment failures retain original diagnostics and HTTP status without
   assert.match(voiceAnalyzer, /voice_analysis_failed/);
 });
 
+test("voice analysis accepts only service-role internal calls or existing browser admins", () => {
+  assert.match(endpoint, /Authorization: `Bearer \$\{serviceKey\}`/);
+  assert.doesNotMatch(endpoint, /functions\.invoke\("analyze-chapter-voice"[^\n]+Authorization: authHeader/);
+  assert.match(voiceAnalyzer, /const isServiceRole = token\.length > 0 && token === key/);
+  assert.match(voiceAnalyzer, /if \(!isServiceRole\) \{ const \{ data: userData \} = await admin\.auth\.getUser\(token\)/);
+  assert.match(voiceAnalyzer, /if \(!isAdmin\(userData\.user\)\) return json\(\{ error: "admin_required" \}, 403\)/);
+});
+
 test("Phase 7 normalizes user-facing TTS errors", () => {
   for (const code of ["TTS_API_KEY_MISSING", "TTS_RATE_LIMITED", "TTS_PROVIDER_UNAVAILABLE", "STORAGE_UPLOAD_FAILED", "SIGNED_URL_FAILED"]) assert.match(provider + endpoint + readFileSync("src/lib/chapterAudio.js", "utf8"), new RegExp(code));
   assert.doesNotMatch(provider, /body\.slice/);
