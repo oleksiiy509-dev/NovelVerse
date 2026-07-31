@@ -3,7 +3,11 @@ const VERSION = "voice-engine-local-v1"; const MAX = 180000;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization,content-type" } });
 function logDiagnostic(error: unknown, requestPayload: unknown, sqlQuery?: string) {
  const value = error as { message?: string; stack?: string; code?: string; details?: string; hint?: string } | null;
- console.error(JSON.stringify({ function_name: "analyze-chapter-voice", sql_query: sqlQuery || null, rpc_name: null, request_payload: requestPayload, original_error_message: value?.message || String(error), error_code: value?.code || null, error_details: value?.details || null, error_hint: value?.hint || null, stack_trace: value?.stack || new Error().stack || null }));
+ const stack = value?.stack || new Error().stack || null;
+ const frame = stack?.split("\n").find((line) => line.includes(".ts:"));
+ const match = frame?.match(/(?:file:\/\/)?([^\s()]+\.ts):(\d+):(\d+)/);
+ const supabaseError = value ? { ...value, name: error instanceof Error ? error.name : null, message: value.message || String(error), code: value.code || null, details: value.details || null, hint: value.hint || null } : error;
+ console.error(JSON.stringify({ function_name: "analyze-chapter-voice", file_name: match?.[1] || "supabase/functions/analyze-chapter-voice/index.ts", line_number: match ? Number(match[2]) : null, sql_query: sqlQuery || null, rpc_name: null, request_payload: requestPayload, supabase_error_object: supabaseError, original_error_message: value?.message || String(error), stack_trace: stack }));
 }
 function isAdmin(user: any) { return user?.user_metadata?.role === "admin" || user?.app_metadata?.role === "admin" || user?.user_metadata?.is_admin === true; }
 function strip(content = "") { return String(content).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<\/?(p|div|br|li|h[1-6])[^>]*>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\r\n/g, "\n").trim().slice(0, MAX); }

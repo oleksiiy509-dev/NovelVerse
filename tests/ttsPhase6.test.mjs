@@ -95,12 +95,15 @@ test("chapter generation validates the bigint payload and logs the public chapte
   assert.match(endpoint, /CHAPTER_LOOKUP_FAILED/);
 });
 
-test("voice segment failures retain original diagnostics without changing API errors", () => {
-  for (const field of ["function_name", "sql_query", "rpc_name", "request_payload", "original_error_message", "stack_trace"]) {
+test("voice segment failures retain original diagnostics and HTTP status without changing API errors", () => {
+  for (const field of ["function_name", "file_name", "line_number", "sql_query", "rpc_name", "request_payload", "supabase_error_object", "original_error_message", "stack_trace"]) {
     assert.match(endpoint, new RegExp(field));
     assert.match(voiceAnalyzer, new RegExp(field));
   }
   assert.match(endpoint, /null, "analyze-chapter-voice"/);
+  assert.match(endpoint, /context\?\.status \|\| 500/);
+  assert.match(endpoint, /supabase_response_payload/);
+  assert.match(endpoint, /"x-request-id": requestId/);
   assert.match(voiceAnalyzer, /catch \(error\) \{ logDiagnostic\(error, body, activeSql\)/);
   assert.match(endpoint, /VOICE_SEGMENT_GENERATION_FAILED/);
   assert.match(voiceAnalyzer, /segment_save_failed/);
