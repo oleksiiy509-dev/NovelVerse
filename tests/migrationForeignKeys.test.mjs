@@ -8,6 +8,7 @@ const migrationFiles = [
   "supabase/migrations/202607210006_ai_brain_phase5.sql",
   "supabase/migrations/202607210007_real_tts_phase6.sql",
   "supabase/migrations/202607210008_tts_phase7_compatibility.sql",
+  "supabase/migrations/20260731120000_reading_progress.sql",
 ];
 
 const referencedPrimaryKeyTypes = new Map([
