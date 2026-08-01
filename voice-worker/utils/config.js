@@ -9,6 +9,7 @@ export const config = {
   defaultProvider: process.env.DEFAULT_PROVIDER || 'mock',
   defaultLanguage: process.env.DEFAULT_LANGUAGE || 'en',
   cacheDir: path.resolve(process.env.VOICE_CACHE_DIR || '.cache/audio'),
+  outputDir: path.resolve(process.env.VOICE_OUTPUT_DIR || 'output'),
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 120),
 };

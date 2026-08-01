@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { loadManagedBooks } from "../lib/bookManagement";
 import { directorStorageKey, EMOTIONS, estimateDuration, analyzeChapters, parseDirectorJson, validateSegments, VOICES } from "../lib/voiceDirectorLocal";
+import ChapterGeneration from "./ChapterGeneration";
 
 const EMPTY = { version: 1, characters: [], segments: [] };
 const optionValues = {
@@ -141,5 +142,6 @@ export default function VoiceDirector() {
       </article>; })}</div>
       {!director.segments.length && <div className="voice-director__empty">Choose an imported book and analyze a chapter or the entire book.</div>}
     </section>
+    <ChapterGeneration book={book} chapter={chapter} segments={director.segments}/>
   </div>;
 }
