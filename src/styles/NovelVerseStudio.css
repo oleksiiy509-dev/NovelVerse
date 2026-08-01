@@ -182,6 +182,21 @@
 .voice-director__segments ul { margin: .65rem 0; padding: .6rem 1.8rem; border-radius: .4rem; background: #fff5d9; color: #7a5310; }
 .voice-director__segment-actions { justify-content: flex-end; margin-top: .75rem; }
 .voice-director__empty { color: #777386; text-align: center; }
+.chapter-generation { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #dedce7; }
+.chapter-generation__heading, .chapter-generation__queue article > div:first-child, .chapter-generation__actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.chapter-generation__heading h3, .chapter-generation__heading p { margin: 0 0 .3rem; }
+.chapter-generation__queue { display: grid; gap: .75rem; margin-top: 1rem; }
+.chapter-generation__queue article { padding: 1rem; border: 1px solid #e1dfe8; border-radius: .7rem; background: #fff; }
+.chapter-generation__status { padding: .3rem .55rem; border-radius: 2rem; background: #fff1cf; color: #795713; font-size: .8rem; font-weight: 700; }
+.chapter-generation__status.finished { background: #e2f5e8; color: #24633a; }
+.chapter-generation__status.failed { background: #fff0f1; color: #9b2933; }
+.chapter-generation progress, .chapter-generation audio { width: 100%; margin-top: .8rem; }
+.chapter-generation dl { display: flex; gap: 2rem; margin: .8rem 0; }
+.chapter-generation dl div { display: grid; gap: .2rem; }
+.chapter-generation dt { color: #777386; font-size: .78rem; }
+.chapter-generation dd { margin: 0; font-weight: 700; }
+.chapter-generation__actions { justify-content: flex-end; margin-top: .75rem; }
+.chapter-generation__error { color: #9b2933 !important; }
 
 @media (max-width: 700px) {
   .studio-shell {

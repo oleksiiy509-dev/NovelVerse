@@ -35,11 +35,31 @@ async function requestJson(path, timeoutMs = voiceWorkerTimeoutMs) {
   return res.json();
 }
 
+async function sendJson(path, body, signal) {
+  const res = await fetch(`${getVoiceWorkerUrl()}${path}`, {
+    method: "POST",
+    headers: voiceWorkerHeaders({ "content-type": "application/json", accept: "application/json" }),
+    body: JSON.stringify(body), signal,
+  });
+  if (!res.ok) throw Object.assign(new Error(`Voice Worker ${path} returned HTTP ${res.status}`), { status: res.status });
+  return res.json();
+}
+
 export async function getVoiceWorkerHealth() {
   const health = await requestJson("/health");
   const providers = Array.isArray(health.providers) ? health.providers : [];
   const piper = providers.find((provider) => provider.id === "piper") || null;
   return { ...health, online: true, piperAvailable: Boolean(piper?.available), voices: Array.isArray(health.availableVoices) ? health.availableVoices : [], piper };
+}
+
+export const createChapterGeneration = (payload, signal) => sendJson("/chapter-jobs", payload, signal);
+export const getChapterGeneration = (id) => requestJson(`/chapter-jobs/${encodeURIComponent(id)}`, 30_000);
+export const cancelChapterGeneration = (id) => sendJson(`/chapter-jobs/${encodeURIComponent(id)}/cancel`, {});
+
+export async function getChapterAudio(id) {
+  const res = await fetch(`${getVoiceWorkerUrl()}/chapter-jobs/${encodeURIComponent(id)}/audio`, { headers: voiceWorkerHeaders({ accept: "audio/wav" }) });
+  if (!res.ok) throw Object.assign(new Error(`Voice Worker audio returned HTTP ${res.status}`), { status: res.status });
+  return res.blob();
 }
 
 export async function synthesizeVoiceWorkerAudio({ text, sourceText, provider = "piper", voice = defaultPiperVoiceId, language = "uk", format = "wav", preview = false, signal, options = {} } = {}) {
