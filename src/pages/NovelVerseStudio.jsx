@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
+import AudioProductionDashboard from "../components/AudioProductionDashboard.jsx";
 import "../styles/NovelVerseStudio.css";
 
 const sections = [
@@ -29,8 +30,7 @@ function NovelVerseStudio() {
         </nav>
       </aside>
       <section className="studio-content">
-        <h2>{activeSection[0]}</h2>
-        <p>This section is coming soon.</p>
+        {slug === "audio-production" ? <AudioProductionDashboard /> : <><h2>{activeSection[0]}</h2><p>This section is coming soon.</p></>}
       </section>
     </main>
   );
