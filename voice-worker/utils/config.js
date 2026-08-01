@@ -1,5 +1,8 @@
 import './load-env.js';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 export const config = {
   port: Number(process.env.PORT || 8787),
@@ -9,7 +12,7 @@ export const config = {
   defaultProvider: process.env.DEFAULT_PROVIDER || 'mock',
   defaultLanguage: process.env.DEFAULT_LANGUAGE || 'en',
   cacheDir: path.resolve(process.env.VOICE_CACHE_DIR || '.cache/audio'),
-  outputDir: path.resolve(process.env.VOICE_OUTPUT_DIR || 'output'),
+  outputDir: path.resolve(process.env.VOICE_OUTPUT_DIR || path.join(repoRoot, 'voice-output')),
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 120),
 };

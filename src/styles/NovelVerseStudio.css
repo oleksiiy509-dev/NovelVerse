@@ -197,6 +197,11 @@
 .chapter-generation dd { margin: 0; font-weight: 700; }
 .chapter-generation__actions { justify-content: flex-end; margin-top: .75rem; }
 .chapter-generation__error { color: #9b2933 !important; }
+.chapter-generation__warning { color: #795713 !important; }
+.chapter-generation__health { display: inline-flex; align-items: center; gap: .4rem; margin-top: .35rem; font-size: .8rem; color: #625e70; }
+.chapter-generation__health i { width: .5rem; height: .5rem; border-radius: 50%; background: #dc3848; }
+.chapter-generation__health.connected i { background: #31a866; }
+.chapter-generation__health.busy i { background: #d99a25; }
 
 @media (max-width: 700px) {
   .studio-shell {

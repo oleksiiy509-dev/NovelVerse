@@ -1,16 +1,26 @@
 import { Router } from 'express';
+import { access, mkdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { getProvider, getProviders } from '../providers/index.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
-import { cancelChapterJob, createChapterJob, getChapterJob, publicJob } from '../processors/chapter-jobs.js';
+import { cancelChapterJob, createChapterJob, getChapterJob, getChapterQueueStatus, publicJob } from '../processors/chapter-jobs.js';
 
 export const router = Router();
 const version = '1.0.0';
 
-router.get('/health', (req, res) => {
+router.get('/health', async (req, res) => {
   const providers = getProviders(req.app.locals.config);
-  res.json({ ok: true, version, providers: providers.map(({ id, available }) => ({ id, available })), availableVoices: providers.flatMap((p) => p.voices || []), uptime: process.uptime(), memoryUsage: process.memoryUsage() });
+  const queue = getChapterQueueStatus();
+  let outputAvailable = true;
+  try { await mkdir(req.app.locals.config.outputDir, { recursive: true }); await access(req.app.locals.config.outputDir, constants.W_OK); } catch { outputAvailable = false; }
+  const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true });
+  const piper = providers.find(({ id }) => id === 'piper');
+  const status = queue.busy ? 'Busy' : !piper?.available ? 'Error' : 'Connected';
+  res.json({ ok: true, status, version, providers: providers.map(({ id, available }) => ({ id, available })), availableVoices: providers.flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
 });
 router.get('/providers', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
 router.get('/voices', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
@@ -31,7 +41,17 @@ router.post('/chapter-jobs/:id/cancel', (req, res) => {
 router.get('/chapter-jobs/:id/audio', async (req, res, next) => {
   const job = getChapterJob(req.params.id);
   if (!job?.file || job.status !== 'Finished') return res.status(404).json({ ok: false, error: 'audio_not_found' });
-  try { res.type('audio/wav').setHeader('content-disposition', `attachment; filename="${job.fileName}"`); res.send(await import('node:fs/promises').then(({ readFile }) => readFile(job.file))); } catch (error) { next(error); }
+  try { res.type(job.format === 'mp3' ? 'audio/mpeg' : 'audio/wav').setHeader('content-disposition', `attachment; filename="${job.fileName}"`); res.send(await import('node:fs/promises').then(({ readFile }) => readFile(job.file))); } catch (error) { next(error); }
+});
+router.post('/chapter-jobs/:id/open-folder', (req, res) => {
+  const job = getChapterJob(req.params.id);
+  if (!job?.folder || job.status !== 'Finished') return res.status(404).json({ ok: false, error: 'output_folder_not_found' });
+  const command = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const lookup = spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', [command], { stdio: 'ignore', windowsHide: true });
+  if (lookup.status !== 0) return res.status(503).json({ ok: false, error: 'output_folder_unavailable', message: 'Output folder cannot be opened on this system' });
+  const child = spawn(command, [job.folder], { detached: true, stdio: 'ignore', windowsHide: true });
+  child.unref();
+  res.json({ ok: true });
 });
 
 async function render(req, res, mode) {
