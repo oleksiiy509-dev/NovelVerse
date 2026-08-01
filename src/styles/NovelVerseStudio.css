@@ -73,6 +73,45 @@
 .audio-production__preview h4, .audio-production__preview p { margin: .25rem 0; }
 .audio-production__actions { justify-content: flex-end; margin-top: 1rem; }
 
+.book-import { max-width: 1080px; margin: 0 auto; }
+.book-import button { margin-top: 0; background: #6657d9; }
+.book-import button:disabled { cursor: not-allowed; opacity: .45; }
+.book-import button.secondary, .book-import__tools button { background: #eeedf5; color: #373442; }
+.book-import__header, .book-import__progress div, .book-import__actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.book-import__header h2, .book-import__header p { margin: 0 0 .4rem; }
+.book-import__local { padding: .45rem .7rem; border-radius: 2rem; background: #e5f6eb; color: #27643b; font-weight: 700; }
+.book-import__dropzone { display: grid; place-items: center; gap: .65rem; min-height: 280px; margin-top: 2rem; border: 2px dashed #bab7ca; border-radius: 1rem; background: #fff; text-align: center; transition: .15s; }
+.book-import__dropzone.is-dragging { border-color: #6657d9; background: #f0eeff; }
+.book-import__dropzone strong { font-size: 1.25rem; }
+.book-import__dropzone span, .book-import__dropzone small { color: #747182; }
+.book-import__dropzone input { display: none; }
+.book-import__progress { margin: 1.25rem 0; }
+.book-import__progress progress { width: 100%; height: 8px; accent-color: #6657d9; }
+.book-import__summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1.25rem; padding: 1.25rem; border: 1px solid #e1dfe9; border-radius: .8rem; background: #fff; }
+.book-import__summary img { width: 64px; height: 88px; border-radius: .3rem; object-fit: cover; }
+.book-import__summary h3, .book-import__summary p { margin: .25rem 0; }
+.book-import__summary small { color: #777386; font-weight: 700; }
+.book-import__summary dl { display: flex; gap: 1.5rem; margin: 0; }
+.book-import__summary dl div { display: grid; gap: .25rem; }
+.book-import__summary dt { color: #777386; font-size: .8rem; }
+.book-import__summary dd { margin: 0; font-weight: 700; }
+.book-import__description { padding: 1rem; background: #fff; border-radius: .6rem; }
+.book-import__warnings { margin: 1rem 0; padding: 1rem; border-radius: .6rem; background: #fff4d9; color: #6b5011; }
+.book-import__warnings ul { margin: .5rem 0 0; padding-left: 1.25rem; }
+.book-import__editor { display: grid; grid-template-columns: 280px 1fr; min-height: 480px; margin-top: 1rem; overflow: hidden; border: 1px solid #e1dfe9; border-radius: .8rem; background: #fff; }
+.book-import__editor aside { padding: 1rem; border-right: 1px solid #e1dfe9; overflow-y: auto; }
+.book-import__editor aside h3 { display: flex; justify-content: space-between; margin-top: 0; font-size: 1rem; }
+.book-import__editor aside button { display: flex; gap: .6rem; width: 100%; margin-bottom: .35rem; padding: .7rem; background: transparent; color: #393645; text-align: left; }
+.book-import__editor aside button.active { background: #efedff; color: #4738b1; }
+.book-import__editor aside button span { color: #918da1; }
+.book-import__preview { display: grid; gap: 1rem; padding: 1.25rem; }
+.book-import__preview label { display: grid; gap: .45rem; color: #5f5b6b; font-weight: 700; }
+.book-import__preview input, .book-import__preview textarea { padding: .75rem; border: 1px solid #ccc9d5; border-radius: .45rem; font: inherit; }
+.book-import__preview textarea { min-height: 310px; resize: vertical; line-height: 1.55; }
+.book-import__tools, .book-import__actions { display: flex; gap: .65rem; }
+.book-import__tools button.danger { color: #a12a35; }
+.book-import__actions { justify-content: flex-end; margin-top: 1.25rem; }
+
 @media (max-width: 700px) {
   .studio-shell {
     grid-template-columns: 1fr;
@@ -92,4 +131,7 @@
 
   .audio-production__layout, .audio-production__statuses { grid-template-columns: 1fr; }
   .audio-production__header, .audio-production__title-row { align-items: flex-start; flex-direction: column; }
+  .book-import__editor, .book-import__summary { grid-template-columns: 1fr; }
+  .book-import__editor aside { max-height: 220px; border-right: 0; border-bottom: 1px solid #e1dfe9; }
+  .book-import__summary dl, .book-import__actions, .book-import__tools { flex-wrap: wrap; }
 }
