@@ -1,14 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import { getProvider } from '../providers/index.js';
 
 const jobs = new Map();
+const exec = promisify(execFile);
 const pending = [];
 let active = false;
+let lastError = '';
 
 const fingerprint = (payload) => createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-const safeName = (value) => String(value || 'chapter').replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'chapter';
+const safeName = (value) => String(value || 'Book').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().replace(/[. ]+$/g, '').slice(0, 80) || 'Book';
+const chapterName = (number, extension) => `Chapter ${String(Math.max(1, Number(number) || 1)).padStart(4, '0')}.${extension}`;
 
 function mergeWav(buffers) {
   if (buffers.length === 1) return buffers[0];
@@ -47,20 +52,39 @@ async function render(job) {
     }
     job.status = 'Merging';
     const audio = mergeWav(rendered);
-    await mkdir(cfg.outputDir, { recursive: true });
-    const fileName = `${safeName(request.bookTitle)}-${safeName(request.chapterTitle)}-${job.key.slice(0, 10)}.wav`;
-    const file = path.join(cfg.outputDir, fileName);
-    await writeFile(file, audio);
-    const details = await inspectWav(file, audio.length);
-    Object.assign(job, details, { status: 'Finished', file, fileName, generationTime: Date.now() - started, cached: false });
+    const folder = path.join(cfg.outputDir, safeName(request.bookTitle));
+    await mkdir(folder, { recursive: true });
+    const wavFile = path.join(folder, chapterName(request.chapterNumber, 'wav'));
+    await writeFile(wavFile, audio);
+    let file = wavFile;
+    let format = 'wav';
+    let ffmpegMissing = false;
+    try {
+      const mp3File = path.join(folder, chapterName(request.chapterNumber, 'mp3'));
+      await exec(process.env.FFMPEG_BIN || 'ffmpeg', ['-y', '-loglevel', 'error', '-i', wavFile, mp3File], { windowsHide: true });
+      file = mp3File; format = 'mp3';
+    } catch (error) {
+      if (error.code === 'ENOENT') ffmpegMissing = true;
+      else throw new Error(`FFmpeg conversion failed: ${error.message}`);
+    }
+    const info = await stat(file);
+    const details = await inspectWav(wavFile, audio.length);
+    const manifest = path.join(folder, `.chapter-${String(request.chapterNumber).padStart(4, '0')}.json`);
+    await writeFile(manifest, JSON.stringify({ key: job.key, file, format, duration: details.duration }));
+    Object.assign(job, { ...details, size: info.size, status: 'Finished', file, folder, fileName: path.basename(file), format, ffmpegMissing, generationTime: Date.now() - started, cached: false });
   } catch (error) {
     job.status = 'Failed';
     job.error = error.cancelled ? 'Generation cancelled' : error.message;
     job.generationTime = Date.now() - started;
+    lastError = job.error;
   } finally {
     active = false;
     runNext();
   }
+}
+
+export function getChapterQueueStatus() {
+  return { busy: active, queued: pending.length, lastError };
 }
 
 function runNext() {
@@ -74,15 +98,16 @@ function runNext() {
 export async function createChapterJob(cfg, body = {}) {
   const segments = Array.isArray(body.segments) ? body.segments.filter((item) => String(item.text || '').trim()) : [];
   if (!segments.length) throw Object.assign(new Error('segments are required'), { status: 400 });
-  const request = { bookId: body.bookId, chapterId: body.chapterId, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, segments: segments.map(({ text, voice, emotion, rate, pitch }) => ({ text: String(text).trim(), voice, emotion, rate, pitch })) };
+  const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, segments: segments.map(({ text, voice, emotion, rate, pitch }) => ({ text: String(text).trim(), voice, emotion, rate, pitch })) };
   const key = fingerprint(request);
-  await mkdir(cfg.outputDir, { recursive: true });
-  const prefix = `${safeName(request.bookTitle)}-${safeName(request.chapterTitle)}-${key.slice(0, 10)}.wav`;
-  const existing = path.join(cfg.outputDir, prefix);
+  const folder = path.join(cfg.outputDir, safeName(request.bookTitle));
+  await mkdir(folder, { recursive: true });
+  const manifest = path.join(folder, `.chapter-${String(request.chapterNumber).padStart(4, '0')}.json`);
   try {
-    const info = await stat(existing);
-    const details = await inspectWav(existing, info.size);
-    const job = { id: randomUUID(), key, request, status: 'Finished', completed: segments.length, total: segments.length, file: existing, fileName: prefix, generationTime: 0, cached: true, ...details };
+    const cached = JSON.parse(await readFile(manifest, 'utf8'));
+    if (cached.key !== key) throw new Error('cache changed');
+    const info = await stat(cached.file);
+    const job = { id: randomUUID(), key, request, status: 'Finished', completed: segments.length, total: segments.length, file: cached.file, folder, fileName: path.basename(cached.file), format: cached.format, generationTime: 0, cached: true, size: info.size, duration: cached.duration };
     jobs.set(job.id, job); return publicJob(job);
   } catch { /* cache miss */ }
   const job = { id: randomUUID(), key, cfg, request, status: 'Preparing', completed: 0, total: segments.length, generationTime: 0, cached: false };

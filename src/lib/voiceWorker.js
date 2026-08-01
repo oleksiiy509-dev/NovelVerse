@@ -55,6 +55,7 @@ export async function getVoiceWorkerHealth() {
 export const createChapterGeneration = (payload, signal) => sendJson("/chapter-jobs", payload, signal);
 export const getChapterGeneration = (id) => requestJson(`/chapter-jobs/${encodeURIComponent(id)}`, 30_000);
 export const cancelChapterGeneration = (id) => sendJson(`/chapter-jobs/${encodeURIComponent(id)}/cancel`, {});
+export const openChapterOutputFolder = (id) => sendJson(`/chapter-jobs/${encodeURIComponent(id)}/open-folder`, {});
 
 export async function getChapterAudio(id) {
   const res = await fetch(`${getVoiceWorkerUrl()}/chapter-jobs/${encodeURIComponent(id)}/audio`, { headers: voiceWorkerHeaders({ accept: "audio/wav" }) });
