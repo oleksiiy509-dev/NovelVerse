@@ -1,9 +1,35 @@
-# TTS Setup
+# Piper TTS production setup
 
-1. Create an OpenAI API key.
-2. Store it as a Supabase Edge Function secret, never in Vercel/Vite: `supabase secrets set OPENAI_API_KEY=... NOVELVERSE_TTS_PROVIDER=openai NOVELVERSE_TTS_MODEL=gpt-4o-mini-tts NOVELVERSE_TTS_DEFAULT_VOICE=alloy`.
-3. Configure safeguards: `NOVELVERSE_TTS_MAX_CHARS_PER_JOB`, `NOVELVERSE_TTS_MAX_SEGMENTS_PER_JOB`, `NOVELVERSE_TTS_DAILY_USER_LIMIT`, and `NOVELVERSE_TTS_PREVIEW_MAX_CHARS`.
-4. Deploy: `supabase functions deploy generate-chapter-audio`.
-5. For production chapter MP3s, configure an ffmpeg-compatible merge worker or intentionally set `NOVELVERSE_AUDIO_MERGE_STRATEGY=byte-concat` only for compatible mock/test output.
+`generate-chapter-audio` uses the free Piper provider by default. The fallback
+`http://127.0.0.1:8787` is only for local development; in a hosted Supabase Edge
+Function it refers to the function container, not a worker on a developer machine.
 
-Troubleshooting: missing key returns a clear `OPENAI_API_KEY is required` error; unsupported providers return `unsupported_provider`; oversized previews/jobs return limit details.
+Deploy `voice-worker` as a separate, persistent container using
+`voice-worker/Dockerfile` (or `voice-worker/docker-compose.example.yml`). Provide a
+Linux Piper executable and model to that container, then configure:
+
+```dotenv
+DEFAULT_PROVIDER=piper
+PIPER_BIN=/opt/piper/piper
+PIPER_MODEL=/opt/piper/voices/your-voice.onnx
+PIPER_VOICE=your-voice
+TOKEN=a-long-random-secret
+```
+
+Expose the worker through HTTPS and confirm that `GET /health` reports the `piper`
+provider with `available: true`. Do not deploy the bundled Windows `piper.exe` in
+the Linux container; mount or install a Linux Piper distribution and model.
+
+Configure and deploy the Edge Function:
+
+```bash
+supabase secrets set \
+  NOVELVERSE_TTS_PROVIDER=piper \
+  NOVELVERSE_PIPER_URL=https://voice-worker.example.com \
+  NOVELVERSE_PIPER_TOKEN=a-long-random-secret
+supabase functions deploy generate-chapter-audio
+```
+
+`NOVELVERSE_PIPER_URL` must be the network-reachable HTTPS **origin** of the existing
+Piper Worker, with no `/health` or `/synthesize` suffix. The token must match the
+worker's `TOKEN`. No OpenAI configuration is required for the Piper pipeline.
