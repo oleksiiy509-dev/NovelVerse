@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -118,6 +118,48 @@ test('health returns provider status and runtime details', async () => {
   assert.ok(body.providers.some((provider) => provider.id === 'mock' && provider.available));
   assert.ok(body.uptime >= 0);
   await cleanup(ctx);
+});
+
+test('local Piper chapter generation writes MP3 and reuses an unchanged chapter', async () => {
+  const previous = { PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL, FFMPEG_BIN: process.env.FFMPEG_BIN };
+  const root = await mkdtemp(path.join(os.tmpdir(), 'nv-chapter-'));
+  const outputDir = path.join(root, 'voice-output');
+  const piper = path.join(root, 'piper');
+  const model = path.join(root, 'voice.onnx');
+  const ffmpeg = path.join(root, 'ffmpeg');
+  await writeFile(model, 'model');
+  await writeFile(piper, `#!/usr/bin/env node
+const fs = require('node:fs'); const args = process.argv.slice(2); const out = args[args.indexOf('--output_file') + 1];
+const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(16000, 40); fs.writeFileSync(out, wav);
+`);
+  await writeFile(ffmpeg, '#!/bin/sh\n[ "$1" = "-version" ] && exit 0\ncp "$5" "$6"\n');
+  await Promise.all([chmod(piper, 0o755), chmod(ffmpeg, 0o755)]);
+  process.env.PIPER_BIN = piper; process.env.PIPER_MODEL = model; process.env.FFMPEG_BIN = ffmpeg;
+  const ctx = await fixture({ outputDir });
+  try {
+    const health = await (await ctx.request('/health')).json();
+    assert.equal(health.status, 'Connected');
+    assert.deepEqual(health.capabilities, { ffmpeg: true, outputAvailable: true });
+    const payload = { bookId: 'book-1', chapterId: 'chapter-1', chapterNumber: 1, bookTitle: 'A: Book?', language: 'uk', segments: [{ text: 'Offline narration.' }] };
+    const created = await ctx.request('/chapter-jobs', auth(payload));
+    const createdText = await created.text();
+    assert.equal(created.status, 202, createdText);
+    let job = JSON.parse(createdText);
+    for (let attempt = 0; attempt < 50 && job.status !== 'Finished'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      job = await (await ctx.request(`/chapter-jobs/${job.id}`, { headers: { authorization: 'Bearer secret' } })).json();
+    }
+    assert.equal(job.status, 'Finished', job.error);
+    assert.equal(job.fileName, 'Chapter 0001.mp3');
+    assert.equal(job.format, 'mp3');
+    assert.ok(job.duration > 0); assert.ok(job.size > 44); assert.ok(job.generationTime >= 0);
+    assert.equal((await stat(path.join(outputDir, 'A Book', 'Chapter 0001.mp3'))).isFile(), true);
+    const cached = await (await ctx.request('/chapter-jobs', auth({ ...payload, chapterTitle: 'Renamed without audio changes' }))).json();
+    assert.equal(cached.status, 'Finished'); assert.equal(cached.cached, true); assert.equal(cached.generationTime, 0);
+  } finally {
+    await cleanup(ctx); await rm(root, { recursive: true, force: true });
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
 });
 
 

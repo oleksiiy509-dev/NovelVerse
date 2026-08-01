@@ -5,11 +5,23 @@ function enhance(res) {
   res.json = (body) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(body)); };
   res.send = (body) => { if (Buffer.isBuffer(body)) return res.end(body); if (typeof body === 'object') return res.json(body); res.end(String(body)); };
 }
-function match(layer, req) { return (layer.method === 'USE' || layer.method === req.method) && (layer.path === '*' || layer.path === req.url.split('?')[0]); }
+function match(layer, req) {
+  if (layer.method !== 'USE' && layer.method !== req.method) return false;
+  if (layer.path === '*') return true;
+  const names = [];
+  const pattern = layer.path.split('/').map((part) => {
+    if (!part.startsWith(':')) return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    names.push(part.slice(1)); return '([^/]+)';
+  }).join('/');
+  const matched = new RegExp(`^${pattern}$`).exec(req.path);
+  if (!matched) return false;
+  req.params = Object.fromEntries(names.map((name, index) => [name, decodeURIComponent(matched[index + 1])]));
+  return true;
+}
 function createApp() {
   const layers = [];
   const app = (req, res) => {
-    enhance(res); req.path = req.url.split('?')[0]; req.app = app;
+    enhance(res); req.path = req.url.split('?')[0]; req.params = {}; req.app = app;
     let i = 0;
     const next = (err) => {
       const layer = layers[i++];

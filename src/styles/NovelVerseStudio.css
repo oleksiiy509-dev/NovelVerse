@@ -162,6 +162,7 @@
 .voice-director select, .voice-director input, .voice-director textarea { width: 100%; box-sizing: border-box; padding: .65rem; border: 1px solid #d7d4df; border-radius: .45rem; background: #fff; color: #272531; font: inherit; }
 .voice-director textarea { resize: vertical; line-height: 1.5; }
 .voice-director__actions, .voice-director__segment-actions { display: flex; flex-wrap: wrap; gap: .55rem; }
+.chapter-generation__heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .55rem; }
 .voice-director button { margin: 0; background: #6757d9; }
 .voice-director button.secondary { background: #eceaf8; color: #38334f; }
 .voice-director button.danger { background: #fff0f1; color: #a12a35; }
