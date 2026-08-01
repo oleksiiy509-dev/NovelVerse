@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeChapters, estimateDuration, parseDirectorJson, plainText, validateSegments } from "../src/lib/voiceDirectorLocal.js";
+import { analyzeChapters, detectSegments, estimateDuration, parseDirectorJson, plainText, validateSegments } from "../src/lib/voiceDirectorLocal.js";
 
 test("analyzes imported chapter HTML into speakers and emotional segments", () => {
   const result = analyzeChapters([{ id: "one", title: "Arrival", content: "<p>Mara: I am so happy!</p><p>The door opened.</p>" }]);
@@ -19,4 +19,13 @@ test("normalizes source text, estimates duration and validates imported JSON", (
   assert.equal(plainText("<p>A &amp; B</p><p>C</p>"), "A & B\nC");
   assert.equal(estimateDuration("one two three four five", 1), 2);
   assert.throws(() => parseDirectorJson('{"segments":[]}'), /Invalid Voice Director JSON/);
+});
+
+test("separates quoted dialogue from narration and assigns an attributed speaker", () => {
+  const segments = detectSegments('The room fell quiet. “We should leave now!” Mara whispered.');
+  assert.deepEqual(segments, [
+    { type: "Narration", speaker: "Narrator", text: "The room fell quiet." },
+    { type: "Dialogue", speaker: "Mara", text: "We should leave now!" },
+    { type: "Narration", speaker: "Narrator", text: "Mara whispered." },
+  ]);
 });
