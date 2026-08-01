@@ -5,7 +5,11 @@ export const VOICES = ["Aster", "Briar", "Cedar", "Dahlia", "Ember", "Flint", "L
 const DIRECTOR_VERSION = 1;
 const LONG_SEGMENT_CHARS = 500;
 const NAME = "[\\p{Lu}][\\p{L}'’-]*(?:\\s+[\\p{Lu}][\\p{L}'’-]*){0,2}";
-const SPEECH_VERBS = "said|asked|replied|answered|whispered|shouted|cried|murmured|muttered|yelled|called|added|sighed|snapped|exclaimed|begged|pleaded|demanded|warned|insisted|laughed|sobbed|growled|hissed";
+const LABEL_NAME = `(?:(?:Mr|Mrs|Ms|Miss|Dr|Sir|Lady|Lord|Pan|Pani|Пан|Пані|Г-н|Г-жа)\\.?\\s+)?${NAME}`;
+// Keep stems for the inflected Russian and Ukrainian forms (for example,
+// «сказала», «відповів» and «запитали»). The expression is used only next to a
+// plausible proper name, so stems are more useful here than an exhaustive list.
+const SPEECH_VERBS = "said|asked|replied|answered|whispered|shouted|cried|murmured|muttered|yelled|called|added|sighed|snapped|exclaimed|begged|pleaded|demanded|warned|insisted|laughed|smiled|sobbed|growled|hissed|(?:сказ|говор|ответ|спрос|восклик|крик|шепт|прошепт|засмея|улыбн)\\p{L}*|(?:сказ|мов|відпові|відказ|спит|запит|вигук|крик|крич|шепот|прошепот|засмія|усміх)\\p{L}*";
 const THOUGHT_VERBS = "thought|wondered|remembered|realized|imagined";
 const FALSE_NAMES = new Set(["a", "an", "the", "he", "she", "they", "we", "i", "you", "it", "his", "her", "their", "someone", "anyone", "everyone", "nobody", "chapter", "part", "meanwhile", "later", "then", "finally", "suddenly", "narrator"]);
 
@@ -55,8 +59,8 @@ function validName(name) {
 
 function attributedName(text) {
   const verbs = `${SPEECH_VERBS}|${THOUGHT_VERBS}`;
-  const afterVerb = new RegExp(`(?:${verbs})\\s+(${NAME})`, "iu").exec(text);
-  const beforeVerb = new RegExp(`(${NAME})\\s+(?:${verbs})`, "iu").exec(text);
+  const afterVerb = new RegExp(`(?:${verbs})[,\\s]+(${NAME})`, "iu").exec(text);
+  const beforeVerb = new RegExp(`(${NAME})\\s+(?:(?:looked|glanced|turned|nodded|smiled|laughed|подивився|глянув|повернувся|посмотрел|взглянул)\\b(?:\\s+(?:at|to|toward|towards|на|к)\\s+${NAME})?(?:\\s+and)?\\s+)?(?:${verbs})`, "iu").exec(text);
   const name = cleanName(beforeVerb?.[1] || afterVerb?.[1]);
   return validName(name) ? name : "";
 }
@@ -73,11 +77,16 @@ function withContext(segment, context) {
 function parseLine(line, fallbackSpeaker = "") {
   const thought = /^\[\[thought\]\]([\s\S]*)\[\[\/thought\]\]$/.exec(line);
   if (thought) return sentences(plainText(thought[1])).map((text) => ({ type: "Thought", speaker: attributedName(line), text }));
-  const labelled = new RegExp(`^(${NAME})\\s*:\\s+`, "u").exec(line);
-  if (labelled) return sentences(line.slice(labelled[0].length)).map((text) => ({ type: "Dialogue", speaker: labelled[1], text }));
+  const labelled = new RegExp(`^(${LABEL_NAME})\\s*:\\s+`, "u").exec(line);
+  if (labelled) return sentences(line.slice(labelled[0].length)).map((text) => ({ type: "Dialogue", speaker: fallbackSpeaker || labelled[1], text }));
 
-  const quotePattern = /[“"]([^”"]+)[”"]/gu;
+  const quotePattern = /[“"«]([^”"»]+)[”"»]/gu;
   const quotes = [...line.matchAll(quotePattern)];
+  const dashDialogue = /^[—–-]\s*(.+)$/u.exec(line);
+  if (!quotes.length && dashDialogue) {
+    const spoken = dashDialogue[1].split(/\s+[—–-]\s*(?=(?:сказ|говор|ответ|спрос|мов|відпові|спит|said|asked|replied|whispered|shouted))/iu)[0].replace(/[,;]\s*$/u, "");
+    return sentences(spoken).map((text) => withContext({ type: "Dialogue", speaker: attributedName(line) || fallbackSpeaker, text }, line));
+  }
   if (!quotes.length) return sentences(line).map((text) => ({ type: "Narration", speaker: "Narrator", text }));
 
   const speaker = attributedName(line) || fallbackSpeaker;
@@ -97,22 +106,47 @@ function parseLine(line, fallbackSpeaker = "") {
 export function detectSegments(text) {
   const lines = plainText(thoughtText(text)).split(/\n+/).map((line) => line.trim()).filter(Boolean);
   const explicitNames = lines.map((line) => {
-    const labelled = new RegExp(`^(${NAME})\\s*:\\s+`, "u").exec(line)?.[1];
+    const labelled = new RegExp(`^(${LABEL_NAME})\\s*:\\s+`, "u").exec(line)?.[1];
     return cleanName(attributedName(line) || labelled);
   }).filter(validName);
   const canonical = new Map();
-  for (const name of explicitNames) if (!canonical.has(name.toLocaleLowerCase())) canonical.set(name.toLocaleLowerCase(), name);
+  const nameKeys = (name) => {
+    const normalized = cleanName(name).replace(/^(?:mr|mrs|ms|miss|dr|sir|lady|lord|pan|pani|пан|пані|г-н|г-жа)\.?\s+/iu, "");
+    return [normalized, ...normalized.split(/\s+/u)].map((part) => part.toLocaleLowerCase());
+  };
+  // A unique first name, surname, title, or case variant is an alias. Ambiguous
+  // one-word aliases are deliberately left alone rather than merging people.
+  const fullNames = explicitNames.filter((name) => nameKeys(name)[0].split(/\s+/u).length > 1);
+  const tokenOwners = new Map();
+  for (const name of fullNames) for (const token of nameKeys(name).slice(1)) {
+    const owners = tokenOwners.get(token) || new Set();
+    owners.add(nameKeys(name)[0]);
+    tokenOwners.set(token, owners);
+  }
+  // Install full identities first, including only unambiguous component aliases.
+  for (const name of fullNames) {
+    const preferred = cleanName(name);
+    canonical.set(nameKeys(name)[0], preferred);
+    for (const token of nameKeys(name).slice(1)) if (tokenOwners.get(token)?.size === 1) canonical.set(token, preferred);
+  }
+  // Preserve the first natural spelling of standalone names and fold later case
+  // variants or titled surnames into mappings established above.
+  for (const name of explicitNames) {
+    const keys = nameKeys(name);
+    const preferred = keys.map((key) => canonical.get(key)).find(Boolean) || cleanName(name).replace(/^(?:mr|mrs|ms|miss|dr|sir|lady|lord|pan|pani|пан|пані|г-н|г-жа)\.?\s+/iu, "");
+    for (const key of keys) if (!canonical.has(key)) canonical.set(key, preferred);
+  }
   const participants = [];
   let lastSpeaker = "";
   return lines.flatMap((line) => {
-    const labelled = new RegExp(`^(${NAME})\\s*:\\s+`, "u").exec(line)?.[1] || "";
+    const labelled = new RegExp(`^(${LABEL_NAME})\\s*:\\s+`, "u").exec(line)?.[1] || "";
     let speaker = attributedName(line) || (validName(labelled) ? labelled : "");
-    if (!speaker && /[“"]/u.test(line)) {
-      const nearby = [...canonical.values()].find((name) => new RegExp(`(^|[^\\p{L}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}]|$)`, "iu").test(line));
+    if (!speaker && /[“"«]|^[—–-]\s/u.test(line)) {
+      const nearby = [...new Set(canonical.values())].find((name) => new RegExp(`(^|[^\\p{L}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}]|$)`, "iu").test(line));
       speaker = nearby || (participants.length === 2 ? participants.find((name) => name !== lastSpeaker) : participants[0]) || "";
     }
     if (speaker) {
-      speaker = canonical.get(cleanName(speaker).toLocaleLowerCase()) || cleanName(speaker);
+      speaker = nameKeys(speaker).map((key) => canonical.get(key)).find(Boolean) || cleanName(speaker);
       const old = participants.indexOf(speaker);
       if (old >= 0) participants.splice(old, 1);
       participants.push(speaker);
