@@ -8,6 +8,8 @@ const optionValues = {
   age: ["Child", "Teen", "Young adult", "Adult", "Senior"],
   narrationStyle: ["Natural", "Storytelling", "Conversational", "Dramatic", "Documentary"],
 };
+const segmentTypes = ["Narration", "Dialogue"];
+const newId = () => globalThis.crypto?.randomUUID?.() || `segment-${Date.now()}`;
 
 function readDirector(bookId) {
   try { return parseDirectorJson(localStorage.getItem(directorStorageKey(bookId))); }
@@ -64,8 +66,13 @@ export default function VoiceDirector() {
     const at = candidates.sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle))[0];
     if (!at) { setNotice("This segment is too short to split."); return current; }
     const segments = [...current.segments];
-    segments.splice(index, 1, { ...source, id: crypto.randomUUID(), text: source.text.slice(0, at).trim() }, { ...source, id: crypto.randomUUID(), text: source.text.slice(at).trim() });
+    segments.splice(index, 1, { ...source, id: newId(), text: source.text.slice(0, at).trim() }, { ...source, id: newId(), text: source.text.slice(at).trim() });
     return { ...current, segments };
+  });
+  const addSegment = () => setDirector((current) => {
+    const narrator = current.characters.find((item) => item.name === "Narrator");
+    const fallbackNarrator = { id: "character-narrator", name: "Narrator", voice: "Narrator", gender: "Unspecified", age: "Adult", narrationStyle: "Storytelling", speed: 1, pitch: 0, volume: 1 };
+    return { ...current, characters: narrator ? current.characters : [fallbackNarrator, ...current.characters], segments: [...current.segments, { id: newId(), chapterId: chapter?.id || "", chapterTitle: chapter?.title || "Manual", type: "Narration", speaker: "Narrator", emotion: "Neutral", voice: narrator?.voice || "Narrator", text: "" }] };
   });
   const save = () => {
     if (!bookId) return;
@@ -97,6 +104,7 @@ export default function VoiceDirector() {
       <button onClick={() => analyze(chapter ? [chapter] : [], "Chapter")}>Analyze Chapter</button>
       <button onClick={() => analyze(book?.chapters || [], "Book")}>Analyze Book</button>
       <button onClick={save} disabled={!director.segments.length}>Save Director</button>
+      <button className="secondary" onClick={addSegment} disabled={!bookId}>Add Segment</button>
       <button className="secondary" onClick={reset}>Reset</button>
       <button className="secondary" onClick={exportJson} disabled={!director.segments.length}>Export Director JSON</button>
       <button className="secondary" onClick={() => importRef.current?.click()}>Import Director JSON</button>
@@ -116,7 +124,7 @@ export default function VoiceDirector() {
     <section className="voice-director__section"><div className="voice-director__heading"><div><h3>Segment preview</h3><p>{director.segments.length} segments · {warnings.length} warnings</p></div>{warnings.length > 0 && <span className="voice-director__warning">Review required</span>}</div>
       <div className="voice-director__segments">{director.segments.map((segment, index) => { const character = director.characters.find((item) => item.name === segment.speaker); const segmentWarnings = warnings.filter((item) => item.segmentId === segment.id); return <article key={segment.id} className={segmentWarnings.length ? "has-warning" : ""}>
         <div className="voice-director__segment-meta"><small>{segment.chapterTitle}</small><span>~{estimateDuration(segment.text, character?.speed)} sec</span></div>
-        <div className="voice-director__segment-fields"><label>Speaker<select value={segment.speaker} onChange={(event) => changeSpeaker(segment, event.target.value)}><option value="">Missing</option>{director.characters.map((item) => <option key={item.id}>{item.name}</option>)}</select></label><label>Emotion<select value={segment.emotion} onChange={(event) => patchSegment(segment.id, { emotion: event.target.value })}>{EMOTIONS.map((emotion) => <option key={emotion}>{emotion}</option>)}</select></label><label>Voice<select value={segment.voice} onChange={(event) => patchSegment(segment.id, { voice: event.target.value })}><option value="">Missing</option>{VOICES.map((voice) => <option key={voice}>{voice}</option>)}</select></label></div>
+        <div className="voice-director__segment-fields"><label>Type<select value={segment.type || "Narration"} onChange={(event) => patchSegment(segment.id, { type: event.target.value })}>{segmentTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label>Speaker<select value={segment.speaker} onChange={(event) => changeSpeaker(segment, event.target.value)}><option value="">Missing</option>{director.characters.map((item) => <option key={item.id}>{item.name}</option>)}</select></label><label>Emotion<select value={segment.emotion} onChange={(event) => patchSegment(segment.id, { emotion: event.target.value })}>{EMOTIONS.map((emotion) => <option key={emotion}>{emotion}</option>)}</select></label><label>Voice<select value={segment.voice} onChange={(event) => patchSegment(segment.id, { voice: event.target.value })}><option value="">Missing</option>{VOICES.map((voice) => <option key={voice}>{voice}</option>)}</select></label></div>
         <label>Text<textarea rows="3" value={segment.text} onChange={(event) => patchSegment(segment.id, { text: event.target.value })}/></label>
         {segmentWarnings.length > 0 && <ul>{segmentWarnings.map((warning) => <li key={warning.message}>⚠ {warning.message}</li>)}</ul>}
         <div className="voice-director__segment-actions"><button className="secondary" onClick={() => merge(index)} disabled={index === director.segments.length - 1}>Merge with next</button><button className="secondary" onClick={() => split(index)}>Split segment</button><button className="danger" onClick={() => setDirector((current) => ({ ...current, segments: current.segments.filter((item) => item.id !== segment.id) }))}>Delete</button></div>
