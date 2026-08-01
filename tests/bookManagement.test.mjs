@@ -57,9 +57,9 @@ test("maps managed audiobook voices for all production languages", async () => {
   });
 });
 
-test("managed Supabase audio sends Piper as the provider instead of a voice id", () => {
+test("managed Supabase audio uses the server-configured provider instead of forcing Piper", () => {
   const workflow = readFileSync("src/lib/bookWorkflow.js", "utf8");
-  assert.match(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, "piper"\)/);
+  assert.match(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, "default"\)/);
   assert.doesNotMatch(workflow, /callChapterAudioGeneration\(chapter\.id, voice\.language, voice\.voice\)/);
 });
 
