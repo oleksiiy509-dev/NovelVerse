@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
@@ -11,7 +11,7 @@ const pending = [];
 let active = false;
 let lastError = '';
 
-const fingerprint = (payload) => createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+const fingerprint = ({ language, segments }) => createHash('sha256').update(JSON.stringify({ language, segments })).digest('hex');
 const safeName = (value) => String(value || 'Book').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().replace(/[. ]+$/g, '').slice(0, 80) || 'Book';
 const chapterName = (number, extension) => `Chapter ${String(Math.max(1, Number(number) || 1)).padStart(4, '0')}.${extension}`;
 
@@ -53,9 +53,10 @@ async function render(job) {
     job.status = 'Merging';
     const audio = mergeWav(rendered);
     const folder = path.join(cfg.outputDir, safeName(request.bookTitle));
-    await mkdir(folder, { recursive: true });
+    try { await mkdir(folder, { recursive: true }); } catch { throw new Error('Output folder unavailable'); }
     const wavFile = path.join(folder, chapterName(request.chapterNumber, 'wav'));
     await writeFile(wavFile, audio);
+    const details = await inspectWav(wavFile, audio.length);
     let file = wavFile;
     let format = 'wav';
     let ffmpegMissing = false;
@@ -63,12 +64,12 @@ async function render(job) {
       const mp3File = path.join(folder, chapterName(request.chapterNumber, 'mp3'));
       await exec(process.env.FFMPEG_BIN || 'ffmpeg', ['-y', '-loglevel', 'error', '-i', wavFile, mp3File], { windowsHide: true });
       file = mp3File; format = 'mp3';
+      await rm(wavFile, { force: true });
     } catch (error) {
-      if (error.code === 'ENOENT') ffmpegMissing = true;
+      if (error.code === 'ENOENT' || error.code === 'EACCES') ffmpegMissing = true;
       else throw new Error(`FFmpeg conversion failed: ${error.message}`);
     }
     const info = await stat(file);
-    const details = await inspectWav(wavFile, audio.length);
     const manifest = path.join(folder, `.chapter-${String(request.chapterNumber).padStart(4, '0')}.json`);
     await writeFile(manifest, JSON.stringify({ key: job.key, file, format, duration: details.duration }));
     Object.assign(job, { ...details, size: info.size, status: 'Finished', file, folder, fileName: path.basename(file), format, ffmpegMissing, generationTime: Date.now() - started, cached: false });
@@ -101,7 +102,7 @@ export async function createChapterJob(cfg, body = {}) {
   const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, segments: segments.map(({ text, voice, emotion, rate, pitch }) => ({ text: String(text).trim(), voice, emotion, rate, pitch })) };
   const key = fingerprint(request);
   const folder = path.join(cfg.outputDir, safeName(request.bookTitle));
-  await mkdir(folder, { recursive: true });
+  try { await mkdir(folder, { recursive: true }); } catch { throw Object.assign(new Error('Output folder unavailable'), { status: 503 }); }
   const manifest = path.join(folder, `.chapter-${String(request.chapterNumber).padStart(4, '0')}.json`);
   try {
     const cached = JSON.parse(await readFile(manifest, 'utf8'));

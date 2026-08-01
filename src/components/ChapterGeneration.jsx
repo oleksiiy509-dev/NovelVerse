@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelChapterGeneration, createChapterGeneration, getChapterAudio, getChapterGeneration, getVoiceWorkerHealth, openChapterOutputFolder } from "../lib/voiceWorker";
 
 const terminal = new Set(["Finished", "Failed"]);
@@ -9,26 +9,27 @@ export default function ChapterGeneration({ book, chapter, segments }) {
   const [jobs, setJobs] = useState([]);
   const [audioUrls, setAudioUrls] = useState({});
   const [health, setHealth] = useState({ label: "Offline", detail: "Checking local Piper…" });
+  const [checkingHealth, setCheckingHealth] = useState(false);
   const timer = useRef(null);
-  const audio = useRef(null);
+  const audio = useRef(new Map());
   const createdUrls = useRef([]);
   const chapterSegments = segments.filter((segment) => String(segment.chapterId) === String(chapter?.id));
 
   useEffect(() => () => { clearTimeout(timer.current); createdUrls.current.forEach(URL.revokeObjectURL); }, []);
-  useEffect(() => {
-    let mounted = true;
-    const check = async () => {
+  const checkHealth = useCallback(async () => {
+      setCheckingHealth(true);
       try {
         const result = await getVoiceWorkerHealth();
-        if (!mounted) return;
         const label = result.status === "Busy" ? "Busy" : result.piperAvailable && result.capabilities?.outputAvailable ? "Connected" : "Error";
         const detail = !result.piperAvailable ? "Piper offline" : !result.capabilities?.outputAvailable ? "Output folder unavailable" : !result.capabilities?.ffmpeg ? "FFmpeg missing · WAV output will be used" : "Piper and FFmpeg ready";
         setHealth({ label, detail });
-      } catch { if (mounted) setHealth({ label: "Offline", detail: "Piper offline" }); }
-    };
-    check(); const interval = setInterval(check, 5000);
-    return () => { mounted = false; clearInterval(interval); };
+      } catch { setHealth({ label: "Offline", detail: "Piper offline" }); }
+      finally { setCheckingHealth(false); }
   }, []);
+  useEffect(() => {
+    checkHealth(); const interval = setInterval(checkHealth, 5000);
+    return () => clearInterval(interval);
+  }, [checkHealth]);
   useEffect(() => {
     const active = jobs.find((job) => !terminal.has(job.status));
     if (!active) return undefined;
@@ -62,14 +63,14 @@ export default function ChapterGeneration({ book, chapter, segments }) {
   };
 
   return <section className="chapter-generation">
-    <div className="chapter-generation__heading"><div><h3>Local audio</h3><p>Piper renders and saves the chapter on this PC. Nothing is uploaded.</p><span className={`chapter-generation__health ${health.label.toLowerCase()}`}><i/> {health.label} · {health.detail}</span></div><button type="button" onClick={generate} disabled={!chapter || !chapterSegments.length || health.label === "Offline" || health.label === "Error"}>Generate Chapter</button></div>
+    <div className="chapter-generation__heading"><div><h3>Local audio</h3><p>Piper renders and saves the chapter on this PC. Nothing is uploaded.</p><span className={`chapter-generation__health ${health.label.toLowerCase()}`}><i/> {health.label} · {health.detail}</span></div><div className="chapter-generation__heading-actions"><button className="secondary" type="button" onClick={() => checkHealth()} disabled={checkingHealth}>{checkingHealth ? "Checking…" : "Health Check"}</button><button type="button" onClick={generate} disabled={!chapter || !chapterSegments.length || health.label === "Offline" || health.label === "Error"}>Generate Chapter</button></div></div>
     <div className="chapter-generation__queue" aria-label="Generation queue">{jobs.map((job) => <article key={job.id}>
       <div><strong>{chapter?.title || "Chapter"}</strong><span className={`chapter-generation__status ${job.status.toLowerCase()}`}>{job.status}</span></div>
       {!terminal.has(job.status) && <progress max={job.total || 1} value={job.completed || 0}/>} 
       {job.status === "Finished" && <><dl><div><dt>Audio duration</dt><dd>{formatDuration(job.duration)}</dd></div><div><dt>Output size</dt><dd>{formatSize(job.size)}</dd></div><div><dt>Render time</dt><dd>{(job.generationTime / 1000).toFixed(1)} sec{job.cached ? " · cached" : ""}</dd></div></dl>{job.ffmpegMissing && <p className="chapter-generation__warning">FFmpeg missing · saved as WAV</p>}</>}
       {job.error && <p className="chapter-generation__error">{job.error}</p>}
-      {audioUrls[job.id] && <audio ref={audio} preload="metadata" src={audioUrls[job.id]}>Audio playback is unavailable.</audio>}
-      <div className="chapter-generation__actions">{!terminal.has(job.status) && <button className="danger" type="button" onClick={() => cancelChapterGeneration(job.id)}>Cancel</button>}{job.status === "Failed" && <button className="secondary" type="button" onClick={retry}>Retry</button>}{audioUrls[job.id] && <><button type="button" onClick={() => audio.current?.play()}>Play</button><button className="secondary" type="button" onClick={() => audio.current?.pause()}>Pause</button><button className="secondary" type="button" onClick={() => { if (audio.current) { audio.current.pause(); audio.current.currentTime = 0; } }}>Stop</button><button className="secondary" type="button" onClick={() => openChapterOutputFolder(job.id).catch(() => setJobs((items) => items.map((item) => item.id === job.id ? { ...item, error: "Output folder unavailable" } : item)))}>Open Folder</button><button className="secondary" type="button" onClick={() => download(job)}>Save locally</button></>}</div>
+      {audioUrls[job.id] && <audio ref={(element) => element ? audio.current.set(job.id, element) : audio.current.delete(job.id)} preload="metadata" src={audioUrls[job.id]}>Audio playback is unavailable.</audio>}
+      <div className="chapter-generation__actions">{!terminal.has(job.status) && <button className="danger" type="button" onClick={() => cancelChapterGeneration(job.id)}>Cancel</button>}{job.status === "Failed" && <button className="secondary" type="button" onClick={retry}>Retry</button>}{audioUrls[job.id] && <><button type="button" onClick={() => audio.current.get(job.id)?.play()}>Play</button><button className="secondary" type="button" onClick={() => audio.current.get(job.id)?.pause()}>Pause</button><button className="secondary" type="button" onClick={() => { const player = audio.current.get(job.id); if (player) { player.pause(); player.currentTime = 0; } }}>Stop</button><button className="secondary" type="button" onClick={() => openChapterOutputFolder(job.id).catch(() => setJobs((items) => items.map((item) => item.id === job.id ? { ...item, error: "Output folder unavailable" } : item)))}>Open Folder</button><button className="secondary" type="button" onClick={() => download(job)}>Save locally</button></>}</div>
     </article>)}</div>
   </section>;
 }
