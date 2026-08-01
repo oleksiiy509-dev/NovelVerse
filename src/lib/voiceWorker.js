@@ -49,7 +49,13 @@ export async function getVoiceWorkerHealth() {
   const health = await requestJson("/health");
   const providers = Array.isArray(health.providers) ? health.providers : [];
   const piper = providers.find((provider) => provider.id === "piper") || null;
-  return { ...health, online: true, piperAvailable: Boolean(piper?.available), voices: Array.isArray(health.availableVoices) ? health.availableVoices : [], piper };
+  return {
+    ...health,
+    online: health.ok !== false,
+    piperAvailable: typeof health.piperAvailable === "boolean" ? health.piperAvailable : piper?.available,
+    voices: Array.isArray(health.availableVoices) ? health.availableVoices : [],
+    piper,
+  };
 }
 
 export const createChapterGeneration = (payload, signal) => sendJson("/chapter-jobs", payload, signal);

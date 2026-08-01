@@ -5,6 +5,7 @@ import test from "node:test";
 const workerClient = await readFile(new URL("../src/lib/voiceWorker.js", import.meta.url), "utf8");
 const reader = await readFile(new URL("../src/pages/Reader.jsx", import.meta.url), "utf8");
 const studio = await readFile(new URL("../src/pages/UniversalVoiceStudio.jsx", import.meta.url), "utf8");
+const chapterGeneration = await readFile(new URL("../src/components/ChapterGeneration.jsx", import.meta.url), "utf8");
 const workerSecurity = await readFile(new URL("../voice-worker/middleware/security.js", import.meta.url), "utf8");
 
 test("frontend voice worker client uses local defaults and public endpoints only", () => {
@@ -18,6 +19,12 @@ test("frontend voice worker client uses local defaults and public endpoints only
   assert.match(workerClient, /VITE_VOICE_WORKER_TOKEN/);
   assert.match(workerClient, /Authorization: `Bearer/);
   assert.doesNotMatch(workerClient, /SECRET/);
+});
+
+test("audio production treats a successful local worker health response as connected", () => {
+  assert.match(chapterGeneration, /result\.online && result\.ok !== false \? "Connected"/);
+  assert.match(chapterGeneration, /"Local worker connected"/);
+  assert.doesNotMatch(chapterGeneration, /result\.piperAvailable && result\.capabilities\?\.outputAvailable \? "Connected"/);
 });
 
 test("reader chunks local Piper synthesis and exposes controls", () => {
