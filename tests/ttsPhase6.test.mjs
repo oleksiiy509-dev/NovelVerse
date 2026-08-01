@@ -17,7 +17,7 @@ test("OpenAI adapter constructs server-side speech requests without frontend sec
 });
 
 test("generation resolves default request values through the configured production provider", () => {
-  assert.match(provider, /!requested \|\| requested === "default" \|\| requested === "auto" \? "openai" : requested/);
+  assert.match(provider, /!requested \|\| requested === "default" \|\| requested === "auto" \? "piper" : requested/);
   assert.match(endpoint, /providerRequested === "default" \|\| providerRequested === "auto" \? cfg\.provider : providerRequested/);
   assert.match(provider, /supportedProviderIds = \["mock", "piper", "openai"\]/);
   assert.match(provider, /acceptedProviderValues = \["default", "auto", \.\.\.supportedProviderIds\]/);
@@ -77,7 +77,7 @@ test("endpoint enforces cache, duplicate prevention, preview and authorization s
 });
 
 test("server-only environment variables are documented", () => {
-  for (const key of ["OPENAI_API_KEY", "NOVELVERSE_TTS_PROVIDER", "NOVELVERSE_TTS_MODEL", "NOVELVERSE_TTS_DEFAULT_VOICE", "NOVELVERSE_TTS_DAILY_USER_LIMIT", "NOVELVERSE_TTS_PREVIEW_MAX_CHARS"]) assert.match(envExample, new RegExp(key));
+  for (const key of ["NOVELVERSE_TTS_PROVIDER", "NOVELVERSE_PIPER_URL", "NOVELVERSE_PIPER_TOKEN", "NOVELVERSE_TTS_DAILY_USER_LIMIT", "NOVELVERSE_TTS_PREVIEW_MAX_CHARS"]) assert.match(envExample, new RegExp(key));
   assert.equal(envExample.includes(["VITE", "OPENAI"].join("_")), false);
   assert.equal(envExample.includes("VITE_SUPABASE_ANON_KEY"), true);
 });
