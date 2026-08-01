@@ -19,8 +19,8 @@ const initialStorage = [
   { id: "backups", label: "Backups", used: 32, total: 60, color: "#4b9bea", cleanable: true },
 ];
 
-const nav = ["Overview", "Books", "Audio Production", "Publishing", "Scheduler", "Storage", "Backups", "Version History", "Monitoring"];
-const navIcons = ["⌂", "▣", "♫", "↗", "□", "▤", "↻", "◷", "⌁"];
+const nav = ["Overview", "NovelVerse Studio", "Books", "Audio Production", "Publishing", "Scheduler", "Storage", "Backups", "Version History", "Monitoring"];
+const navIcons = ["⌂", "✦", "▣", "♫", "↗", "□", "▤", "↻", "◷", "⌁"];
 
 function getCreatorRoute(pathname) {
   const segments = pathname.split("/").filter(Boolean);
@@ -85,6 +85,7 @@ function CreatorPortal() {
 
   const openSection = (item) => {
     if (item === "Overview") navigate("/admin");
+    else if (item === "NovelVerse Studio") navigate("/admin/studio");
     else if (item === "Books") navigate("/admin/books");
     else setSection(item);
   };
