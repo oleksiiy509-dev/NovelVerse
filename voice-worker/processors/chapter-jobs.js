@@ -117,4 +117,4 @@ export async function createChapterJob(cfg, body = {}) {
 
 export function getChapterJob(id) { return jobs.get(id); }
 export function cancelChapterJob(id) { const job = jobs.get(id); if (job && !['Finished', 'Failed'].includes(job.status)) job.cancelled = true; return job; }
-export function publicJob(job) { if (!job) return null; const { cfg, request, cancelled, file, ...safe } = job; return { ...safe, audioUrl: job.status === 'Finished' ? `/chapter-jobs/${job.id}/audio` : null }; }
+export function publicJob(job) { if (!job) return null; const { cfg, request, cancelled, file, ...safe } = job; return { ...safe, audioUrl: job.status === 'Finished' ? `/chapter-jobs/${job.id}/download` : null }; }

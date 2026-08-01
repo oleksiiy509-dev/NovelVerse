@@ -38,10 +38,10 @@ router.post('/chapter-jobs/:id/cancel', (req, res) => {
   if (!job) return res.status(404).json({ ok: false, error: 'job_not_found' });
   res.json(publicJob(job));
 });
-router.get('/chapter-jobs/:id/audio', async (req, res, next) => {
+router.get('/chapter-jobs/:id/download', async (req, res, next) => {
   const job = getChapterJob(req.params.id);
   if (!job?.file || job.status !== 'Finished') return res.status(404).json({ ok: false, error: 'audio_not_found' });
-  try { res.type(job.format === 'mp3' ? 'audio/mpeg' : 'audio/wav').setHeader('content-disposition', `attachment; filename="${job.fileName}"`); res.send(await import('node:fs/promises').then(({ readFile }) => readFile(job.file))); } catch (error) { next(error); }
+  try { res.setHeader('content-type', job.format === 'mp3' ? 'audio/mpeg' : 'audio/wav'); res.setHeader('content-disposition', `attachment; filename="${job.fileName}"`); res.send(await import('node:fs/promises').then(({ readFile }) => readFile(job.file))); } catch (error) { next(error); }
 });
 router.post('/chapter-jobs/:id/open-folder', (req, res) => {
   const job = getChapterJob(req.params.id);
