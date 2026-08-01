@@ -26,7 +26,7 @@ function NovelVerseStudio() {
         <h1>NovelVerse Studio</h1>
         <nav aria-label="Studio navigation">
           {sections.map(([label, path]) => (
-            <NavLink key={label} end={!path} to={`/admin/studio${path ? `/${path}` : ""}`}>
+            <NavLink key={label} end={!path} title={label} to={`/admin/studio${path ? `/${path}` : ""}`}>
               {label}
             </NavLink>
           ))}
