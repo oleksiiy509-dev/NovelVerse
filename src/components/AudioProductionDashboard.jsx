@@ -5,17 +5,17 @@ const books = [
     id: "last-horizon",
     title: "The Last Horizon",
     chapters: [
-      { id: 1, title: "Chapter 1 · The Signal", director: "Ready", segments: "12 / 12" },
-      { id: 2, title: "Chapter 2 · Departure", director: "In review", segments: "8 / 14" },
-      { id: 3, title: "Chapter 3 · Dark Orbit", director: "Not started", segments: "0 / 11" },
+      { id: 1, title: "Chapter 1 · The Signal", directorStatus: "Ready", completedSegments: 12, totalSegments: 12 },
+      { id: 2, title: "Chapter 2 · Departure", directorStatus: "In review", completedSegments: 8, totalSegments: 14 },
+      { id: 3, title: "Chapter 3 · Dark Orbit", directorStatus: "Not started", completedSegments: 0, totalSegments: 11 },
     ],
   },
   {
     id: "echoes-aether",
     title: "Echoes of Aether",
     chapters: [
-      { id: 1, title: "Chapter 1 · The Crossing", director: "Ready", segments: "9 / 9" },
-      { id: 2, title: "Chapter 2 · An Old Voice", director: "Not started", segments: "0 / 13" },
+      { id: 1, title: "Chapter 1 · The Crossing", directorStatus: "Ready", completedSegments: 9, totalSegments: 9 },
+      { id: 2, title: "Chapter 2 · An Old Voice", directorStatus: "Not started", completedSegments: 0, totalSegments: 13 },
     ],
   },
 ];
@@ -55,7 +55,7 @@ function AudioProductionDashboard() {
           {book.chapters.map((item) => (
             <button type="button" className={item.id === chapter.id ? "active" : ""} key={item.id} onClick={() => setChapterId(item.id)}>
               <span>{item.title}</span>
-              <small>{item.director}</small>
+              <small>{item.directorStatus}</small>
             </button>
           ))}
         </aside>
@@ -66,8 +66,8 @@ function AudioProductionDashboard() {
             <button type="button" onClick={() => placeholderAction("Generate chapter")}>Generate Chapter</button>
           </div>
           <div className="audio-production__statuses">
-            <article><span>Director status</span><strong>{chapter.director}</strong></article>
-            <article><span>Voice Segments status</span><strong>{chapter.segments}</strong></article>
+            <article><span>Director status</span><strong>{chapter.directorStatus}</strong></article>
+            <article><span>Voice Segments status</span><strong>{chapter.completedSegments} / {chapter.totalSegments}</strong></article>
           </div>
           <div className="audio-production__controls">
             <button type="button" className="secondary" onClick={() => setPaused(!paused)}>{paused ? "Resume" : "Pause"}</button>
