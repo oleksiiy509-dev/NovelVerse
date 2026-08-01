@@ -74,3 +74,28 @@ test("predicts emotion from dialogue delivery and stronger punctuation cues", ()
   const result = analyzeChapters([{ id: "c", title: "Danger", content: '“Do not move,” Mara whispered.\n“RUN!” Elias shouted.' }]);
   assert.deepEqual(result.segments.filter(({ type }) => type === "Dialogue").map(({ emotion }) => emotion), ["Whisper", "Shouting"]);
 });
+
+test("attributes English action tags and Russian and Ukrainian speech verbs", () => {
+  const dialogue = detectSegments([
+    '“I know,” Mara looked at Elias and said.',
+    '«Нет», — ответил Илья.',
+    '«Ходімо», — прошепотіла Олена.',
+  ].join("\n")).filter(({ type }) => type === "Dialogue");
+  assert.deepEqual(dialogue.map(({ speaker }) => speaker), ["Mara", "Илья", "Олена"]);
+});
+
+test("recognizes em-dash dialogue and keeps its explicitly established speaker", () => {
+  const dialogue = detectSegments('Мара: Привіт.\n— Я хотіла ще додати.').filter(({ type }) => type === "Dialogue");
+  assert.equal(dialogue.at(-1).type, "Dialogue");
+  assert.equal(dialogue.at(-1).speaker, "Мара");
+});
+
+test("merges unique full-name, first-name, surname, and honorific aliases", () => {
+  const result = analyzeChapters([{ id: "c", title: "Aliases", content: [
+    "Mara Voss: First.",
+    "Mara: Second.",
+    "Ms. Voss: Third.",
+  ].join("\n") }]);
+  assert.deepEqual(result.characters.map(({ name }) => name), ["Narrator", "Mara Voss"]);
+  assert.deepEqual(result.segments.map(({ speaker }) => speaker), ["Mara Voss", "Mara Voss", "Mara Voss"]);
+});
