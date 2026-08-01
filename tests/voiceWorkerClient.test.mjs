@@ -27,6 +27,16 @@ test("audio production treats a successful local worker health response as conne
   assert.doesNotMatch(chapterGeneration, /result\.piperAvailable && result\.capabilities\?\.outputAvailable \? "Connected"/);
 });
 
+test("chapter generation explains and logs every button enablement blocker", () => {
+  assert.match(chapterGeneration, /!chapter && "No chapter is selected\."/);
+  assert.match(chapterGeneration, /!chapterSegments\.length && "No narration segments are assigned to this chapter\."/);
+  assert.match(chapterGeneration, /health\.label === "Offline"/);
+  assert.match(chapterGeneration, /health\.label === "Error"/);
+  assert.match(chapterGeneration, /console\.warn\("Generate Chapter disabled:", generationDisabledReason\)/);
+  assert.match(chapterGeneration, /disabled=\{generationDisabled\}/);
+  assert.match(chapterGeneration, /role="status">\{generationDisabledReason\}/);
+});
+
 test("reader chunks local Piper synthesis and exposes controls", () => {
   assert.match(reader, /splitTextForVoiceWorker\(stripReaderMarkup\(chapter\.content/);
   assert.match(reader, /playLocalVoiceFromChunk/);

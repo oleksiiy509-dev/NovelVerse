@@ -14,8 +14,19 @@ export default function ChapterGeneration({ book, chapter, segments }) {
   const audio = useRef(new Map());
   const createdUrls = useRef([]);
   const chapterSegments = segments.filter((segment) => String(segment.chapterId) === String(chapter?.id));
+  const generationBlockers = [
+    !chapter && "No chapter is selected.",
+    chapter && !chapterSegments.length && "No narration segments are assigned to this chapter.",
+    health.label === "Offline" && `Local voice worker is offline: ${health.detail}`,
+    health.label === "Error" && `Local voice worker health check failed: ${health.detail}`,
+  ].filter(Boolean);
+  const generationDisabled = generationBlockers.length > 0;
+  const generationDisabledReason = generationBlockers.join(" ");
 
   useEffect(() => () => { clearTimeout(timer.current); createdUrls.current.forEach(URL.revokeObjectURL); }, []);
+  useEffect(() => {
+    if (generationDisabled) console.warn("Generate Chapter disabled:", generationDisabledReason);
+  }, [generationDisabled, generationDisabledReason]);
   const checkHealth = useCallback(async () => {
       setCheckingHealth(true);
       try {
@@ -63,7 +74,7 @@ export default function ChapterGeneration({ book, chapter, segments }) {
   };
 
   return <section className="chapter-generation">
-    <div className="chapter-generation__heading"><div><h3>Local audio</h3><p>Piper renders and saves the chapter on this PC. Nothing is uploaded.</p><span className={`chapter-generation__health ${health.label.toLowerCase()}`}><i/> {health.label} · {health.detail}</span></div><div className="chapter-generation__heading-actions"><button className="secondary" type="button" onClick={() => checkHealth()} disabled={checkingHealth}>{checkingHealth ? "Checking…" : "Health Check"}</button><button type="button" onClick={generate} disabled={!chapter || !chapterSegments.length || health.label === "Offline" || health.label === "Error"}>Generate Chapter</button></div></div>
+    <div className="chapter-generation__heading"><div><h3>Local audio</h3><p>Piper renders and saves the chapter on this PC. Nothing is uploaded.</p><span className={`chapter-generation__health ${health.label.toLowerCase()}`}><i/> {health.label} · {health.detail}</span></div><div className="chapter-generation__heading-actions"><button className="secondary" type="button" onClick={() => checkHealth()} disabled={checkingHealth}>{checkingHealth ? "Checking…" : "Health Check"}</button><button type="button" onClick={generate} disabled={generationDisabled} aria-describedby={generationDisabled ? "chapter-generation-disabled-reason" : undefined}>Generate Chapter</button>{generationDisabled && <p id="chapter-generation-disabled-reason" className="chapter-generation__error" role="status">{generationDisabledReason}</p>}</div></div>
     <div className="chapter-generation__queue" aria-label="Generation queue">{jobs.map((job) => <article key={job.id}>
       <div><strong>{chapter?.title || "Chapter"}</strong><span className={`chapter-generation__status ${job.status.toLowerCase()}`}>{job.status}</span></div>
       {!terminal.has(job.status) && <progress max={job.total || 1} value={job.completed || 0}/>} 
