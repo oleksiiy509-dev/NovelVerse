@@ -5,8 +5,9 @@ export const VOICES = ["Aster", "Briar", "Cedar", "Dahlia", "Ember", "Flint", "L
 const DIRECTOR_VERSION = 1;
 const LONG_SEGMENT_CHARS = 500;
 const NAME = "[\\p{Lu}][\\p{L}'’-]*(?:\\s+[\\p{Lu}][\\p{L}'’-]*){0,2}";
-const SPEECH_VERBS = "said|asked|replied|answered|whispered|shouted|cried|murmured|yelled|called|added|sighed";
+const SPEECH_VERBS = "said|asked|replied|answered|whispered|shouted|cried|murmured|muttered|yelled|called|added|sighed|snapped|exclaimed|begged|pleaded|demanded|warned|insisted|laughed|sobbed|growled|hissed";
 const THOUGHT_VERBS = "thought|wondered|remembered|realized|imagined";
+const FALSE_NAMES = new Set(["a", "an", "the", "he", "she", "they", "we", "i", "you", "it", "his", "her", "their", "someone", "anyone", "everyone", "nobody", "chapter", "part", "meanwhile", "later", "then", "finally", "suddenly", "narrator"]);
 
 const thoughtText = (html) => String(html).replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, "\n[[thought]]$1[[/thought]]\n");
 
@@ -30,27 +31,46 @@ export function plainText(html = "") {
 
 export function classifyEmotion(text) {
   const value = String(text).toLowerCase();
-  if (/\b(whisper(?:ed|ing)?|murmur(?:ed|ing)?|softly|тихо|шеп)/iu.test(value)) return "Whisper";
-  if (/\b(shout(?:ed|ing)?|yell(?:ed|ing)?|scream(?:ed|ing)?|крич)/iu.test(value) || /!{2,}/.test(text)) return "Shouting";
-  if (/\b(angry|furious|rage|snarl(?:ed)?|гнів|зл[а-я]*|ярост)/iu.test(value)) return "Angry";
-  if (/\b(afraid|fear|terrif(?:ied|ying)|trembl(?:e|ed|ing)|scared|страх|боя|жах)/iu.test(value)) return "Fear";
-  if (/\b(sad|cried|crying|wept|sorrow|сум|плач)/iu.test(value)) return "Sad";
-  if (/\b(happy|laugh(?:ed|ing)?|smil(?:e|ed|ing)|joy|glad|щаслив|усміх|рад)/iu.test(value)) return "Happy";
+  const signals = [
+    ["Whisper", /\b(whisper(?:ed|ing)?|murmur(?:ed|ing)?|mutter(?:ed|ing)?|hushed|under (?:his|her|their) breath|softly|тихо|шеп)/iu],
+    ["Shouting", /\b(shout(?:ed|ing)?|yell(?:ed|ing)?|scream(?:ed|ing)?|roared|bellowed|exclaimed|крич)/iu],
+    ["Angry", /\b(angry|furious|rage|enraged|snarl(?:ed)?|snapped|growled|hissed|hate|damn|гнів|зл[а-я]*|ярост)/iu],
+    ["Fear", /\b(afraid|fear|panic(?:ked)?|terrif(?:ied|ying)|trembl(?:e|ed|ing)|shuddered|scared|horrified|страх|боя|жах)/iu],
+    ["Sad", /\b(sad|cried|crying|wept|sobbed|sorrow|grief|heartbroken|tears?|сум|плач)/iu],
+    ["Happy", /\b(happy|laugh(?:ed|ing)?|grinned|smil(?:e|ed|ing)|joy|delighted|glad|cheered|щаслив|усміх|рад)/iu],
+  ];
+  if (/!{2,}/.test(value) || (/!/.test(value) && /\b(now|stop|run|no|help|listen)\b/iu.test(value))) return "Shouting";
+  for (const [emotion, pattern] of signals) if (pattern.test(value)) return emotion;
   return "Neutral";
+}
+
+function cleanName(name) {
+  return String(name || "").replace(/[’']s$/iu, "").replace(/\s+/g, " ").trim();
+}
+
+function validName(name) {
+  const words = cleanName(name).toLocaleLowerCase().split(/\s+/u);
+  return Boolean(words[0]) && !words.some((word) => FALSE_NAMES.has(word)) && !/^(?:mr|mrs|ms|dr|sir|lady)$/iu.test(cleanName(name));
 }
 
 function attributedName(text) {
   const verbs = `${SPEECH_VERBS}|${THOUGHT_VERBS}`;
   const afterVerb = new RegExp(`(?:${verbs})\\s+(${NAME})`, "iu").exec(text);
   const beforeVerb = new RegExp(`(${NAME})\\s+(?:${verbs})`, "iu").exec(text);
-  return beforeVerb?.[1] || afterVerb?.[1] || "";
+  const name = cleanName(beforeVerb?.[1] || afterVerb?.[1]);
+  return validName(name) ? name : "";
 }
 
 function sentences(text) {
   return (text.match(/[^.!?…]+(?:[.!?…]+|$)/gu) || [text]).map((part) => part.trim()).filter(Boolean);
 }
 
-function parseLine(line) {
+function withContext(segment, context) {
+  Object.defineProperty(segment, "analysisContext", { value: context, enumerable: false });
+  return segment;
+}
+
+function parseLine(line, fallbackSpeaker = "") {
   const thought = /^\[\[thought\]\]([\s\S]*)\[\[\/thought\]\]$/.exec(line);
   if (thought) return sentences(plainText(thought[1])).map((text) => ({ type: "Thought", speaker: attributedName(line), text }));
   const labelled = new RegExp(`^(${NAME})\\s*:\\s+`, "u").exec(line);
@@ -60,13 +80,13 @@ function parseLine(line) {
   const quotes = [...line.matchAll(quotePattern)];
   if (!quotes.length) return sentences(line).map((text) => ({ type: "Narration", speaker: "Narrator", text }));
 
-  const speaker = attributedName(line);
+  const speaker = attributedName(line) || fallbackSpeaker;
   const parts = [];
   let cursor = 0;
   for (const quote of quotes) {
     const before = line.slice(cursor, quote.index).trim().replace(/^[,;—–-]+|[,;—–-]+$/g, "").trim();
     if (before) parts.push(...sentences(before).map((text) => ({ type: "Narration", speaker: "Narrator", text })));
-    parts.push(...sentences(quote[1]).map((text) => ({ type: "Dialogue", speaker, text })));
+    parts.push(...sentences(quote[1]).map((text) => withContext({ type: "Dialogue", speaker, text }, line)));
     cursor = quote.index + quote[0].length;
   }
   const after = line.slice(cursor).trim().replace(/^[,;—–-]+/, "").trim();
@@ -75,7 +95,32 @@ function parseLine(line) {
 }
 
 export function detectSegments(text) {
-  return plainText(thoughtText(text)).split(/\n+/).map((line) => line.trim()).filter(Boolean).flatMap(parseLine);
+  const lines = plainText(thoughtText(text)).split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const explicitNames = lines.map((line) => {
+    const labelled = new RegExp(`^(${NAME})\\s*:\\s+`, "u").exec(line)?.[1];
+    return cleanName(attributedName(line) || labelled);
+  }).filter(validName);
+  const canonical = new Map();
+  for (const name of explicitNames) if (!canonical.has(name.toLocaleLowerCase())) canonical.set(name.toLocaleLowerCase(), name);
+  const participants = [];
+  let lastSpeaker = "";
+  return lines.flatMap((line) => {
+    const labelled = new RegExp(`^(${NAME})\\s*:\\s+`, "u").exec(line)?.[1] || "";
+    let speaker = attributedName(line) || (validName(labelled) ? labelled : "");
+    if (!speaker && /[“"]/u.test(line)) {
+      const nearby = [...canonical.values()].find((name) => new RegExp(`(^|[^\\p{L}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}]|$)`, "iu").test(line));
+      speaker = nearby || (participants.length === 2 ? participants.find((name) => name !== lastSpeaker) : participants[0]) || "";
+    }
+    if (speaker) {
+      speaker = canonical.get(cleanName(speaker).toLocaleLowerCase()) || cleanName(speaker);
+      const old = participants.indexOf(speaker);
+      if (old >= 0) participants.splice(old, 1);
+      participants.push(speaker);
+      if (participants.length > 2) participants.shift();
+      lastSpeaker = speaker;
+    }
+    return parseLine(line, speaker);
+  });
 }
 
 export function createCharacter(name, index = 0) {
@@ -95,15 +140,20 @@ export function estimateDuration(text, speed = 1) {
 }
 
 export function analyzeChapters(chapters = []) {
-  const raw = chapters.flatMap((chapter) => detectSegments(chapter.content).map((segment) => ({ ...segment, chapterId: chapter.id, chapterTitle: chapter.title })));
-  const detected = raw.map((item) => item.speaker).filter(Boolean);
-  const names = [...new Set(["Narrator", ...detected])];
+  const raw = chapters.flatMap((chapter) => detectSegments(chapter.content).map((segment) => ({ ...segment, analysisContext: segment.analysisContext || "", chapterId: chapter.id, chapterTitle: chapter.title })));
+  const canonicalNames = new Map([["narrator", "Narrator"]]);
+  for (const item of raw) {
+    const name = cleanName(item.speaker);
+    if (validName(name) && !canonicalNames.has(name.toLocaleLowerCase())) canonicalNames.set(name.toLocaleLowerCase(), name);
+    item.speaker = name ? canonicalNames.get(name.toLocaleLowerCase()) || "" : "";
+  }
+  const names = [...canonicalNames.values()];
   const characters = names.map(createCharacter);
   const byName = Object.fromEntries(characters.map((character) => [character.name, character]));
-  const segments = raw.map((item, index) => ({
+  const segments = raw.map(({ analysisContext, ...item }, index) => ({
     id: globalThis.crypto?.randomUUID?.() || `segment-${Date.now()}-${index}`,
     ...item,
-    emotion: classifyEmotion(item.text),
+    emotion: classifyEmotion(`${item.text} ${analysisContext}`),
     voice: byName[item.speaker]?.voice || "",
     estimatedDuration: estimateDuration(item.text, byName[item.speaker]?.speed),
   }));

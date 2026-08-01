@@ -51,3 +51,26 @@ test("imports legacy Director aliases without losing additional data", () => {
   assert.equal(result.segments[0].voice, "Aster");
   assert.deepEqual(result.scenes, [{ id: 1 }]);
 });
+
+test("uses nearby known names and alternating conversation context for unattributed quotes", () => {
+  const content = [
+    "Mara: We need to talk.",
+    "Elias: I am listening.",
+    "Mara looked toward the door. “We cannot stay.”",
+    "“Where will we go?”",
+  ].join("\n");
+  const dialogue = detectSegments(content).filter(({ type }) => type === "Dialogue");
+  assert.deepEqual(dialogue.map(({ speaker }) => speaker), ["Mara", "Elias", "Mara", "Elias"]);
+});
+
+test("merges case-only duplicate character names and ignores pronoun attributions", () => {
+  const result = analyzeChapters([{ id: "c", title: "Talk", content: 'Mara: Hello.\nMARA: Again.\n“Wait,” he said.' }]);
+  assert.deepEqual(result.characters.map(({ name }) => name), ["Narrator", "Mara"]);
+  assert.equal(result.characters.find(({ name }) => name === "Mara").lineCount, 3);
+  assert.equal(result.segments.filter(({ type }) => type === "Dialogue").at(-1).speaker, "Mara");
+});
+
+test("predicts emotion from dialogue delivery and stronger punctuation cues", () => {
+  const result = analyzeChapters([{ id: "c", title: "Danger", content: '“Do not move,” Mara whispered.\n“RUN!” Elias shouted.' }]);
+  assert.deepEqual(result.segments.filter(({ type }) => type === "Dialogue").map(({ emotion }) => emotion), ["Whisper", "Shouting"]);
+});
