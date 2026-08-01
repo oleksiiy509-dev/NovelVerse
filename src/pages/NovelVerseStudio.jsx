@@ -34,7 +34,7 @@ function NovelVerseStudio() {
         </nav>
       </aside>
       <section className="studio-content">
-        {slug === "books" ? <StudioBooks /> : slug === "audio-production" ? <AudioProductionDashboard /> : slug === "import-book" ? <BookImport /> : slug === "voice-director" ? <VoiceDirector /> : <><h2>{activeSection[0]}</h2><p>This section is coming soon.</p></>}
+        {slug === "audio-production" ? <AudioProductionDashboard /> : slug === "import-book" ? <BookImport /> : slug === "voice-director" ? <VoiceDirector /> : slug === "books" ? <StudioBooks /> : <><h2>{activeSection[0]}</h2><p>This section is coming soon.</p></>}
       </section>
     </main>
   );
