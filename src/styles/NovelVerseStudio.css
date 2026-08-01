@@ -47,6 +47,42 @@
   color: #686878;
 }
 
+.studio-books { max-width: 1280px; margin: 0 auto; }
+.studio-books > header, .studio-books__controls, .studio-books__bulk, .studio-books footer, .studio-books footer div { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.studio-books > header h2, .studio-books > header p { margin: 0 0 .35rem; }
+.studio-books button { margin: 0; background: #6757d9; }
+.studio-books__controls { justify-content: flex-start; margin: 1.75rem 0 1rem; }
+.studio-books__controls label { display: flex; align-items: center; gap: .45rem; color: #686878; font-size: .85rem; font-weight: 700; }
+.studio-books__controls input, .studio-books__controls select { padding: .7rem .8rem; border: 1px solid #d8d7e0; border-radius: .5rem; background: #fff; color: #252431; font: inherit; }
+.studio-books__search { flex: 1; }
+.studio-books__search input { width: min(100%, 420px); }
+.studio-books__bulk { justify-content: flex-start; padding: .75rem 1rem; margin-bottom: .75rem; border-radius: .55rem; background: #eae8fb; }
+.studio-books__bulk button { padding: .55rem .75rem; }
+.studio-books__table-wrap { overflow: visible; border: 1px solid #e0dfe6; border-radius: .75rem; background: #fff; }
+.studio-books table { width: 100%; border-collapse: collapse; }
+.studio-books th, .studio-books td { padding: .8rem; border-bottom: 1px solid #ecebf0; text-align: left; vertical-align: middle; }
+.studio-books th { color: #6b6878; font-size: .75rem; letter-spacing: .04em; text-transform: uppercase; }
+.studio-books tbody tr:last-child td { border-bottom: 0; }
+.studio-books__identity { display: flex; align-items: center; gap: .75rem; min-width: 210px; }
+.studio-books__identity img, .studio-books__identity > span { width: 42px; height: 58px; border-radius: .3rem; object-fit: cover; }
+.studio-books__identity > span { display: grid; place-items: center; background: #e7e4f8; color: #5145ad; font-weight: 800; }
+.studio-books__identity div { display: grid; gap: .25rem; }
+.studio-books__identity small { color: #777485; }
+.studio-books__status { display: inline-block; padding: .3rem .55rem; border-radius: 2rem; background: #efedf4; white-space: nowrap; font-size: .78rem; font-weight: 700; }
+.studio-books__status.published { background: #e2f5e8; color: #24633a; }
+.studio-books__status.in-production { background: #fff1cf; color: #795713; }
+.studio-books details { position: relative; }
+.studio-books summary { cursor: pointer; color: #5145ad; font-weight: 700; list-style: none; }
+.studio-books details > div { position: absolute; z-index: 3; right: 0; display: grid; width: 190px; padding: .4rem; border: 1px solid #dedce7; border-radius: .5rem; background: #fff; box-shadow: 0 8px 24px #29253c24; }
+.studio-books details button { padding: .55rem .65rem; background: transparent; color: #343140; text-align: left; }
+.studio-books details button:hover { background: #efedff; }
+.studio-books details button.danger { color: #a12a35; }
+.studio-books__message { padding: 3rem 1rem; border: 1px solid #e0dfe6; border-radius: .75rem; background: #fff; color: #777485; text-align: center; }
+.studio-books__message.error { padding: .85rem; margin-bottom: .75rem; border-color: #efc9cc; background: #fff0f1; color: #9b2933; }
+.studio-books footer { margin-top: 1rem; color: #6d6a78; }
+.studio-books footer button { padding: .55rem .75rem; background: #eceaf8; color: #38334f; }
+.studio-books button:disabled { cursor: not-allowed; opacity: .45; }
+
 .audio-production { max-width: 1080px; }
 .audio-production__header, .audio-production__title-row, .audio-production__actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .audio-production__header h2, .audio-production__title-row h3 { margin: 0; }
@@ -166,4 +202,12 @@
   .book-import__summary dl, .book-import__actions, .book-import__tools { flex-wrap: wrap; }
   .voice-director__selectors, .voice-director__segment-fields { grid-template-columns: 1fr; }
   .voice-director > header { align-items: flex-start; }
+  .studio-books > header, .studio-books__controls { align-items: stretch; flex-direction: column; }
+  .studio-books__controls label { justify-content: space-between; }
+  .studio-books__search input { width: 100%; }
+  .studio-books__bulk { flex-wrap: wrap; }
+  .studio-books__bulk strong { width: 100%; }
+  .studio-books__table-wrap { overflow-x: auto; }
+  .studio-books table { min-width: 900px; }
+  .studio-books footer { align-items: flex-start; flex-direction: column; }
 }

@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import AudioProductionDashboard from "../components/AudioProductionDashboard.jsx";
 import BookImport from "../components/BookImport.jsx";
+import StudioBooks from "../components/StudioBooks.jsx";
 import VoiceDirector from "../components/VoiceDirector.jsx";
 import "../styles/NovelVerseStudio.css";
 
@@ -33,7 +34,7 @@ function NovelVerseStudio() {
         </nav>
       </aside>
       <section className="studio-content">
-        {slug === "audio-production" ? <AudioProductionDashboard /> : slug === "import-book" ? <BookImport /> : slug === "voice-director" ? <VoiceDirector /> : <><h2>{activeSection[0]}</h2><p>This section is coming soon.</p></>}
+        {slug === "books" ? <StudioBooks /> : slug === "audio-production" ? <AudioProductionDashboard /> : slug === "import-book" ? <BookImport /> : slug === "voice-director" ? <VoiceDirector /> : <><h2>{activeSection[0]}</h2><p>This section is coming soon.</p></>}
       </section>
     </main>
   );
