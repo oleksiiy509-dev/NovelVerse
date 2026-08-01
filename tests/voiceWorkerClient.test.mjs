@@ -18,6 +18,7 @@ test("frontend voice worker client uses local defaults and public endpoints only
   assert.match(workerClient, /uk_UA-ukrainian_tts-medium/);
   assert.match(workerClient, /VITE_VOICE_WORKER_TOKEN/);
   assert.match(workerClient, /Authorization: `Bearer/);
+  assert.match(workerClient, /chapter-jobs\/\$\{encodeURIComponent\(id\)\}\/download/);
   assert.doesNotMatch(workerClient, /SECRET/);
 });
 

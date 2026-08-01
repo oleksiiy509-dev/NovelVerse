@@ -153,6 +153,11 @@ const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length
     assert.equal(job.fileName, 'Chapter 0001.mp3');
     assert.equal(job.format, 'mp3');
     assert.ok(job.duration > 0); assert.ok(job.size > 44); assert.ok(job.generationTime >= 0);
+    assert.equal(job.audioUrl, `/chapter-jobs/${job.id}/download`);
+    const audio = await ctx.request(job.audioUrl, { headers: { authorization: 'Bearer secret' } });
+    assert.equal(audio.status, 200);
+    assert.match(audio.headers.get('content-type'), /audio\/mpeg/);
+    assert.ok((await audio.arrayBuffer()).byteLength > 44);
     assert.equal((await stat(path.join(outputDir, 'A Book', 'Chapter 0001.mp3'))).isFile(), true);
     const cached = await (await ctx.request('/chapter-jobs', auth({ ...payload, chapterTitle: 'Renamed without audio changes' }))).json();
     assert.equal(cached.status, 'Finished'); assert.equal(cached.cached, true); assert.equal(cached.generationTime, 0);

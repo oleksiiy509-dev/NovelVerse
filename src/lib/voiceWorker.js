@@ -64,7 +64,7 @@ export const cancelChapterGeneration = (id) => sendJson(`/chapter-jobs/${encodeU
 export const openChapterOutputFolder = (id) => sendJson(`/chapter-jobs/${encodeURIComponent(id)}/open-folder`, {});
 
 export async function getChapterAudio(id) {
-  const res = await fetch(`${getVoiceWorkerUrl()}/chapter-jobs/${encodeURIComponent(id)}/audio`, { headers: voiceWorkerHeaders({ accept: "audio/wav" }) });
+  const res = await fetch(`${getVoiceWorkerUrl()}/chapter-jobs/${encodeURIComponent(id)}/download`, { headers: voiceWorkerHeaders({ accept: "audio/wav" }) });
   if (!res.ok) throw Object.assign(new Error(`Voice Worker audio returned HTTP ${res.status}`), { status: res.status });
   return res.blob();
 }
