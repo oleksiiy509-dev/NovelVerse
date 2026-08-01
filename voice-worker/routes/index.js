@@ -28,7 +28,7 @@ router.get('/status', (req, res) => res.json({ ok: true, defaultProvider: req.ap
 router.post('/chapter-jobs', async (req, res, next) => {
   try { res.status(202).json(await createChapterJob(req.app.locals.config, req.body)); } catch (error) { next(error); }
 });
-router.get('/chapter-jobs/:id', (req, res) => {
+router.get('/chapter-jobs/:id/status', (req, res) => {
   const job = getChapterJob(req.params.id);
   if (!job) return res.status(404).json({ ok: false, error: 'job_not_found' });
   res.json(publicJob(job));

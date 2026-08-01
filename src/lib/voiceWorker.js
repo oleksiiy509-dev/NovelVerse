@@ -59,7 +59,7 @@ export async function getVoiceWorkerHealth() {
 }
 
 export const createChapterGeneration = (payload, signal) => sendJson("/chapter-jobs", payload, signal);
-export const getChapterGeneration = (id) => requestJson(`/chapter-jobs/${encodeURIComponent(id)}`, 30_000);
+export const getChapterGeneration = (id) => requestJson(`/chapter-jobs/${encodeURIComponent(id)}/status`, 30_000);
 export const cancelChapterGeneration = (id) => sendJson(`/chapter-jobs/${encodeURIComponent(id)}/cancel`, {});
 export const openChapterOutputFolder = (id) => sendJson(`/chapter-jobs/${encodeURIComponent(id)}/open-folder`, {});
 

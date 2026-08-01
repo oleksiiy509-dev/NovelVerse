@@ -147,7 +147,7 @@ const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length
     let job = JSON.parse(createdText);
     for (let attempt = 0; attempt < 50 && job.status !== 'Finished'; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 20));
-      job = await (await ctx.request(`/chapter-jobs/${job.id}`, { headers: { authorization: 'Bearer secret' } })).json();
+      job = await (await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } })).json();
     }
     assert.equal(job.status, 'Finished', job.error);
     assert.equal(job.fileName, 'Chapter 0001.mp3');
