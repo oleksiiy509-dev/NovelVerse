@@ -29,3 +29,25 @@ test("separates quoted dialogue from narration and assigns an attributed speaker
     { type: "Narration", speaker: "Narrator", text: "Mara whispered." },
   ]);
 });
+
+test("detects marked thoughts and reports character appearance statistics", () => {
+  const result = analyzeChapters([{ id: "c1", title: "A thought", content: "<p>Mara: Hello.</p><p><em>Mara thought this was terrifying.</em></p><p>Mara: Run!!</p>" }]);
+  const mara = result.characters.find(({ name }) => name === "Mara");
+  assert.deepEqual({ lines: mara.lineCount, first: mara.firstAppearance, last: mara.lastAppearance }, { lines: 3, first: 1, last: 3 });
+  assert.equal(result.segments[1].type, "Thought");
+  assert.equal(result.segments[1].speaker, "Mara");
+  assert.equal(result.segments[1].emotion, "Fear");
+  assert.equal(typeof result.segments[1].estimatedDuration, "number");
+});
+
+test("warns when a named speaker is not in the character list", () => {
+  assert.equal(validateSegments([{ id: "s", speaker: "Ghost", voice: "Aster", text: "Boo" }], [{ name: "Narrator" }])[0].message, "Unknown speaker");
+});
+
+test("imports legacy Director aliases without losing additional data", () => {
+  const result = parseDirectorJson(JSON.stringify({ version: "legacy", characters: [{ name: "Mara" }], segments: [{ id: "s", segment_type: "dialogue", speaker_name: "Mara", voice_profile: "Aster", text: "Hi" }], scenes: [{ id: 1 }] }));
+  assert.equal(result.segments[0].type, "dialogue");
+  assert.equal(result.segments[0].speaker, "Mara");
+  assert.equal(result.segments[0].voice, "Aster");
+  assert.deepEqual(result.scenes, [{ id: 1 }]);
+});
