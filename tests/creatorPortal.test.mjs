@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { cleanupStorage, createBackup, createNotification, monitorHealth, restoreBackup, schedulePublication, transitionBook } from "../src/lib/creatorPortal.js";
 
 test("production workflow tracks status history", () => {
@@ -37,4 +38,13 @@ test("storage cleanup only removes cleanable assets", () => {
 test("monitoring detects capacity and worker failures", () => {
   assert.equal(monitorHealth({ cpu: 20, ram: 30, storage: 40, workersOnline: 2, workersTotal: 2 }).status, "Healthy");
   assert.deepEqual(monitorHealth({ cpu: 95, ram: 30, storage: 90, workersOnline: 1, workersTotal: 2 }).issues, ["CPU critical", "Storage almost full", "Worker offline"]);
+});
+
+test("chapter objects are never rendered directly in the creator portal", () => {
+  const source = readFileSync("src/pages/CreatorPortal.jsx", "utf8");
+  const chapter = { id: "chapter-1", title: "Arrival", content: "Hello", audioStatus: "Missing" };
+
+  assert.doesNotMatch(source, /\{book\.chapters\} chapters/);
+  assert.equal(source.match(/Array\.isArray\(book\.chapters\) \? book\.chapters\.length : book\.chapters/g)?.length, 2);
+  assert.equal(Array.isArray([chapter]) ? [chapter].length : [chapter], 1);
 });
