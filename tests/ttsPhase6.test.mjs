@@ -34,6 +34,12 @@ test("missing API key and provider errors are normalized", () => {
   assert.match(provider, /provider_bad_request/);
 });
 
+test("Piper is instantiated only when it is the selected optional provider", () => {
+  assert.doesNotMatch(provider, /providers\.set\("piper", new PiperTtsProvider\(\)\)/);
+  assert.match(provider, /if \(selected === "piper"\) return providers\.get\("piper"\) \|\| new PiperTtsProvider\(\)/);
+  assert.match(endpoint, /provider === "openai" && !env\("OPENAI_API_KEY"\).*TTS_API_KEY_MISSING/);
+});
+
 test("provider failures log resolution, safe configuration, and original diagnostics", () => {
   for (const field of ["selected_provider", "selected_model", "provider_configuration", "required_environment_variables", "missing_environment_variables", "missing_configuration", "provider_initialization_error", "original_exception", "stack_trace"]) {
     assert.match(provider + endpoint, new RegExp(field));
