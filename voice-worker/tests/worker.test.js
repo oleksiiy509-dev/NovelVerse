@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createApp } from '../api/app.js';
 import { requireBearerToken } from '../middleware/auth.js';
+import { WorkQueue } from '../utils/runtime.js';
 
 async function fixture(overrides = {}) {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'nv-worker-'));
@@ -325,4 +326,28 @@ test('cache reuses generated preview audio', async () => {
   const metadata = JSON.parse(Buffer.from(second.headers.get('x-novelverse-metadata'), 'base64').toString());
   assert.equal(metadata.cacheHit, true);
   await cleanup(ctx);
+});
+
+test('readiness and diagnostics expose bounded queue state', async () => {
+  const ctx = await fixture({ queueConcurrency: 3, maxPending: 7 });
+  const ready = await ctx.request('/ready');
+  assert.equal(ready.status, 200);
+  assert.deepEqual((await ready.json()).queue, { active: 0, pending: 0, concurrency: 3, maxPending: 7, accepting: true });
+  const metrics = await ctx.request('/metrics', { headers: { authorization: 'Bearer secret' } });
+  assert.equal(metrics.status, 200);
+  assert.ok((await metrics.json()).counters.requests >= 2);
+  await cleanup(ctx);
+});
+
+test('work queue rejects excess pending work and holds concurrency slots until completion', async () => {
+  const queue = new WorkQueue({ concurrency: 1, maxPending: 1, timeoutMs: 1_000 });
+  let release;
+  const first = queue.run(() => new Promise((resolve) => { release = resolve; }));
+  const second = queue.run(async () => 'second');
+  await assert.rejects(queue.run(async () => 'third'), { code: 'queue_full', status: 503 });
+  assert.equal(queue.status.active, 1);
+  assert.equal(queue.status.pending, 1);
+  release('first');
+  assert.equal(await first, 'first');
+  assert.equal(await second, 'second');
 });
