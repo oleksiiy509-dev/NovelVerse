@@ -1,87 +1,65 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { loadManagedBooks } from "../lib/bookManagement";
+import { directorStorageKey, parseDirectorJson } from "../lib/voiceDirectorLocal";
+import ChapterGeneration from "./ChapterGeneration";
 
-const books = [
-  {
-    id: "last-horizon",
-    title: "The Last Horizon",
-    chapters: [
-      { id: 1, title: "Chapter 1 · The Signal", directorStatus: "Ready", completedSegments: 12, totalSegments: 12 },
-      { id: 2, title: "Chapter 2 · Departure", directorStatus: "In review", completedSegments: 8, totalSegments: 14 },
-      { id: 3, title: "Chapter 3 · Dark Orbit", directorStatus: "Not started", completedSegments: 0, totalSegments: 11 },
-    ],
-  },
-  {
-    id: "echoes-aether",
-    title: "Echoes of Aether",
-    chapters: [
-      { id: 1, title: "Chapter 1 · The Crossing", directorStatus: "Ready", completedSegments: 9, totalSegments: 9 },
-      { id: 2, title: "Chapter 2 · An Old Voice", directorStatus: "Not started", completedSegments: 0, totalSegments: 13 },
-    ],
-  },
-];
+const EMPTY_DIRECTOR = { characters: [], segments: [] };
+
+function readDirector(bookId) {
+  try {
+    const saved = localStorage.getItem(directorStorageKey(bookId));
+    return saved ? parseDirectorJson(saved) : EMPTY_DIRECTOR;
+  } catch {
+    return EMPTY_DIRECTOR;
+  }
+}
 
 function AudioProductionDashboard() {
-  const [bookId, setBookId] = useState(books[0].id);
-  const [chapterId, setChapterId] = useState(books[0].chapters[0].id);
-  const [paused, setPaused] = useState(false);
-  const [notice, setNotice] = useState("");
-  const book = books.find((item) => item.id === bookId) || books[0];
-  const chapter = book.chapters.find((item) => item.id === chapterId) || book.chapters[0];
+  const [searchParams] = useSearchParams();
+  const [books, setBooks] = useState([]);
+  const [bookId, setBookId] = useState("");
+  const [chapterId, setChapterId] = useState("");
+  const [director, setDirector] = useState(EMPTY_DIRECTOR);
+  const [error, setError] = useState("");
+  const book = books.find((item) => String(item.id) === bookId);
+  const chapter = book?.chapters.find((item) => String(item.id) === chapterId);
 
-  const placeholderAction = (message) => setNotice(`${message} is a placeholder action.`);
+  useEffect(() => {
+    loadManagedBooks().then((items) => {
+      const requestedBook = searchParams.get("book");
+      const selectedBook = items.find((item) => String(item.id) === requestedBook) || items[0];
+      setBooks(items);
+      setBookId(String(selectedBook?.id || ""));
+      setChapterId(String(selectedBook?.chapters[0]?.id || ""));
+    }).catch((loadError) => setError(loadError.message));
+  }, [searchParams]);
+
+  useEffect(() => {
+    setDirector(bookId ? readDirector(bookId) : EMPTY_DIRECTOR);
+  }, [bookId]);
 
   return (
     <div className="audio-production">
       <header className="audio-production__header">
         <div>
           <h2>Audio Production</h2>
-          <p>Prepare and track chapter audio for your book.</p>
+          <p>Generate and track local chapter audio for your book.</p>
         </div>
-        <button type="button" onClick={() => placeholderAction("Generate entire book")}>Generate Entire Book</button>
       </header>
 
-      {notice && <p className="audio-production__notice" role="status">{notice}</p>}
+      {error && <p className="chapter-generation__error" role="alert">{error}</p>}
 
-      <label className="audio-production__selector">
-        <span>Book</span>
-        <select value={bookId} onChange={(event) => { const nextBook = books.find((item) => item.id === event.target.value); setBookId(event.target.value); setChapterId(nextBook.chapters[0].id); }}>
-          {books.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-        </select>
-      </label>
-
-      <div className="audio-production__layout">
-        <aside className="audio-production__chapters" aria-label="Chapters">
-          <h3>Chapters</h3>
-          {book.chapters.map((item) => (
-            <button type="button" className={item.id === chapter.id ? "active" : ""} key={item.id} onClick={() => setChapterId(item.id)}>
-              <span>{item.title}</span>
-              <small>{item.directorStatus}</small>
-            </button>
-          ))}
-        </aside>
-
-        <section className="audio-production__workspace">
-          <div className="audio-production__title-row">
-            <div><small>SELECTED CHAPTER</small><h3>{chapter.title}</h3></div>
-            <button type="button" onClick={() => placeholderAction("Generate chapter")}>Generate Chapter</button>
-          </div>
-          <div className="audio-production__statuses">
-            <article><span>Director status</span><strong>{chapter.directorStatus}</strong></article>
-            <article><span>Voice Segments status</span><strong>{chapter.completedSegments} / {chapter.totalSegments}</strong></article>
-          </div>
-          <div className="audio-production__controls">
-            <button type="button" className="secondary" onClick={() => setPaused(!paused)}>{paused ? "Resume" : "Pause"}</button>
-          </div>
-          <div className="audio-production__preview">
-            <span aria-hidden="true">▶</span>
-            <div><h4>Audio preview</h4><p>Generated chapter audio will appear here.</p></div>
-          </div>
-          <div className="audio-production__actions">
-            <button type="button" className="secondary" onClick={() => placeholderAction("Upload MP3")}>Upload MP3</button>
-            <button type="button" className="secondary" onClick={() => placeholderAction("Publish")}>Publish</button>
-          </div>
-        </section>
+      <div className="voice-director__selectors">
+        <label>Book<select value={bookId} onChange={(event) => {
+          const nextBook = books.find((item) => String(item.id) === event.target.value);
+          setBookId(event.target.value);
+          setChapterId(String(nextBook?.chapters[0]?.id || ""));
+        }}>{books.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
+        <label>Chapter<select value={chapterId} onChange={(event) => setChapterId(event.target.value)}>{(book?.chapters || []).map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
       </div>
+
+      <ChapterGeneration book={book} chapter={chapter} segments={director.segments}/>
     </div>
   );
 }
