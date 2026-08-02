@@ -1,6 +1,6 @@
 -- Import chapters into an explicitly opened novel. This workflow never creates
 -- or looks up a novel and remains concurrency-safe through the unique index.
-create or replace function public.import_chapters_into_novel(
+create or replace function public.import_novel_chapters(
   target_novel_id bigint,
   import_chapters jsonb default '[]'::jsonb
 ) returns jsonb
@@ -35,4 +35,4 @@ begin
     'skipped', supplied_count - added_count, 'totalChapters', total_count);
 end $$;
 
-grant execute on function public.import_chapters_into_novel(bigint,jsonb) to authenticated;
+grant execute on function public.import_novel_chapters(bigint,jsonb) to authenticated;

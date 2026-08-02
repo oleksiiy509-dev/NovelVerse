@@ -8,7 +8,7 @@ export async function importChaptersIntoNovel(novelId, importedChapters, existin
   const chapters = additions.map(({ number, title, content }) => ({
     number, title: title?.trim() || `Chapter ${number}`, content,
   }));
-  const { data, error } = await supabase.rpc("import_chapters_into_novel", {
+  const { data, error } = await supabase.rpc("import_novel_chapters", {
     target_novel_id: novelId, import_chapters: chapters,
   });
   if (error) throw error;

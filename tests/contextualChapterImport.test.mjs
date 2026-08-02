@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const migration = readFileSync("supabase/migrations/20260802030000_contextual_chapter_import.sql", "utf8");
+const persistence = readFileSync("src/lib/bookImportPersistence.js", "utf8");
 const studio = readFileSync("src/pages/NovelVerseStudio.jsx", "utf8");
 const importView = readFileSync("src/components/BookImport.jsx", "utf8");
 
 test("chapter import targets only the explicitly opened novel", () => {
+  assert.match(migration, /create or replace function public\.import_novel_chapters\(/);
+  assert.match(persistence, /\.rpc\("import_novel_chapters", \{\s*target_novel_id: novelId, import_chapters: chapters/s);
+  assert.doesNotMatch(persistence, /import_chapters_into_novel/);
   assert.match(migration, /target_novel_id bigint/);
   assert.doesNotMatch(migration, /insert into public\.novels/i);
   assert.match(migration, /on conflict \(novel_id, number\).*do nothing/is);
