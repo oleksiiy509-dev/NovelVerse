@@ -1,172 +1,143 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getBookStatistics, parseBook, validateBookChapters } from "../lib/bookImport.js";
-import { clearChapterImportDraft, loadChapterImportDraft, saveChapterImportDraft } from "../lib/bookImportDraft.js";
+import { parseBook } from "../lib/bookImport.js";
 import { getImportPersistenceError } from "../lib/bookImportError.js";
-import { planChapterMerge } from "../lib/bookImportMerge.js";
-import { importChaptersIntoNovel } from "../lib/bookImportPersistence.js";
+import { importChapterBatch, MAX_IMPORT_BATCH_SIZE } from "../lib/bookImportPersistence.js";
+import { createQueueFiles, DEFAULT_IMPORT_BATCH_SIZE, estimateRemaining, formatDuration, normalizeBatchSize, prepareQueuedChapters, queueTotals } from "../lib/chapterImportQueue.js";
+import { clearImportQueue, loadImportQueue, saveImportQueue } from "../lib/chapterImportQueueStore.js";
 
-const acceptedFormats = ".txt,.fb2,.epub,.docx,.pdf";
+const acceptedFormats = ".txt,.fb2,.epub";
 
 function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
   const inputRef = useRef(null);
+  const runningRef = useRef(false);
   const [dragging, setDragging] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState("");
-  const [book, setBook] = useState(() => loadChapterImportDraft(novel?.id));
-  const [selected, setSelected] = useState(0);
-  const [cursor, setCursor] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [summary, setSummary] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [batchSize, setBatchSize] = useState(DEFAULT_IMPORT_BATCH_SIZE);
+  const [startedAt, setStartedAt] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [restored, setRestored] = useState(false);
 
   useEffect(() => {
-    if (!book) return;
-    const timeout = window.setTimeout(() => saveChapterImportDraft(novel?.id, book), 500);
-    return () => window.clearTimeout(timeout);
-  }, [book, novel?.id]);
+    let active = true;
+    loadImportQueue(novel?.id).then((saved) => {
+      if (!active || !saved?.files?.length) return;
+      setFiles(saved.files.map((file) => file.status === "running" ? { ...file, status: "queued" } : file));
+      setBatchSize(normalizeBatchSize(saved.batchSize));
+      setStartedAt(saved.startedAt || Date.now());
+      setRestored(true);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [novel?.id]);
 
-  const importFile = async (file) => {
-    if (!file) return;
-    setStatus("Parsing locally…");
-    setProgress(5);
-    try {
-      const parsed = await parseBook(file, setProgress);
-      setBook({ ...parsed, sourceName: file.name });
-      setSelected(0);
-      setStatus("Parsing complete. Nothing has been uploaded.");
-    } catch (error) {
-      setBook(null);
-      setProgress(0);
-      setStatus(error instanceof Error ? error.message : "The file could not be parsed.");
-    }
+  const persist = async (nextFiles, nextStartedAt = startedAt) => {
+    setFiles(nextFiles);
+    await saveImportQueue(novel.id, { files: nextFiles, batchSize, startedAt: nextStartedAt });
   };
 
-  const updateChapter = (index, patch) => setBook((current) => ({
-    ...current,
-    chapters: current.chapters.map((chapter, chapterIndex) => chapterIndex === index ? { ...chapter, ...patch } : chapter),
-  }));
-
-  const moveChapter = (offset) => {
-    const target = selected + offset;
-    if (!book || target < 0 || target >= book.chapters.length) return;
-    const chapters = [...book.chapters];
-    [chapters[selected], chapters[target]] = [chapters[target], chapters[selected]];
-    setBook({ ...book, chapters });
-    setSelected(target);
-  };
-
-  const mergeNext = () => {
-    if (!book || selected >= book.chapters.length - 1) return;
-    const chapters = [...book.chapters];
-    chapters[selected] = { ...chapters[selected], content: `${chapters[selected].content}\n\n${chapters[selected + 1].content}` };
-    chapters.splice(selected + 1, 1);
-    setBook({ ...book, chapters });
-  };
-
-  const splitChapter = () => {
-    const chapter = book?.chapters[selected];
-    if (!chapter || cursor <= 0 || cursor >= chapter.content.length) return;
-    const chapters = [...book.chapters];
-    chapters.splice(selected, 1,
-      { ...chapter, content: chapter.content.slice(0, cursor).trim() },
-      { id: crypto.randomUUID(), title: `${chapter.title} — Part 2`, content: chapter.content.slice(cursor).trim() });
-    setBook({ ...book, chapters });
-  };
-
-  const deleteChapter = () => {
-    if (!book || book.chapters.length === 1) return;
-    setBook({ ...book, chapters: book.chapters.filter((_, index) => index !== selected) });
-    setSelected(Math.max(0, selected - 1));
-  };
-
-  const saveDraft = async () => {
-    if (!book || !novel?.id) return;
-    setSaving(true);
-    setStatus("Importing chapters to Supabase…");
-    try {
-      const result = await importChaptersIntoNovel(novel.id, book.chapters, currentChapters.map((item) => item.number));
-      clearChapterImportDraft(novel.id);
-      setSummary(result);
-      setStatus("Import complete.");
-      onComplete?.(result);
-    } catch (error) {
-      setStatus(getImportPersistenceError(error));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const cancel = () => {
-    if (book?.metadata.cover?.startsWith("blob:")) URL.revokeObjectURL(book.metadata.cover);
-    setBook(null);
-    clearChapterImportDraft(novel?.id);
-    setProgress(0);
-    setStatus(""); setSummary(null);
+  const addFiles = (selected) => {
+    const supported = [...selected].filter((file) => /\.(txt|fb2|epub)$/i.test(file.name));
+    if (!supported.length) return;
+    const next = [...files.filter((file) => file.status !== "completed" && file.status !== "failed"), ...createQueueFiles(supported)];
+    setFiles(next);
+    saveImportQueue(novel.id, { files: next, batchSize, startedAt: 0 }).catch(() => {});
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const chapter = book?.chapters[selected];
-  const statistics = useMemo(() => getBookStatistics(book?.chapters), [book?.chapters]);
-  const warnings = useMemo(() => book ? [...book.warnings, ...validateBookChapters(book.chapters)] : [], [book]);
-  const mergePlan = useMemo(() => planChapterMerge(book?.chapters, currentChapters.map((item) => item.number)), [book?.chapters, currentChapters]);
-  const counts = { current: currentChapters.length, incoming: book?.chapters.length || 0, duplicates: mergePlan.skipped, added: mergePlan.additions.length, final: currentChapters.length + mergePlan.additions.length };
-  return (
-    <div className="book-import">
-      <header className="book-import__header">
-        <div><h2>Import Chapters</h2><p>Import chapters directly into <strong>{novel?.title}</strong>. This novel is always used.</p></div>
-        <span className="book-import__local">Local only</span>
-      </header>
+  const runQueue = async (sourceFiles = files) => {
+    if (runningRef.current || !sourceFiles.some((file) => file.status === "queued")) return;
+    runningRef.current = true;
+    setRunning(true);
+    const queueStartedAt = startedAt || Date.now();
+    setStartedAt(queueStartedAt);
+    let queue = sourceFiles.map((file) => ({ ...file }));
+    const reserved = new Set(currentChapters.map((chapter) => Number(chapter.number)));
+    queue.forEach((file) => {
+      if (file.chapters) file.chapters.slice(0, file.completedBatches * batchSize).forEach((chapter) => reserved.add(chapter.number));
+    });
 
-      {!book && <div
-        className={`book-import__dropzone${dragging ? " is-dragging" : ""}`}
-        onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-        onDragOver={(event) => event.preventDefault()}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => { event.preventDefault(); setDragging(false); importFile(event.dataTransfer.files[0]); }}
-      >
-        <strong>Drop chapter files here</strong>
-        <span>TXT, FB2, EPUB, DOCX or PDF</span>
-        <button type="button" onClick={() => inputRef.current?.click()}>Choose file</button>
-        <input ref={inputRef} type="file" accept={acceptedFormats} onChange={(event) => importFile(event.target.files[0])} />
-        <small>Files remain on this device and are never uploaded automatically.</small>
-      </div>}
+    for (let fileIndex = 0; fileIndex < queue.length; fileIndex += 1) {
+      let item = queue[fileIndex];
+      if (item.status !== "queued") continue;
+      const fileStartedAt = Date.now();
+      let checkpointAt = fileStartedAt;
+      try {
+        item = { ...item, status: "running", error: "" };
+        queue[fileIndex] = item;
+        await persist([...queue], queueStartedAt);
+        if (!item.chapters) {
+          const parsed = await parseBook(item.file);
+          const prepared = prepareQueuedChapters(parsed.chapters, [...reserved]);
+          item = { ...item, chapters: prepared.additions, detected: parsed.chapters.length, skipped: prepared.skipped,
+            totalBatches: Math.ceil(prepared.additions.length / batchSize) };
+          queue[fileIndex] = item;
+          await persist([...queue], queueStartedAt);
+        }
+        for (let batchIndex = item.completedBatches; batchIndex < item.totalBatches; batchIndex += 1) {
+          const batch = item.chapters.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+          const result = await importChapterBatch(novel.id, batch);
+          const completedAt = Date.now();
+          batch.forEach((chapter) => reserved.add(chapter.number));
+          item = { ...item, added: item.added + Number(result.added || 0), skipped: item.skipped + Number(result.skipped || 0),
+            completedBatches: batchIndex + 1, durationMs: item.durationMs + (completedAt - checkpointAt) };
+          checkpointAt = completedAt;
+          queue[fileIndex] = item;
+          await persist([...queue], queueStartedAt);
+        }
+        item = { ...item, status: "completed", durationMs: item.durationMs + (Date.now() - checkpointAt) };
+      } catch (error) {
+        item = { ...item, status: "failed", failed: Math.max(1, (item.chapters?.length || item.detected) - item.completedBatches * batchSize),
+          durationMs: item.durationMs + (Date.now() - checkpointAt), error: getImportPersistenceError(error) };
+      }
+      queue[fileIndex] = item;
+      await persist([...queue], queueStartedAt);
+    }
+    runningRef.current = false;
+    setRunning(false);
+    onComplete?.(queueTotals(queue));
+  };
 
-      {!!progress && <div className="book-import__progress" aria-live="polite">
-        <div><span>{status}</span><b>{progress}%</b></div>
-        <progress max="100" value={progress}>{progress}%</progress>
-      </div>}
+  const retryFailed = () => {
+    const next = files.map((file) => file.status === "failed" ? { ...file, status: "queued", failed: 0, error: "" } : file);
+    setFiles(next);
+    runQueue(next);
+  };
 
-      {summary && <section className="book-import__result" role="status"><h3>Import summary</h3><dl><div><dt>Added:</dt><dd>{summary.added}</dd></div><div><dt>Skipped duplicates:</dt><dd>{summary.skipped}</dd></div><div><dt>Total chapters:</dt><dd>{summary.totalChapters}</dd></div></dl></section>}
+  const reset = async () => {
+    await clearImportQueue(novel?.id);
+    setFiles([]); setStartedAt(0); setRestored(false);
+  };
 
-      {book && !summary && <>
-        <section className="book-import__summary">
-          <div className="book-import__cover">{(book.metadata.cover || novel?.cover_url) ? <img src={book.metadata.cover || novel.cover_url} alt="Book cover preview" /> : <span aria-label="No cover detected">No cover</span>}</div>
-          <div><h3>{novel?.title}</h3><p>{novel?.author || "Unknown author"}</p></div>
-          <dl><div><dt>Parsed chapters</dt><dd>{statistics.chapters}</dd></div><div><dt>Words</dt><dd>{statistics.words.toLocaleString()}</dd></div><div><dt>Estimated reading time</dt><dd>{statistics.readingMinutes} min</dd></div><div><dt>Encoding</dt><dd>{book.encoding}</dd></div></dl>
-        </section>
-        <section className="book-import__impact" aria-label="Import totals"><h3>Import into current novel</h3><dl><div><dt>Current novel</dt><dd>{novel?.title}</dd></div><div><dt>Current chapters</dt><dd>{counts.current}</dd></div><div><dt>Incoming chapters</dt><dd>{counts.incoming}</dd></div><div><dt>Duplicate chapters</dt><dd>{counts.duplicates}</dd></div><div><dt>New chapters</dt><dd>{counts.added}</dd></div><div className="total"><dt>Final total</dt><dd>{counts.final}</dd></div></dl></section>
-        {warnings.length > 0 && <section className="book-import__warnings"><strong>Import warnings</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></section>}
+  const totals = useMemo(() => queueTotals(files), [files]);
+  const currentIndex = files.findIndex((file) => file.status === "running");
+  const current = currentIndex >= 0 ? files[currentIndex] : null;
+  const processed = totals.added + totals.skipped + totals.failed;
+  const overall = totals.detected ? Math.min(100, Math.round(processed / totals.detected * 100)) : 0;
+  const finished = files.length > 0 && files.every((file) => ["completed", "failed"].includes(file.status));
+  const eta = estimateRemaining(startedAt, totals.added + totals.skipped, totals.detected);
 
-        <section className="book-import__editor">
-          <aside><h3>Parsed chapters <span>{book.chapters.length}</span></h3>{book.chapters.map((item, index) => <button type="button" className={index === selected ? "active" : ""} key={item.id} onClick={() => setSelected(index)}><span>{index + 1}</span>{item.title}</button>)}</aside>
-          <div className="book-import__preview">
-            <label>Chapter title<input value={chapter.title} onChange={(event) => updateChapter(selected, { title: event.target.value })} /></label>
-            <label>Chapter preview<textarea value={chapter.content} onSelect={(event) => setCursor(event.currentTarget.selectionStart)} onChange={(event) => updateChapter(selected, { content: event.target.value })} /></label>
-            <div className="book-import__tools">
-              <button type="button" onClick={() => moveChapter(-1)} disabled={selected === 0}>Move up</button>
-              <button type="button" onClick={() => moveChapter(1)} disabled={selected === book.chapters.length - 1}>Move down</button>
-              <button type="button" onClick={mergeNext} disabled={selected === book.chapters.length - 1}>Merge with next</button>
-              <button type="button" onClick={splitChapter} disabled={!cursor}>Split at cursor</button>
-              <button type="button" className="danger" onClick={deleteChapter} disabled={book.chapters.length === 1}>Delete</button>
-            </div>
-          </div>
-        </section>
-        <footer className="book-import__actions">
-          <button type="button" className="secondary" onClick={() => { cancel(); onCancel?.(); }}>Cancel</button>
-          <button type="button" onClick={saveDraft} disabled={saving || counts.added === 0}>{saving ? "Importing…" : "Import"}</button>
-        </footer>
-      </>}
+  return <div className="book-import">
+    <header className="book-import__header"><div><h2>Import Chapters</h2><p>Queue chapters directly into <strong>{novel?.title}</strong>, one file and one batch at a time.</p></div><span className="book-import__local">Resumable queue</span></header>
+    <div className={`book-import__dropzone${dragging ? " is-dragging" : ""}`}
+      onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()}
+      onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }}>
+      <strong>Drop chapter files here</strong><span>TXT, FB2 or EPUB · select multiple files</span>
+      <button type="button" disabled={running} onClick={() => inputRef.current?.click()}>Choose files</button>
+      <input ref={inputRef} type="file" multiple accept={acceptedFormats} onChange={(event) => addFiles(event.target.files)} />
+      <small>Files and completed batch checkpoints are kept on this device for recovery.</small>
     </div>
-  );
+
+    {files.length > 0 && <>
+      <section className="book-import__queue-progress" aria-live="polite">
+        <div className="book-import__progress"><div><span>Overall progress</span><b>{overall}%</b></div><progress max="100" value={overall}>{overall}%</progress></div>
+        <dl><div><dt>Files</dt><dd>{Math.max(totals.completed + totals.failedFiles, currentIndex + 1)} / {files.length}</dd></div><div><dt>Current file</dt><dd>{current?.name || (finished ? "Finished" : "Ready")}</dd></div><div><dt>Batch</dt><dd>{current ? `${current.completedBatches} / ${current.totalBatches || "—"}` : "—"}</dd></div><div><dt>Imported chapters</dt><dd>{totals.added.toLocaleString()} / {totals.detected.toLocaleString()}</dd></div><div><dt>Elapsed time</dt><dd>{formatDuration(startedAt ? Date.now() - startedAt : 0)}</dd></div><div><dt>Estimated remaining</dt><dd>{eta ? formatDuration(eta) : "—"}</dd></div></dl>
+      </section>
+      <label className="book-import__batch-size">Chapters per batch <input type="number" min="1" max={MAX_IMPORT_BATCH_SIZE} disabled={running || files.some((file) => file.chapters)} value={batchSize} onChange={(event) => setBatchSize(normalizeBatchSize(event.target.value))} /><small>Maximum 100 chapters per database call.</small></label>
+      {restored && !running && !finished && <p className="book-import__resume">A saved import queue was recovered. Resume from the last completed batch.</p>}
+      <section className="book-import__file-list"><h3>Files</h3>{files.map((file, index) => <article key={file.id} className={`is-${file.status}`}><span>{index + 1}</span><div><strong>{file.name}</strong><small>{file.error || file.status}</small></div><dl><div><dt>Detected</dt><dd>{file.detected || "—"}</dd></div><div><dt>Added</dt><dd>{file.added}</dd></div><div><dt>Skipped duplicates</dt><dd>{file.skipped}</dd></div><div><dt>Duration</dt><dd>{formatDuration(file.durationMs)}</dd></div></dl></article>)}</section>
+      {finished && <section className="book-import__result" role="status"><h3>Final summary</h3><dl><div><dt>Files imported</dt><dd>{totals.completed}</dd></div><div><dt>Chapters added</dt><dd>{totals.added}</dd></div><div><dt>Duplicates skipped</dt><dd>{totals.skipped}</dd></div><div><dt>Errors</dt><dd>{totals.failedFiles}</dd></div><div><dt>Total chapters in novel</dt><dd>{currentChapters.length + totals.added}</dd></div></dl></section>}
+      <footer className="book-import__actions"><button type="button" className="secondary" disabled={running} onClick={() => { reset(); onCancel?.(); }}>Cancel</button>{finished && totals.failedFiles > 0 && <button type="button" onClick={retryFailed}>Retry failed files</button>}{!finished && <button type="button" disabled={running} onClick={() => runQueue()}>{running ? "Importing…" : restored ? "Resume import" : "Start import"}</button>}{finished && <button type="button" onClick={reset}>Done</button>}</footer>
+    </>}
+  </div>;
 }
 
 export default BookImport;
