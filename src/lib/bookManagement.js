@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, supabase } from "./supabase.js";
 import { mapSupabaseBookRecord } from "./bookManagementCore.js";
 import { fetchChapterContent, fetchChapterMetadataPages } from "./chapterQueries.js";
+import { deleteNovels } from "./novelDeletion.js";
 export { duplicateChapter, reorderChapters, validateBook } from "./bookManagementCore.js";
 
 export const BOOK_STATUSES = ["Draft", "Review", "Scheduled", "Published", "Archived"];
@@ -79,12 +80,8 @@ export async function saveManagedBook(book, allBooks) {
 
 export async function deleteManagedBook(id, remaining) {
   if (!isSupabaseConfigured) return writeLocal(remaining);
-  // Delete children explicitly as well as retaining the database cascade. This
-  // keeps deletion working for installations that have not applied the cascade
-  // migration yet.
-  const chapters = await supabase.from("chapters").delete().eq("novel_id", id);
-  if (chapters.error) throw chapters.error;
-  const { error } = await supabase.from("novels").delete().eq("id", id); if (error) throw error; return remaining;
+  await deleteNovels([id]);
+  return remaining;
 }
 
 export async function uploadBookAsset(bookId, kind, file) {
