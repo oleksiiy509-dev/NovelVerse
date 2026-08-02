@@ -25,15 +25,13 @@ test("optimized chapter import replacement is deployed as a migration", () => {
   assert.doesNotMatch(optimizedMigration, /jsonb_to_recordset[\s\S]*with ordinality/i);
 });
 
-test("contextual novel routes expose manual add and rich chapter import", () => {
+test("contextual novel routes expose manual add and queued chapter import", () => {
   assert.match(studio, /add-chapter/);
   assert.match(studio, /import-chapters/);
-  assert.match(importView, /const acceptedFormats = "\.txt,\.fb2,\.epub,\.docx,\.pdf"/);
-  assert.match(importView, /Current chapters/);
-  assert.match(importView, /Incoming chapters/);
-  assert.match(importView, /Duplicate chapters/);
-  assert.match(importView, /New chapters/);
-  assert.match(importView, /Final total/);
-  assert.match(importView, /Skipped duplicates:/);
-  assert.match(importView, /Total chapters:/);
+  assert.match(importView, /const acceptedFormats = "\.txt,\.fb2,\.epub"/);
+  assert.match(importView, /multiple accept=/);
+  assert.match(importView, /Overall progress/);
+  assert.match(importView, /Estimated remaining/);
+  assert.match(importView, /Retry failed files/);
+  assert.match(importView, /Total chapters in novel/);
 });

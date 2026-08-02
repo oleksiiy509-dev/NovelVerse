@@ -61,7 +61,7 @@ begin
       from pg_temp.chapter_import_candidates
       where not already_exists and number > last_number
       order by number
-      limit 200
+      limit 100
     ) batch;
 
     exit when batch_numbers is null;
