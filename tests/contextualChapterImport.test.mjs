@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const migration = readFileSync("supabase/migrations/20260802030000_contextual_chapter_import.sql", "utf8");
 const optimizedMigration = readFileSync("supabase/migrations/20260802040000_optimize_contextual_chapter_import.sql", "utf8");
-const directReplacement = readFileSync("supabase/import_novel_chapters.sql", "utf8");
+const deployedReplacement = readFileSync("supabase/migrations/20260802050000_fix_chapter_import_ordinality.sql", "utf8");
 const persistence = readFileSync("src/lib/bookImportPersistence.js", "utf8");
 const studio = readFileSync("src/pages/NovelVerseStudio.jsx", "utf8");
 const importView = readFileSync("src/components/BookImport.jsx", "utf8");
@@ -18,10 +18,10 @@ test("chapter import targets only the explicitly opened novel", () => {
   assert.match(migration, /on conflict \(novel_id, number\).*do nothing/is);
 });
 
-test("optimized chapter import has a directly executable function replacement", () => {
-  assert.match(directReplacement, /^create or replace function public\.import_novel_chapters\(/);
-  assert.match(directReplacement, /jsonb_array_elements[\s\S]*with ordinality as c\(chapter, ordinal\)/i);
-  assert.doesNotMatch(directReplacement, /jsonb_to_recordset[\s\S]*with ordinality/i);
+test("optimized chapter import replacement is deployed as a migration", () => {
+  assert.match(deployedReplacement, /^create or replace function public\.import_novel_chapters\(/);
+  assert.match(deployedReplacement, /jsonb_array_elements[\s\S]*with ordinality as c\(chapter, ordinal\)/i);
+  assert.doesNotMatch(deployedReplacement, /jsonb_to_recordset[\s\S]*with ordinality/i);
   assert.doesNotMatch(optimizedMigration, /jsonb_to_recordset[\s\S]*with ordinality/i);
 });
 
