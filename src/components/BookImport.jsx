@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import { getBookStatistics, parseBook, validateBookChapters } from "../lib/bookImport.js";
-import { saveImportedBookDraft } from "../lib/bookImportPersistence.js";
+import { importChaptersIntoNovel } from "../lib/bookImportPersistence.js";
 
-const acceptedFormats = ".txt,.fb2,.epub,.docx,.pdf";
+const acceptedFormats = ".txt,.epub";
 
-function BookImport() {
+function BookImport({ novel, onComplete, onCancel }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -13,6 +13,7 @@ function BookImport() {
   const [selected, setSelected] = useState(0);
   const [cursor, setCursor] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [summary, setSummary] = useState(null);
 
   const importFile = async (file) => {
     if (!file) return;
@@ -34,8 +35,6 @@ function BookImport() {
     ...current,
     chapters: current.chapters.map((chapter, chapterIndex) => chapterIndex === index ? { ...chapter, ...patch } : chapter),
   }));
-
-  const updateMetadata = (patch) => setBook((current) => ({ ...current, metadata: { ...current.metadata, ...patch } }));
 
   const moveChapter = (offset) => {
     const target = selected + offset;
@@ -71,12 +70,14 @@ function BookImport() {
   };
 
   const saveDraft = async () => {
-    if (!book || !book.metadata.title.trim()) return setStatus("A title is required before saving.");
+    if (!book || !novel?.id) return;
     setSaving(true);
     setStatus("Saving draft to Supabase…");
     try {
-      const result = await saveImportedBookDraft(book);
-      setStatus(`${result.created ? "New novel created." : "Existing novel found."} Added ${result.added} chapters. Skipped ${result.skipped} duplicates.`);
+      const result = await importChaptersIntoNovel(novel.id, book.chapters);
+      setSummary(result);
+      setStatus("Import complete.");
+      onComplete?.(result);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "The draft could not be saved.");
     } finally {
@@ -88,7 +89,7 @@ function BookImport() {
     if (book?.metadata.cover?.startsWith("blob:")) URL.revokeObjectURL(book.metadata.cover);
     setBook(null);
     setProgress(0);
-    setStatus("");
+    setStatus(""); setSummary(null);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -98,7 +99,7 @@ function BookImport() {
   return (
     <div className="book-import">
       <header className="book-import__header">
-        <div><h2>Import Book</h2><p>Parse and prepare a book entirely in your browser.</p></div>
+        <div><h2>Import Chapters</h2><p>Import chapters directly into <strong>{novel?.title}</strong>. This novel is always used.</p></div>
         <span className="book-import__local">Local only</span>
       </header>
 
@@ -109,8 +110,8 @@ function BookImport() {
         onDragLeave={() => setDragging(false)}
         onDrop={(event) => { event.preventDefault(); setDragging(false); importFile(event.dataTransfer.files[0]); }}
       >
-        <strong>Drop your book here</strong>
-        <span>TXT, FB2, EPUB, DOCX or PDF</span>
+        <strong>Drop chapter files here</strong>
+        <span>TXT or EPUB</span>
         <button type="button" onClick={() => inputRef.current?.click()}>Choose file</button>
         <input ref={inputRef} type="file" accept={acceptedFormats} onChange={(event) => importFile(event.target.files[0])} />
         <small>Files remain on this device and are never uploaded automatically.</small>
@@ -121,13 +122,14 @@ function BookImport() {
         <progress max="100" value={progress}>{progress}%</progress>
       </div>}
 
-      {book && <>
+      {summary && <section className="book-import__result" role="status"><h3>Import summary</h3><dl><div><dt>Added:</dt><dd>{summary.added}</dd></div><div><dt>Skipped duplicates:</dt><dd>{summary.skipped}</dd></div><div><dt>Total chapters:</dt><dd>{summary.totalChapters}</dd></div></dl></section>}
+
+      {book && !summary && <>
         <section className="book-import__summary">
           {book.metadata.cover && <img src={book.metadata.cover} alt="Detected book cover" />}
-          <div className="book-import__metadata"><label>Title<input value={book.metadata.title} onChange={(event) => updateMetadata({ title: event.target.value })} /></label><label>Author<input value={book.metadata.author} onChange={(event) => updateMetadata({ author: event.target.value })} /></label><label>Language<input value={book.metadata.language} onChange={(event) => updateMetadata({ language: event.target.value })} /></label></div>
+          <div><h3>{novel?.title}</h3><p>{novel?.author || "Unknown author"}</p></div>
           <dl><div><dt>Chapters</dt><dd>{statistics.chapters}</dd></div><div><dt>Words</dt><dd>{statistics.words.toLocaleString()}</dd></div><div><dt>Reading time</dt><dd>{statistics.readingMinutes} min</dd></div><div><dt>Encoding</dt><dd>{book.encoding}</dd></div></dl>
         </section>
-        <label className="book-import__description">Description<textarea value={book.metadata.description} onChange={(event) => updateMetadata({ description: event.target.value })} /></label>
         {warnings.length > 0 && <section className="book-import__warnings"><strong>Import warnings</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></section>}
 
         <section className="book-import__editor">
@@ -145,8 +147,8 @@ function BookImport() {
           </div>
         </section>
         <footer className="book-import__actions">
-          <button type="button" className="secondary" onClick={cancel}>Cancel</button>
-          <button type="button" onClick={saveDraft} disabled={saving || !book.metadata.title.trim()}>{saving ? "Saving…" : "Import chapters"}</button>
+          <button type="button" className="secondary" onClick={() => { cancel(); onCancel?.(); }}>Cancel</button>
+          <button type="button" onClick={saveDraft} disabled={saving}>{saving ? "Saving…" : "Import chapters"}</button>
         </footer>
       </>}
     </div>
