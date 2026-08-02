@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { splitIntoChapters } from "../lib/admin";
 import { callChapterAudioGeneration, formatFileSize } from "../lib/chapterAudio";
 import { adminWrite, parseChapterImport, safeWrite } from "../lib/adminContent";
+import { fetchChapterContent, fetchChapterMetadataPages } from "../lib/chapterQueries";
 import "../styles/AdminPanel.css";
 
 function readFile(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || "")); reader.onerror = () => reject(reader.error); reader.readAsText(file); }); }
@@ -25,12 +26,12 @@ function AdminChapters() {
 
   useEffect(() => { load(); }, []);
   async function load() {
-    const [{ data: novelRows }, { data, error }] = await Promise.all([
+    const [{ data: novelRows }, data] = await Promise.all([
       supabase.from("novels").select("id,title").order("title"),
-      supabase.from("chapters").select("*").order("novel_id").order("number"),
+      fetchChapterMetadataPages(supabase),
     ]);
     setNovels(novelRows || []);
-    if (error) setToast(error.message); else setChapters(data || []);
+    setChapters(data || []);
     const ids = (data || []).map((item) => item.id);
     if (ids.length) {
       const { data: audioData } = await supabase.from("chapter_audio").select("*").in("chapter_id", ids).order("updated_at", { ascending: false });
@@ -41,7 +42,7 @@ function AdminChapters() {
 
   async function del(id, title) { if (!window.confirm(`Delete chapter “${title}”?`)) return; try { await adminWrite(() => supabase.from("chapters").delete().eq("id", id)); setToast("Chapter deleted."); load(); } catch (error) { setToast(error.message); } }
   async function bulkDelete() { if (!selected.length || !window.confirm(`Permanently delete ${selected.length} chapters?`)) return; try { await adminWrite(() => supabase.from("chapters").delete().in("id", selected)); setSelected([]); setToast("Selected chapters deleted."); load(); } catch (error) { setToast(error.message); } }
-  async function duplicateChapter(chapter) { const copy = copyChapterPayload(chapter); const numbers = chapters.filter((item) => item.novel_id === chapter.novel_id).map((item) => Number(item.number)); const nextNumber = Math.max(0, ...numbers) + 1; try { await safeWrite("chapters", { ...copy, number: nextNumber, title: `${chapter.title} Copy`, status: "Draft" }, (queryBuilder, payload) => queryBuilder.insert(payload), ["novel_id", "number", "title", "content"]); setToast("Chapter duplicated as draft."); load(); } catch (error) { setToast(error.message); } }
+  async function duplicateChapter(chapter) { try { const fullChapter = Object.hasOwn(chapter, "content") ? chapter : await fetchChapterContent(supabase, chapter.id); const copy = copyChapterPayload(fullChapter); const numbers = chapters.filter((item) => item.novel_id === chapter.novel_id).map((item) => Number(item.number)); const nextNumber = Math.max(0, ...numbers) + 1; await safeWrite("chapters", { ...copy, number: nextNumber, title: `${chapter.title} Copy`, status: "Draft" }, (queryBuilder, payload) => queryBuilder.insert(payload), ["novel_id", "number", "title", "content"]); setToast("Chapter duplicated as draft."); load(); } catch (error) { setToast(error.message); } }
   async function setPublishStatus(chapter, status) { try { const result = await safeWrite("chapters", { status }, (queryBuilder, payload) => queryBuilder.update(payload).eq("id", chapter.id)); setToast(result.skipped ? "Chapter status is not supported by this database schema." : (status === "Published" ? "Chapter published." : "Chapter unpublished.")); load(); } catch (error) { setToast(error.message); } }
   async function chooseFiles(files) { if (novel === "all") { setToast("Choose one novel before import."); return; } const existing = new Set(chapters.filter((chapter) => String(chapter.novel_id) === novel).map((chapter) => Number(chapter.number))); const rows = []; for (const file of files) { const raw = await readFile(file); rows.push(...parseChapterImport(file.name, raw, splitIntoChapters)); } setPreview(rows.map((row, index) => ({ ...row, number: Number(row.number || index + 1), duplicate: existing.has(Number(row.number || index + 1)) })).filter((row) => row.content)); }
   async function importPreview() { const rows = preview.filter((row) => !row.duplicate).map((row) => ({ novel_id: Number(novel), number: Number(row.number), title: row.title, content: row.content, status: "Published" })); if (!rows.length) { setToast("No new chapters to import."); return; } let success = 0; for (let index = 0; index < rows.length; index += 5) { const batch = rows.slice(index, index + 5); await safeWrite("chapters", batch, (queryBuilder, payload) => queryBuilder.insert(payload), ["novel_id", "number", "title", "content"]); success += batch.length; setProgress(`${success}/${rows.length} imported`); } setPreview([]); load(); }

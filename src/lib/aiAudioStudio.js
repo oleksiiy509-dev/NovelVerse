@@ -25,7 +25,7 @@ export async function fetchAudioStudioNovels(supabase) {
 }
 export async function fetchAudioStudioChapters(supabase, novelId) {
   if (!novelId) return [];
-  const { data, error } = await supabase.from("chapters").select("id,novel_id,number,title,content,text").eq("novel_id", novelId).order("number", { ascending: true });
+  const { data, error } = await supabase.from("chapters").select("id,novel_id,number,title").eq("novel_id", novelId).order("number", { ascending: true });
   if (error) throw error;
   return sortChaptersByNumber(data || []);
 }

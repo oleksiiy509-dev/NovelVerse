@@ -1,5 +1,6 @@
 import { isSupabaseConfigured, supabase } from "./supabase.js";
 import { mapSupabaseBookRecord } from "./bookManagementCore.js";
+import { fetchChapterContent, fetchChapterMetadataPages } from "./chapterQueries.js";
 export { duplicateChapter, reorderChapters, validateBook } from "./bookManagementCore.js";
 
 export const BOOK_STATUSES = ["Draft", "Review", "Scheduled", "Published", "Archived"];
@@ -37,9 +38,17 @@ function writeLocal(books) { localStorage.setItem(STORE_KEY, JSON.stringify(book
 
 export async function loadManagedBooks() {
   if (!isSupabaseConfigured) return readLocal();
-  const { data, error } = await supabase.from("novels").select("*, chapters(*)").order("updated_at", { ascending: false });
+  const [{ data, error }, chapters] = await Promise.all([
+    supabase.from("novels").select("*").order("updated_at", { ascending: false }),
+    fetchChapterMetadataPages(supabase),
+  ]);
   if (error) throw error;
-  return (data || []).map(mapSupabaseBook);
+  return (data || []).map((row) => mapSupabaseBook({ ...row, chapters: chapters.filter((chapter) => String(chapter.novel_id) === String(row.id)) }));
+}
+
+export async function loadManagedChapter(chapterId) {
+  if (!isSupabaseConfigured) return null;
+  return fetchChapterContent(supabase, chapterId);
 }
 
 export async function saveManagedBook(book, allBooks) {
@@ -50,11 +59,11 @@ export async function saveManagedBook(book, allBooks) {
     : supabase.from("novels").upsert({ id: book.id, ...payload }).select("id").single();
   const { data: savedNovel, error } = await novelQuery; if (error) throw error;
   book.id = savedNovel.id;
-  const chapters = book.chapters.map((item, index) => ({ id: item.id, novel_id: book.id, title: item.title, content: item.content, position: index + 1, audio_status: item.audioStatus, audio_url: item.audioUrl || null }));
+  const chapters = book.chapters.map((item, index) => ({ id: item.id, novel_id: book.id, number: index + 1, title: item.title, ...(Object.hasOwn(item, "content") ? { content: item.content } : {}), position: index + 1, audio_status: item.audioStatus, audio_url: item.audioUrl || null }));
   for (const [index, chapter] of chapters.entries()) {
     const chapterQuery = isClientUuid(chapter.id)
       ? supabase.from("chapters").insert({ ...chapter, id: undefined }).select("id").single()
-      : supabase.from("chapters").upsert(chapter).select("id").single();
+      : supabase.from("chapters").update(chapter).eq("id", chapter.id).select("id").single();
     const result = await chapterQuery; if (result.error) throw result.error;
     chapter.id = result.data.id;
     book.chapters[index].id = result.data.id;

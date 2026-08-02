@@ -313,7 +313,7 @@ function Reader() {
     let data;
     let error;
     try {
-      const result = await supabase.from("chapters").select("*").eq("id", id).single();
+      const result = await supabase.from("chapters").select("id,novel_id,number,title,content").eq("id", id).single();
       data = result.data;
       error = result.error;
     } catch (requestError) {

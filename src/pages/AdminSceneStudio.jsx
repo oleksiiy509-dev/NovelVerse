@@ -9,13 +9,21 @@ export default function AdminSceneStudio() {
   const [toast, setToast] = useState("");
 
   useEffect(() => {
-    supabase.from("chapters").select("id, title, number, content, novel_id, novels(title)").order("created_at", { ascending: false }).limit(25).then(({ data, error }) => {
+    supabase.from("chapters").select("id,novel_id,number,title,novels(title)").order("created_at", { ascending: false }).limit(25).then(({ data, error }) => {
       if (error) setToast(error.message);
       const rows = data || [];
       setChapters(rows);
       setChapterId(String(rows[0]?.id || ""));
     });
   }, []);
+
+  useEffect(() => {
+    if (!chapterId || chapters.find((item) => String(item.id) === chapterId)?.content !== undefined) return;
+    supabase.from("chapters").select("id,novel_id,number,title,content").eq("id", chapterId).single().then(({ data, error }) => {
+      if (error) setToast(error.message);
+      else setChapters((items) => items.map((item) => String(item.id) === chapterId ? { ...item, ...data } : item));
+    });
+  }, [chapterId, chapters]);
 
   const chapter = chapters.find((item) => String(item.id) === String(chapterId));
 

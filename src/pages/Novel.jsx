@@ -181,7 +181,7 @@ function Novel() {
   }
 
   async function loadChapters() {
-    const { data, error } = await supabase.from("chapters").select("*").eq("novel_id", id).order("number", { ascending: true });
+    const { data, error } = await supabase.from("chapters").select("id,novel_id,number,title").eq("novel_id", id).order("number", { ascending: true });
     if (error) {
       console.error(error);
       return;
@@ -330,7 +330,7 @@ function Novel() {
         if (existing.has(chapter.id)) continue;
         let full = chapter;
         if (!full.content) {
-          const { data, error } = await supabase.from("chapters").select("*").eq("id", chapter.id).single();
+          const { data, error } = await supabase.from("chapters").select("id,novel_id,number,title,content").eq("id", chapter.id).single();
           if (error) throw error;
           full = data;
         }
