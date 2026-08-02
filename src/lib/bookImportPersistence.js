@@ -1,19 +1,19 @@
 import { isSupabaseConfigured, supabase } from "./supabase.js";
 import { planChapterMerge } from "./bookImportMerge.js";
 
-export async function importChaptersIntoNovel(novelId, importedChapters) {
+export async function importChaptersIntoNovel(novelId, importedChapters, existingNumbers = []) {
   if (!isSupabaseConfigured) throw new Error("Supabase is not configured. Configure Studio before importing chapters.");
   if (!novelId) throw new Error("Open a novel before importing chapters.");
-  const { additions, skipped: skippedInFile } = planChapterMerge(importedChapters, []);
+  const { additions, skipped } = planChapterMerge(importedChapters, existingNumbers);
   const chapters = additions.map(({ number, title, content }) => ({
     number, title: title?.trim() || `Chapter ${number}`, content,
   }));
   const { data, error } = await supabase.rpc("import_chapters_into_novel", {
-    target_novel_id: Number(novelId), import_chapters: chapters,
+    target_novel_id: novelId, import_chapters: chapters,
   });
   if (error) throw error;
   const result = typeof data === "string" ? JSON.parse(data) : data;
-  return { ...result, skipped: Number(result.skipped || 0) + skippedInFile };
+  return { ...result, skipped: Number(result.skipped || 0) + skipped };
 }
 
 export async function mergeImportedNovels(targetNovelId, sourceNovelId) {

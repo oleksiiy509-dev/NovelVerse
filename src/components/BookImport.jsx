@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { getBookStatistics, parseBook, validateBookChapters } from "../lib/bookImport.js";
+import { planChapterMerge } from "../lib/bookImportMerge.js";
 import { importChaptersIntoNovel } from "../lib/bookImportPersistence.js";
 
-const acceptedFormats = ".txt,.epub";
+const acceptedFormats = ".txt,.fb2,.epub,.docx,.pdf";
 
-function BookImport({ novel, onComplete, onCancel }) {
+function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -74,7 +75,7 @@ function BookImport({ novel, onComplete, onCancel }) {
     setSaving(true);
     setStatus("Saving draft to Supabase…");
     try {
-      const result = await importChaptersIntoNovel(novel.id, book.chapters);
+      const result = await importChaptersIntoNovel(novel.id, book.chapters, currentChapters.map((item) => item.number));
       setSummary(result);
       setStatus("Import complete.");
       onComplete?.(result);
@@ -96,6 +97,8 @@ function BookImport({ novel, onComplete, onCancel }) {
   const chapter = book?.chapters[selected];
   const statistics = useMemo(() => getBookStatistics(book?.chapters), [book?.chapters]);
   const warnings = useMemo(() => book ? [...book.warnings, ...validateBookChapters(book.chapters)] : [], [book]);
+  const mergePlan = useMemo(() => planChapterMerge(book?.chapters, currentChapters.map((item) => item.number)), [book?.chapters, currentChapters]);
+  const counts = { current: currentChapters.length, incoming: book?.chapters.length || 0, duplicates: mergePlan.skipped, added: mergePlan.additions.length, final: currentChapters.length + mergePlan.additions.length };
   return (
     <div className="book-import">
       <header className="book-import__header">
@@ -111,7 +114,7 @@ function BookImport({ novel, onComplete, onCancel }) {
         onDrop={(event) => { event.preventDefault(); setDragging(false); importFile(event.dataTransfer.files[0]); }}
       >
         <strong>Drop chapter files here</strong>
-        <span>TXT or EPUB</span>
+        <span>TXT, FB2, EPUB, DOCX or PDF</span>
         <button type="button" onClick={() => inputRef.current?.click()}>Choose file</button>
         <input ref={inputRef} type="file" accept={acceptedFormats} onChange={(event) => importFile(event.target.files[0])} />
         <small>Files remain on this device and are never uploaded automatically.</small>
@@ -126,10 +129,11 @@ function BookImport({ novel, onComplete, onCancel }) {
 
       {book && !summary && <>
         <section className="book-import__summary">
-          {book.metadata.cover && <img src={book.metadata.cover} alt="Detected book cover" />}
+          <div className="book-import__cover">{(book.metadata.cover || novel?.cover_url) ? <img src={book.metadata.cover || novel.cover_url} alt="Book cover preview" /> : <span aria-label="No cover detected">No cover</span>}</div>
           <div><h3>{novel?.title}</h3><p>{novel?.author || "Unknown author"}</p></div>
-          <dl><div><dt>Chapters</dt><dd>{statistics.chapters}</dd></div><div><dt>Words</dt><dd>{statistics.words.toLocaleString()}</dd></div><div><dt>Reading time</dt><dd>{statistics.readingMinutes} min</dd></div><div><dt>Encoding</dt><dd>{book.encoding}</dd></div></dl>
+          <dl><div><dt>Parsed chapters</dt><dd>{statistics.chapters}</dd></div><div><dt>Words</dt><dd>{statistics.words.toLocaleString()}</dd></div><div><dt>Estimated reading time</dt><dd>{statistics.readingMinutes} min</dd></div><div><dt>Encoding</dt><dd>{book.encoding}</dd></div></dl>
         </section>
+        <section className="book-import__impact" aria-label="Import totals"><h3>Import into current novel</h3><dl><div><dt>Current novel</dt><dd>{novel?.title}</dd></div><div><dt>Current chapters</dt><dd>{counts.current}</dd></div><div><dt>Incoming chapters</dt><dd>{counts.incoming}</dd></div><div><dt>Duplicate chapters</dt><dd>{counts.duplicates}</dd></div><div><dt>New chapters</dt><dd>{counts.added}</dd></div><div className="total"><dt>Final total</dt><dd>{counts.final}</dd></div></dl></section>
         {warnings.length > 0 && <section className="book-import__warnings"><strong>Import warnings</strong><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></section>}
 
         <section className="book-import__editor">
@@ -148,7 +152,7 @@ function BookImport({ novel, onComplete, onCancel }) {
         </section>
         <footer className="book-import__actions">
           <button type="button" className="secondary" onClick={() => { cancel(); onCancel?.(); }}>Cancel</button>
-          <button type="button" onClick={saveDraft} disabled={saving}>{saving ? "Saving…" : "Import chapters"}</button>
+          <button type="button" onClick={saveDraft} disabled={saving || counts.added === 0}>{saving ? "Importing…" : "Import"}</button>
         </footer>
       </>}
     </div>
