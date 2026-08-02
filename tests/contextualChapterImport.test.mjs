@@ -12,10 +12,15 @@ test("chapter import targets only the explicitly opened novel", () => {
   assert.match(migration, /on conflict \(novel_id, number\).*do nothing/is);
 });
 
-test("contextual novel routes expose manual add and TXT or EPUB import", () => {
+test("contextual novel routes expose manual add and rich chapter import", () => {
   assert.match(studio, /add-chapter/);
   assert.match(studio, /import-chapters/);
-  assert.match(importView, /const acceptedFormats = "\.txt,\.epub"/);
+  assert.match(importView, /const acceptedFormats = "\.txt,\.fb2,\.epub,\.docx,\.pdf"/);
+  assert.match(importView, /Current chapters/);
+  assert.match(importView, /Incoming chapters/);
+  assert.match(importView, /Duplicate chapters/);
+  assert.match(importView, /New chapters/);
+  assert.match(importView, /Final total/);
   assert.match(importView, /Skipped duplicates:/);
   assert.match(importView, /Total chapters:/);
 });
