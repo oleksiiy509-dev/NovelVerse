@@ -82,6 +82,18 @@
 .studio-books footer { margin-top: 1rem; color: #6d6a78; }
 .studio-books footer button { padding: .55rem .75rem; background: #eceaf8; color: #38334f; }
 .studio-books button:disabled { cursor: not-allowed; opacity: .45; }
+.studio-book { max-width: 1080px; margin: 0 auto; }
+.studio-book > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+.studio-book > header h2, .studio-book > header p { margin: 0 0 .35rem; }
+.studio-book > header > div:last-child { display: flex; gap: .65rem; }
+.studio-book button { margin: 0; background: #6757d9; }
+.studio-book__chapters { overflow: hidden; border: 1px solid #e0dfe6; border-radius: .75rem; background: #fff; }
+.studio-book__chapters article { display: grid; grid-template-columns: 150px 1fr; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid #ecebf0; }
+.studio-book__chapters article:last-child { border-bottom: 0; }
+.book-import__result { padding: 1.5rem; margin-top: 1.5rem; border: 1px solid #b9dfc5; border-radius: .75rem; background: #effaf2; }
+.book-import__result dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.book-import__result dl div { padding: 1rem; border-radius: .5rem; background: #fff; }
+.book-import__result dd { margin: .35rem 0 0; font-size: 1.5rem; font-weight: 800; }
 
 .audio-production { max-width: 1080px; }
 .audio-production__header, .audio-production__title-row, .audio-production__actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
