@@ -70,13 +70,13 @@ function BookImport() {
     setSelected(Math.max(0, selected - 1));
   };
 
-  const saveDraft = async () => {
+  const saveDraft = async (createNew = false) => {
     if (!book || !book.metadata.title.trim()) return setStatus("A title is required before saving.");
     setSaving(true);
     setStatus("Saving draft to Supabase…");
     try {
-      const id = await saveImportedBookDraft(book);
-      setStatus(`Draft saved successfully (book ${id}).`);
+      const result = await saveImportedBookDraft(book, { createNew });
+      setStatus(`${result.created ? "New novel created." : "Existing novel updated."} Added: ${result.added} chapters. Skipped: ${result.skipped} duplicates.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "The draft could not be saved.");
     } finally {
@@ -146,7 +146,8 @@ function BookImport() {
         </section>
         <footer className="book-import__actions">
           <button type="button" className="secondary" onClick={cancel}>Cancel</button>
-          <button type="button" onClick={saveDraft} disabled={saving || !book.metadata.title.trim()}>{saving ? "Saving…" : "Save Draft"}</button>
+          <button type="button" className="secondary" onClick={() => saveDraft(true)} disabled={saving || !book.metadata.title.trim()}>Create new novel</button>
+          <button type="button" onClick={() => saveDraft(false)} disabled={saving || !book.metadata.title.trim()}>{saving ? "Saving…" : "Import chapters"}</button>
         </footer>
       </>}
     </div>
