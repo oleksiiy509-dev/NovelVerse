@@ -21,11 +21,24 @@ export function prepareQueuedChapters(chapters = [], reservedNumbers = []) {
   return { additions, skipped, numbers: [...seen] };
 }
 
+export const compareImportFiles = (left, right) => left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" });
+
 export function createQueueFiles(files = []) {
-  return files.map((file, index) => ({
+  return [...files].sort(compareImportFiles).map((file, index) => ({
     id: `${Date.now()}-${index}-${file.name}`, name: file.name, file, status: "queued", detected: 0,
     added: 0, skipped: 0, failed: 0, durationMs: 0, completedBatches: 0, totalBatches: 0, chapters: null, error: "",
   }));
+}
+
+export function importPreview(files = [], currentChapterCount = 0) {
+  const totals = queueTotals(files);
+  return {
+    current: currentChapterCount,
+    detected: totals.detected,
+    duplicates: totals.skipped,
+    additions: Math.max(0, totals.detected - totals.skipped),
+    finalTotal: currentChapterCount + Math.max(0, totals.detected - totals.skipped),
+  };
 }
 
 export function queueTotals(files = []) {
