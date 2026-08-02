@@ -1,5 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getBookStatistics, parseBook, validateBookChapters } from "../lib/bookImport.js";
+import { clearChapterImportDraft, loadChapterImportDraft, saveChapterImportDraft } from "../lib/bookImportDraft.js";
+import { getImportPersistenceError } from "../lib/bookImportError.js";
 import { planChapterMerge } from "../lib/bookImportMerge.js";
 import { importChaptersIntoNovel } from "../lib/bookImportPersistence.js";
 
@@ -10,11 +12,17 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
-  const [book, setBook] = useState(null);
+  const [book, setBook] = useState(() => loadChapterImportDraft(novel?.id));
   const [selected, setSelected] = useState(0);
   const [cursor, setCursor] = useState(0);
   const [saving, setSaving] = useState(false);
   const [summary, setSummary] = useState(null);
+
+  useEffect(() => {
+    if (!book) return;
+    const timeout = window.setTimeout(() => saveChapterImportDraft(novel?.id, book), 500);
+    return () => window.clearTimeout(timeout);
+  }, [book, novel?.id]);
 
   const importFile = async (file) => {
     if (!file) return;
@@ -73,14 +81,15 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
   const saveDraft = async () => {
     if (!book || !novel?.id) return;
     setSaving(true);
-    setStatus("Saving draft to Supabase…");
+    setStatus("Importing chapters to Supabase…");
     try {
       const result = await importChaptersIntoNovel(novel.id, book.chapters, currentChapters.map((item) => item.number));
+      clearChapterImportDraft(novel.id);
       setSummary(result);
       setStatus("Import complete.");
       onComplete?.(result);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "The draft could not be saved.");
+      setStatus(getImportPersistenceError(error));
     } finally {
       setSaving(false);
     }
@@ -89,6 +98,7 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
   const cancel = () => {
     if (book?.metadata.cover?.startsWith("blob:")) URL.revokeObjectURL(book.metadata.cover);
     setBook(null);
+    clearChapterImportDraft(novel?.id);
     setProgress(0);
     setStatus(""); setSummary(null);
     if (inputRef.current) inputRef.current.value = "";
