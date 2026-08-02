@@ -51,6 +51,7 @@ export default function ChapterGeneration({ book, chapter, segments }) {
         if (next.status === "Finished") {
           const url = URL.createObjectURL(await getChapterAudio(next.id)); createdUrls.current.push(url);
           setAudioUrls((urls) => ({ ...urls, [next.id]: url }));
+          setJobs((items) => items.filter((job) => job.id === next.id || job.id !== active.retryOf));
         }
       } catch (error) { setJobs((items) => items.map((job) => job.id === active.id ? { ...job, status: "Failed", error: error.message } : job)); }
     }, 500);
@@ -65,9 +66,11 @@ export default function ChapterGeneration({ book, chapter, segments }) {
       if (job.status === "Finished") { const url = URL.createObjectURL(await getChapterAudio(job.id)); createdUrls.current.push(url); setAudioUrls((urls) => ({ ...urls, [job.id]: url })); }
     } catch (error) { setJobs((items) => [{ id: `failed-${Date.now()}`, status: "Failed", error: error.message, request: payload }, ...items]); }
   };
-  const retry = async () => {
+  const retry = async (failedJob) => {
     const next = await createChapterGeneration({ bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", segments: chapterSegments });
-    setJobs((items) => [next, ...items]);
+    const retried = { ...next, retryOf: failedJob.id };
+    setJobs((items) => next.status === "Finished" ? [retried, ...items.filter((item) => item.id !== failedJob.id)] : [retried, ...items]);
+    if (next.status === "Finished") { const url = URL.createObjectURL(await getChapterAudio(next.id)); createdUrls.current.push(url); setAudioUrls((urls) => ({ ...urls, [next.id]: url })); }
   };
   const download = (job) => {
     const link = document.createElement("a"); link.href = audioUrls[job.id]; link.download = job.fileName || `${chapter.title}.wav`; link.click();
@@ -80,8 +83,8 @@ export default function ChapterGeneration({ book, chapter, segments }) {
       {!terminal.has(job.status) && <progress max={job.total || 1} value={job.completed || 0}/>} 
       {job.status === "Finished" && <><dl><div><dt>Audio duration</dt><dd>{formatDuration(job.duration)}</dd></div><div><dt>Output size</dt><dd>{formatSize(job.size)}</dd></div><div><dt>Render time</dt><dd>{(job.generationTime / 1000).toFixed(1)} sec{job.cached ? " · cached" : ""}</dd></div></dl>{job.ffmpegMissing && <p className="chapter-generation__warning">FFmpeg missing · saved as WAV</p>}</>}
       {job.error && <p className="chapter-generation__error">{job.error}</p>}
-      {audioUrls[job.id] && <audio ref={(element) => element ? audio.current.set(job.id, element) : audio.current.delete(job.id)} preload="metadata" src={audioUrls[job.id]}>Audio playback is unavailable.</audio>}
-      <div className="chapter-generation__actions">{!terminal.has(job.status) && <button className="danger" type="button" onClick={() => cancelChapterGeneration(job.id)}>Cancel</button>}{job.status === "Failed" && <button className="secondary" type="button" onClick={retry}>Retry</button>}{audioUrls[job.id] && <><button type="button" onClick={() => audio.current.get(job.id)?.play()}>Play</button><button className="secondary" type="button" onClick={() => audio.current.get(job.id)?.pause()}>Pause</button><button className="secondary" type="button" onClick={() => { const player = audio.current.get(job.id); if (player) { player.pause(); player.currentTime = 0; } }}>Stop</button><button className="secondary" type="button" onClick={() => openChapterOutputFolder(job.id).catch(() => setJobs((items) => items.map((item) => item.id === job.id ? { ...item, error: "Output folder unavailable" } : item)))}>Open Folder</button><button className="secondary" type="button" onClick={() => download(job)}>Save locally</button></>}</div>
+      {audioUrls[job.id] && <audio controls ref={(element) => element ? audio.current.set(job.id, element) : audio.current.delete(job.id)} preload="metadata" src={audioUrls[job.id]}>Audio playback is unavailable.</audio>}
+      <div className="chapter-generation__actions">{!terminal.has(job.status) && <button className="danger" type="button" onClick={() => cancelChapterGeneration(job.id)}>Cancel</button>}{job.status === "Failed" && <button className="secondary" type="button" onClick={() => retry(job)}>Retry</button>}{audioUrls[job.id] && <><button className="secondary" type="button" onClick={() => openChapterOutputFolder(job.id).catch(() => setJobs((items) => items.map((item) => item.id === job.id ? { ...item, error: "Output folder unavailable" } : item)))}>Open Output Folder</button><button className="secondary" type="button" onClick={() => download(job)}>Save locally</button></>}</div>
     </article>)}</div>
   </section>;
 }
