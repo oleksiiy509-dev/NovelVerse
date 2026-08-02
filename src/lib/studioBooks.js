@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, supabase } from "./supabase.js";
 import { mapSupabaseBookRecord } from "./bookManagementCore.js";
 import { fetchChapterContent, fetchChapterMetadataPages } from "./chapterQueries.js";
+import { deleteNovels } from "./novelDeletion.js";
 
 const defaults = { chapters: [], coverUrl: "", status: "Draft" };
 
@@ -20,8 +21,7 @@ export async function setStudioBooksStatus(ids, status) {
 }
 
 export async function deleteStudioBooks(ids) {
-  const { error } = await supabase.from("novels").delete().in("id", ids);
-  if (error) throw error;
+  await deleteNovels(ids);
 }
 
 export async function duplicateStudioBook(book) {
