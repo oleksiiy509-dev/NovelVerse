@@ -18,8 +18,29 @@ begin
   end loop;
 end $$;
 
+-- Prevent chapter writes between duplicate cleanup and index creation. Migrations
+-- run in a transaction, so this lock remains held until the index is in place.
+lock table public.chapters in share row exclusive mode;
+
+-- Legacy imports could create multiple rows for the same chapter number. Keep
+-- the oldest (lowest identity) row deterministically and remove the rest. On a
+-- repeated run this CTE finds no rows, making the cleanup idempotent.
+with duplicate_chapters as (
+  select id,
+         row_number() over (
+           partition by novel_id, number
+           order by id
+         ) as copy_number
+  from public.chapters
+  where novel_id is not null and number is not null
+)
+delete from public.chapters as chapter
+using duplicate_chapters as duplicate
+where chapter.id = duplicate.id
+  and duplicate.copy_number > 1;
+
 create unique index if not exists chapters_novel_number_unique
-  on public.chapters (novel_id, number) where number is not null;
+  on public.chapters (novel_id, number);
 
 create or replace function public.import_novel_chapters(
   import_title text,
