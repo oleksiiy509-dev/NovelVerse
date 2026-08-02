@@ -35,8 +35,10 @@ begin
   -- valid occurrence of each chapter number is eligible for insertion.
   insert into pg_temp.chapter_import_candidates (number, title, content)
   select distinct on (c.number) c.number, c.title, c.content
-  from jsonb_to_recordset(coalesce(import_chapters, '[]'::jsonb)) with ordinality
-    as c(number integer, title text, content text, ordinal bigint)
+  from rows from (
+    jsonb_to_recordset(coalesce(import_chapters, '[]'::jsonb))
+      as (number integer, title text, content text)
+  ) with ordinality as c(number, title, content, ordinal)
   where c.number > 0
   order by c.number, c.ordinal;
 
