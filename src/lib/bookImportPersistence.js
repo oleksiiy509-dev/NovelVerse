@@ -17,7 +17,7 @@ async function uploadCover(cover, novelId) {
 export async function findImportedNovel(metadata = {}) {
   const title = metadata.title?.trim();
   const author = metadata.author?.trim();
-  if (!title || !author) return null;
+  if (!title) return null;
   const { data, error } = await supabase.from("novels").select("id,title,author").ilike("title", title);
   if (error) throw error;
   const wantedTitle = normalizeIdentity(title);
@@ -25,10 +25,12 @@ export async function findImportedNovel(metadata = {}) {
   return data?.find((novel) => normalizeIdentity(novel.title) === wantedTitle && normalizeIdentity(novel.author) === wantedAuthor) || null;
 }
 
-export async function saveImportedBookDraft(book, { createNew = false } = {}) {
+export async function saveImportedBookDraft(book) {
   if (!isSupabaseConfigured) throw new Error("Supabase is not configured. Configure Studio before saving a draft.");
   const metadata = book?.metadata || {};
-  let novel = createNew ? null : await findImportedNovel(metadata);
+  // Imports are append-only for a matching title and author. Never bypass this
+  // lookup: subsequent files belonging to the same book must share its novel ID.
+  let novel = await findImportedNovel(metadata);
   let created = false;
   if (!novel) {
     const { data, error } = await supabase.from("novels").insert({
