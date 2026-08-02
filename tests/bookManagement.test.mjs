@@ -2,6 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { duplicateChapter, mapSupabaseBookRecord, reorderChapters, validateBook } from "../src/lib/bookManagementCore.js";
+import { distinctChaptersByNumber } from "../src/lib/chapterQueries.js";
+
+test("counts one chapter per distinct number and ignores duplicate import rows", () => {
+  const chapters = distinctChaptersByNumber([
+    { id: 1, novel_id: 10, number: 1 },
+    { id: 2, novel_id: 10, number: 1 },
+    { id: 3, novel_id: 10, number: 2 },
+  ]);
+  assert.deepEqual(chapters.map(({ id }) => id), [1, 3]);
+});
 
 test("reorders chapters and maintains sequential positions", () => {
   const result = reorderChapters([{ id: "a" }, { id: "b" }, { id: "c" }], 2, 0);

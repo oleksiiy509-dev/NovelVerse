@@ -8,6 +8,7 @@ const deployedReplacement = readFileSync("supabase/migrations/20260802050000_fix
 const persistence = readFileSync("src/lib/bookImportPersistence.js", "utf8");
 const studio = readFileSync("src/pages/NovelVerseStudio.jsx", "utf8");
 const importView = readFileSync("src/components/BookImport.jsx", "utf8");
+const statisticsMigration = readFileSync("supabase/migrations/20260802060000_fix_distinct_chapter_statistics.sql", "utf8");
 
 test("chapter import targets only the explicitly opened novel", () => {
   assert.match(migration, /create or replace function public\.import_novel_chapters\(/);
@@ -34,4 +35,13 @@ test("contextual novel routes expose manual add and queued chapter import", () =
   assert.match(importView, /Estimated remaining/);
   assert.match(importView, /Retry failed files/);
   assert.match(importView, /Total chapters in novel/);
+});
+
+test("every import refreshes the novel statistic from distinct chapter numbers", () => {
+  assert.match(statisticsMigration, /count\(distinct chapter\.number\)/i);
+  assert.match(statisticsMigration, /where chapter\.novel_id = target_novel_id/i);
+  assert.match(statisticsMigration, /refresh_novel_chapter_count\(target_novel_id\)/i);
+  assert.match(statisticsMigration, /update public\.novels/i);
+  assert.match(importView, /result\.totalChapters/);
+  assert.match(importView, /refreshedTotal \?\? currentChapters\.length/);
 });
