@@ -1,6 +1,3 @@
--- Keep the public import contract while bounding the amount of chapter data
--- written by each INSERT statement. PostgreSQL functions run in their caller's
--- transaction, so these batches are committed by the RPC transaction together.
 create or replace function public.import_novel_chapters(
   target_novel_id bigint,
   import_chapters jsonb default '[]'::jsonb
@@ -19,8 +16,6 @@ begin
   if not public.is_admin() then raise exception 'Administrator access required.'; end if;
   if not exists (select 1 from public.novels where id = target_novel_id) then raise exception 'Novel not found.'; end if;
 
-  -- Serialize imports for a novel so duplicate handling remains identical to the
-  -- previous ON CONFLICT implementation.
   perform 1 from public.novels where id = target_novel_id for update;
 
   create temporary table if not exists pg_temp.chapter_import_candidates (
@@ -31,8 +26,6 @@ begin
   ) on commit drop;
   truncate pg_temp.chapter_import_candidates;
 
-  -- DISTINCT ON preserves the existing in-file duplicate rule: only the first
-  -- valid occurrence of each chapter number is eligible for insertion.
   insert into pg_temp.chapter_import_candidates (number, title, content)
   select distinct on ((c.chapter ->> 'number')::integer)
     (c.chapter ->> 'number')::integer,
@@ -43,7 +36,6 @@ begin
   where (c.chapter ->> 'number')::integer > 0
   order by (c.chapter ->> 'number')::integer, c.ordinal;
 
-  -- Read all existing chapter numbers once, then exclude them from every batch.
   update pg_temp.chapter_import_candidates candidate
   set already_exists = true
   from (
@@ -91,5 +83,3 @@ begin
     'elapsedTimeMs', round(extract(epoch from (clock_timestamp() - import_started_at)) * 1000, 3)
   );
 end $$;
-
-grant execute on function public.import_novel_chapters(bigint,jsonb) to authenticated;
