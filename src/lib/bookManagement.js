@@ -70,9 +70,8 @@ export async function saveManagedBook(book, allBooks) {
     book.chapters[index].id = result.data.id;
   }
   const chapterIds = chapters.map(({ id }) => id);
-  const existingChapters = await supabase.from("chapters").select("id").eq("novel_id", book.id);
-  if (existingChapters.error) throw existingChapters.error;
-  const removedChapterIds = (existingChapters.data || []).map(({ id }) => id).filter((id) => !chapterIds.includes(id));
+  const existingChapters = await fetchChapterMetadataPages(supabase, (query) => query.eq("novel_id", book.id));
+  const removedChapterIds = existingChapters.map(({ id }) => id).filter((id) => !chapterIds.includes(id));
   if (removedChapterIds.length) { const result = await supabase.from("chapters").delete().in("id", removedChapterIds); if (result.error) throw result.error; }
 
   return allBooks;

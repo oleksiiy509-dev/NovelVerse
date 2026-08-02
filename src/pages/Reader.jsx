@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { fetchChapterMetadataPages } from "../lib/chapterQueries";
 import { audioModes, defaultAudioLanguage, defaultAudioVoice, formatFileSize, getAudioDownloadKey, getAudioPositionKey, getChapterAudioMetadata, getSavedAudioMode, saveAudioMode } from "../lib/chapterAudio";
 import { addReadingHistory, getCurrentUser, syncReadingProgress, userKey, readList, readCloudBackedList, writeCloudBackedList } from "../lib/userFeatures";
 import { deleteDownloadedChapter, getDownloadedChapter, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
@@ -294,9 +295,9 @@ function Reader() {
     const offline = await getDownloadedNovelChapters(activeChapter.novel_id).catch(() => []);
     const offlineIds = new Set(offline.map((item) => String(item.chapter_id)));
     try {
-      const result = await supabase.from("chapters").select("id, number, title").eq("novel_id", activeChapter.novel_id).order("number", { ascending: true });
-      if (!result.error && result.data?.length) {
-        setChapterList(result.data.map((item) => ({ id: String(item.id), number: Number(item.number), title: item.title, availableOffline: offlineIds.has(String(item.id)), downloaded: offlineIds.has(String(item.id)) })));
+      const chapters = await fetchChapterMetadataPages(supabase, (query) => query.eq("novel_id", activeChapter.novel_id));
+      if (chapters.length) {
+        setChapterList(chapters.map((item) => ({ id: String(item.id), number: Number(item.number), title: item.title, availableOffline: offlineIds.has(String(item.id)), downloaded: offlineIds.has(String(item.id)) })));
         return;
       }
     } catch {
