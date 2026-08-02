@@ -40,8 +40,10 @@ export function mapSupabaseBookRecord(row, defaults) {
       .sort((a, b) => (a.position || 0) - (b.position || 0))
       .map((chapter, index) => ({
         id: chapter.id,
+        novel_id: chapter.novel_id,
+        number: chapter.number,
         title: chapter.title,
-        content: chapter.content || "",
+        ...(Object.hasOwn(chapter, "content") ? { content: chapter.content || "" } : {}),
         audioStatus: chapter.audio_status || "Missing",
         audioUrl: chapter.audio_url || "",
         updatedAt: chapter.updated_at || row.updated_at,

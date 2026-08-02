@@ -1,16 +1,17 @@
 import { isSupabaseConfigured, supabase } from "./supabase.js";
 import { mapSupabaseBookRecord } from "./bookManagementCore.js";
+import { fetchChapterContent, fetchChapterMetadataPages } from "./chapterQueries.js";
 
 const defaults = { chapters: [], coverUrl: "", status: "Draft" };
 
 export async function loadStudioBooks() {
   if (!isSupabaseConfigured) throw new Error("Supabase is not configured");
-  const { data, error } = await supabase
-    .from("novels")
-    .select("*, chapters(*)")
-    .order("updated_at", { ascending: false });
+  const [{ data, error }, chapters] = await Promise.all([
+    supabase.from("novels").select("*").order("updated_at", { ascending: false }),
+    fetchChapterMetadataPages(supabase),
+  ]);
   if (error) throw error;
-  return (data || []).map((row) => mapSupabaseBookRecord(row, defaults));
+  return (data || []).map((row) => mapSupabaseBookRecord({ ...row, chapters: chapters.filter((chapter) => String(chapter.novel_id) === String(row.id)) }, defaults));
 }
 
 export async function setStudioBooksStatus(ids, status) {
@@ -32,8 +33,9 @@ export async function duplicateStudioBook(book) {
   }).select("id").single();
   if (error) throw error;
   if (!book.chapters.length) return;
-  const chapters = book.chapters.map((chapter, index) => ({
-    novel_id: data.id, title: chapter.title, content: chapter.content,
+  const sourceChapters = await Promise.all(book.chapters.map((chapter) => Object.hasOwn(chapter, "content") ? chapter : fetchChapterContent(supabase, chapter.id)));
+  const chapters = sourceChapters.map((chapter, index) => ({
+    novel_id: data.id, number: index + 1, title: chapter.title, content: chapter.content,
     position: index + 1, audio_status: "Missing", audio_url: null,
   }));
   const result = await supabase.from("chapters").insert(chapters);
