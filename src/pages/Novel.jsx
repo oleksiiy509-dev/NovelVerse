@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { distinctChaptersByNumber } from "../lib/chapterQueries";
+import { distinctChaptersByNumber, fetchChapterMetadataPages } from "../lib/chapterQueries";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
 import { deleteDownloadedNovel, formatBytes, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram } from "../lib/telegram";
@@ -182,12 +182,13 @@ function Novel() {
   }
 
   async function loadChapters() {
-    const { data, error } = await supabase.from("chapters").select("id,novel_id,number,title").eq("novel_id", id).order("number", { ascending: true });
-    if (error) {
+    try {
+      const data = await fetchChapterMetadataPages(supabase, (query) => query.eq("novel_id", id));
+      setChapters(distinctChaptersByNumber(data));
+    } catch (error) {
       console.error(error);
       return;
     }
-    setChapters(distinctChaptersByNumber(data || []));
   }
 
   async function loadRatings(currentUser = user) {

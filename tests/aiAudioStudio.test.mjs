@@ -41,7 +41,7 @@ test("timeline character ids remain stable when voice settings change", () => {
 import { createAudioStudioProjectFromChapter, fetchAudioStudioChapters, fetchAudioStudioNovels, getProjectStorageKey, hasChapterText, loadAudioStudioProject, mergeManualEdits, regenerateScene, saveAudioStudioProject, sortChaptersByNumber } from "../src/lib/aiAudioStudio.js";
 
 function mockSupabase({ novels = [], chapters = [], error = null } = {}) {
-  const api = { table: "", select() { return this; }, order() { return this; }, eq(column, value) { this.filter = { column, value }; return this; }, maybeSingle() { const data = chapters.find((c) => String(c.id) === String(this.filter?.value)); return Promise.resolve({ data: data || null, error }); }, then(resolve) { const data = this.table === "novels" ? novels : chapters.filter((c) => !this.filter || String(c.novel_id) === String(this.filter.value)); return Promise.resolve({ data, error }).then(resolve); } };
+  const api = { table: "", select() { return this; }, order() { return this; }, eq(column, value) { this.filter = { column, value }; return this; }, maybeSingle() { const data = chapters.find((c) => String(c.id) === String(this.filter?.value)); return Promise.resolve({ data: data || null, error }); }, range(from, to) { const data = chapters.filter((c) => !this.filter || String(c.novel_id) === String(this.filter.value)).slice(from, to + 1); return Promise.resolve({ data, error }); }, then(resolve) { const data = this.table === "novels" ? novels : chapters.filter((c) => !this.filter || String(c.novel_id) === String(this.filter.value)); return Promise.resolve({ data, error }).then(resolve); } };
   return { from(table) { return { ...api, table }; } };
 }
 

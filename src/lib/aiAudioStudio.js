@@ -1,4 +1,5 @@
 import { createAiProducerProject } from "./aiProducerEngine.js";
+import { fetchChapterMetadataPages } from "./chapterQueries.js";
 
 const TRACK_TYPES = ["narrator", "character", "ambient", "music", "sfx"];
 export const audioStudioStorageKey = "novelverse.aiAudioStudio.v1";
@@ -25,9 +26,8 @@ export async function fetchAudioStudioNovels(supabase) {
 }
 export async function fetchAudioStudioChapters(supabase, novelId) {
   if (!novelId) return [];
-  const { data, error } = await supabase.from("chapters").select("id,novel_id,number,title").eq("novel_id", novelId).order("number", { ascending: true });
-  if (error) throw error;
-  return sortChaptersByNumber(data || []);
+  const data = await fetchChapterMetadataPages(supabase, (query) => query.eq("novel_id", novelId));
+  return sortChaptersByNumber(data);
 }
 export async function fetchAudioStudioChapterText(supabase, chapterId) {
   const { data, error } = await supabase.from("chapters").select("id,novel_id,number,title,content,text").eq("id", chapterId).maybeSingle();
