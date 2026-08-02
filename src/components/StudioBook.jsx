@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase.js";
+import { distinctChaptersByNumber } from "../lib/chapterQueries.js";
 import BookImport from "./BookImport.jsx";
 import ChapterForm from "./ChapterForm.jsx";
 
@@ -16,7 +17,7 @@ export default function StudioBook({ novelId, mode = "chapters" }) {
       supabase.from("chapters").select("id,number,title").eq("novel_id", novelId).order("number", { ascending: true }),
     ]);
     if (novelResult.error || chapterResult.error) { setError((novelResult.error || chapterResult.error).message); return; }
-    setNovel(novelResult.data); setChapters(chapterResult.data || []);
+    setNovel(novelResult.data); setChapters(distinctChaptersByNumber(chapterResult.data || []));
   }, [novelId]);
   useEffect(() => { load(); }, [load]);
   if (error) return <div className="studio-books__message error" role="alert">{error}</div>;

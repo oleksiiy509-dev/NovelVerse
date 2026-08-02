@@ -1,6 +1,6 @@
 import { isSupabaseConfigured, supabase } from "./supabase.js";
 import { mapSupabaseBookRecord } from "./bookManagementCore.js";
-import { fetchChapterContent, fetchChapterMetadataPages } from "./chapterQueries.js";
+import { distinctChaptersByNumber, fetchChapterContent, fetchChapterMetadataPages } from "./chapterQueries.js";
 import { deleteNovels } from "./novelDeletion.js";
 
 const defaults = { chapters: [], coverUrl: "", status: "Draft" };
@@ -12,7 +12,10 @@ export async function loadStudioBooks() {
     fetchChapterMetadataPages(supabase),
   ]);
   if (error) throw error;
-  return (data || []).map((row) => mapSupabaseBookRecord({ ...row, chapters: chapters.filter((chapter) => String(chapter.novel_id) === String(row.id)) }, defaults));
+  return (data || []).map((row) => mapSupabaseBookRecord({
+    ...row,
+    chapters: distinctChaptersByNumber(chapters.filter((chapter) => String(chapter.novel_id) === String(row.id))),
+  }, defaults));
 }
 
 export async function setStudioBooksStatus(ids, status) {

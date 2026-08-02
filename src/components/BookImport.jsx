@@ -43,7 +43,7 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
           const batch = item.chapters.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
           const result = await importChapterBatch(novel.id, batch);
           const completedAt = Date.now();
-          item = { ...item, added: item.added + Number(result.added || 0), skipped: item.skipped + Number(result.skipped || 0), completedBatches: batchIndex + 1, durationMs: item.durationMs + completedAt - checkpointAt };
+          item = { ...item, added: item.added + Number(result.added || 0), skipped: item.skipped + Number(result.skipped || 0), totalChapters: Number(result.totalChapters), completedBatches: batchIndex + 1, durationMs: item.durationMs + completedAt - checkpointAt };
           checkpointAt = completedAt;
           queue[fileIndex] = item;
           await persist([...queue], queueStartedAt);
@@ -116,6 +116,7 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
   const finished = files.length > 0 && files.every((file) => ["completed", "failed"].includes(file.status));
   const ready = files.some((file) => file.status === "queued" && file.chapters);
   const eta = estimateRemaining(startedAt, totals.added + totals.skipped, totals.detected);
+  const refreshedTotal = [...files].reverse().find((file) => Number.isFinite(file.totalChapters))?.totalChapters;
 
   return <div className="book-import">
     <header className="book-import__header"><div><h2>Final Import System</h2><p>Import into <strong>{novel?.title}</strong> sequentially, with a checkpoint every 100 chapters.</p></div><span className="book-import__local">Auto-resume enabled</span></header>
@@ -133,7 +134,7 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
       </section>
       {restored && running && <p className="book-import__resume">Recovered queue: continuing automatically from the last saved batch.</p>}
       <section className="book-import__file-list"><h3>Automatically sorted files</h3>{files.map((file, index) => <article key={file.id} className={`is-${file.status}`}><span>{index + 1}</span><div><strong>{file.name}</strong><small>{file.error || file.status}</small></div><dl><div><dt>Detected</dt><dd>{file.detected || "—"}</dd></div><div><dt>Imported</dt><dd>{file.added}</dd></div><div><dt>Skipped</dt><dd>{file.skipped}</dd></div><div><dt>Batches</dt><dd>{file.completedBatches} / {file.totalBatches || "—"}</dd></div></dl></article>)}</section>
-      {finished && <section className="book-import__result" role="status"><h3>Final report</h3><dl><div><dt>Imported</dt><dd>{totals.added}</dd></div><div><dt>Skipped</dt><dd>{totals.skipped}</dd></div><div><dt>Failed</dt><dd>{totals.failedFiles}</dd></div><div><dt>Duration</dt><dd>{formatDuration(files.reduce((sum, file) => sum + file.durationMs, 0))}</dd></div><div><dt>Total chapters in novel</dt><dd>{currentChapters.length + totals.added}</dd></div></dl></section>}
+      {finished && <section className="book-import__result" role="status"><h3>Final report</h3><dl><div><dt>Imported</dt><dd>{totals.added}</dd></div><div><dt>Skipped</dt><dd>{totals.skipped}</dd></div><div><dt>Failed</dt><dd>{totals.failedFiles}</dd></div><div><dt>Duration</dt><dd>{formatDuration(files.reduce((sum, file) => sum + file.durationMs, 0))}</dd></div><div><dt>Total chapters in novel</dt><dd>{refreshedTotal ?? currentChapters.length}</dd></div></dl></section>}
       <footer className="book-import__actions"><button type="button" className="secondary" disabled={running || analyzing} onClick={() => { reset(); onCancel?.(); }}>Cancel</button>{finished && files.some((file) => file.status === "failed" && file.chapters) && <button type="button" onClick={retryFailed}>Retry failed files</button>}{!finished && <button type="button" disabled={running || analyzing || !ready} onClick={() => runQueue()}>{running ? "Importing…" : "Start import"}</button>}{finished && <button type="button" onClick={reset}>Done</button>}</footer>
     </>}
   </div>;

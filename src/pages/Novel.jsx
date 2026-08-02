@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { distinctChaptersByNumber } from "../lib/chapterQueries";
 import { getCurrentUser, readList, writeList, userKey } from "../lib/userFeatures";
 import { deleteDownloadedNovel, formatBytes, getDownloadedNovelChapters, saveDownloadedChapter } from "../lib/offlineStorage";
 import { shareToTelegram } from "../lib/telegram";
@@ -186,7 +187,7 @@ function Novel() {
       console.error(error);
       return;
     }
-    setChapters(data || []);
+    setChapters(distinctChaptersByNumber(data || []));
   }
 
   async function loadRatings(currentUser = user) {
