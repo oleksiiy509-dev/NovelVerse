@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
@@ -57,22 +57,20 @@ async function render(job) {
     const wavFile = path.join(folder, chapterName(request.chapterNumber, 'wav'));
     await writeFile(wavFile, audio);
     const details = await inspectWav(wavFile, audio.length);
-    let file = wavFile;
-    let format = 'wav';
+    let mp3File = null;
     let ffmpegMissing = false;
     try {
-      const mp3File = path.join(folder, chapterName(request.chapterNumber, 'mp3'));
+      mp3File = path.join(folder, chapterName(request.chapterNumber, 'mp3'));
       await exec(process.env.FFMPEG_BIN || 'ffmpeg', ['-y', '-loglevel', 'error', '-i', wavFile, mp3File], { windowsHide: true });
-      file = mp3File; format = 'mp3';
-      await rm(wavFile, { force: true });
     } catch (error) {
+      mp3File = null;
       if (error.code === 'ENOENT' || error.code === 'EACCES') ffmpegMissing = true;
       else throw new Error(`FFmpeg conversion failed: ${error.message}`);
     }
-    const info = await stat(file);
+    const info = await stat(wavFile);
     const manifest = path.join(folder, `.chapter-${String(request.chapterNumber).padStart(4, '0')}.json`);
-    await writeFile(manifest, JSON.stringify({ key: job.key, file, format, duration: details.duration }));
-    Object.assign(job, { ...details, size: info.size, status: 'Finished', file, folder, fileName: path.basename(file), format, ffmpegMissing, generationTime: Date.now() - started, cached: false });
+    await writeFile(manifest, JSON.stringify({ key: job.key, file: wavFile, mp3File, format: 'wav', duration: details.duration }));
+    Object.assign(job, { ...details, size: info.size, status: 'Finished', file: wavFile, mp3File, folder, fileName: path.basename(wavFile), mp3FileName: mp3File && path.basename(mp3File), format: 'wav', ffmpegMissing, generationTime: Date.now() - started, cached: false });
   } catch (error) {
     job.status = 'Failed';
     job.error = error.cancelled ? 'Generation cancelled' : error.message;
@@ -107,8 +105,10 @@ export async function createChapterJob(cfg, body = {}) {
   try {
     const cached = JSON.parse(await readFile(manifest, 'utf8'));
     if (cached.key !== key) throw new Error('cache changed');
+    if (cached.format !== 'wav' || path.extname(cached.file).toLowerCase() !== '.wav') throw new Error('legacy cache format');
     const info = await stat(cached.file);
-    const job = { id: randomUUID(), key, request, status: 'Finished', completed: segments.length, total: segments.length, file: cached.file, folder, fileName: path.basename(cached.file), format: cached.format, generationTime: 0, cached: true, size: info.size, duration: cached.duration };
+    if (cached.mp3File) await stat(cached.mp3File);
+    const job = { id: randomUUID(), key, request, status: 'Finished', completed: segments.length, total: segments.length, file: cached.file, mp3File: cached.mp3File || null, folder, fileName: path.basename(cached.file), mp3FileName: cached.mp3File && path.basename(cached.mp3File), format: 'wav', generationTime: 0, cached: true, size: info.size, duration: cached.duration };
     jobs.set(job.id, job); return publicJob(job);
   } catch { /* cache miss */ }
   const job = { id: randomUUID(), key, cfg, request, status: 'Preparing', completed: 0, total: segments.length, generationTime: 0, cached: false };
@@ -117,4 +117,4 @@ export async function createChapterJob(cfg, body = {}) {
 
 export function getChapterJob(id) { return jobs.get(id); }
 export function cancelChapterJob(id) { const job = jobs.get(id); if (job && !['Finished', 'Failed'].includes(job.status)) job.cancelled = true; return job; }
-export function publicJob(job) { if (!job) return null; const { cfg, request, cancelled, file, ...safe } = job; return { ...safe, audioUrl: job.status === 'Finished' ? `/chapter-jobs/${job.id}/download` : null }; }
+export function publicJob(job) { if (!job) return null; const { cfg, request, cancelled, file, mp3File, ...safe } = job; return { ...safe, audioUrl: job.status === 'Finished' ? `/chapter-jobs/${job.id}/download` : null }; }

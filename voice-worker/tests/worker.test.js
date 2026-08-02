@@ -120,7 +120,7 @@ test('health returns provider status and runtime details', async () => {
   await cleanup(ctx);
 });
 
-test('local Piper chapter generation writes MP3 and reuses an unchanged chapter', async () => {
+test('local Piper chapter generation keeps readable WAV and MP3 files and reuses an unchanged chapter', async () => {
   const previous = { PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL, FFMPEG_BIN: process.env.FFMPEG_BIN };
   const root = await mkdtemp(path.join(os.tmpdir(), 'nv-chapter-'));
   const outputDir = path.join(root, 'voice-output');
@@ -150,15 +150,17 @@ const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length
       job = await (await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } })).json();
     }
     assert.equal(job.status, 'Finished', job.error);
-    assert.equal(job.fileName, 'Chapter 0001.mp3');
-    assert.equal(job.format, 'mp3');
+    assert.equal(job.fileName, 'Chapter 0001.wav');
+    assert.equal(job.mp3FileName, 'Chapter 0001.mp3');
+    assert.equal(job.format, 'wav');
     assert.ok(job.duration > 0); assert.ok(job.size > 44); assert.ok(job.generationTime >= 0);
     assert.equal(job.audioUrl, `/chapter-jobs/${job.id}/download`);
     const audio = await ctx.request(job.audioUrl, { headers: { authorization: 'Bearer secret' } });
     assert.equal(audio.status, 200);
-    assert.match(audio.headers.get('content-type'), /audio\/mpeg/);
+    assert.match(audio.headers.get('content-type'), /audio\/wav/);
     assert.ok((await audio.arrayBuffer()).byteLength > 44);
     assert.equal((await stat(path.join(outputDir, 'A Book', 'Chapter 0001.mp3'))).isFile(), true);
+    assert.equal((await stat(path.join(outputDir, 'A Book', 'Chapter 0001.wav'))).isFile(), true);
     const cached = await (await ctx.request('/chapter-jobs', auth({ ...payload, chapterTitle: 'Renamed without audio changes' }))).json();
     assert.equal(cached.status, 'Finished'); assert.equal(cached.cached, true); assert.equal(cached.generationTime, 0);
   } finally {
