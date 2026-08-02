@@ -377,6 +377,12 @@ function Novel() {
     localStorage.setItem(`readChapters_${id}`, JSON.stringify(next));
   }
 
+  function openChapter(chapterId) {
+    navigate(`/reader/${chapterId}`);
+    markChapterRead(chapterId);
+    localStorage.setItem(`lastChapter_${id}`, chapterId);
+  }
+
   async function deleteComment(commentId) {
     if (!user || !window.confirm("Delete this comment?")) return;
     const { error } = await supabase.from("comments").delete().eq("id", commentId).eq("user_id", user.id);
@@ -531,7 +537,7 @@ function Novel() {
         <div className="novel-section-heading"><h2>📚 Chapters</h2><span>{readPercent}% read</span></div>
         <div className="novel-progress"><span style={{ width: `${readPercent}%` }} /></div>
         <input className="chapter-search" value={chapterSearch} onChange={(event) => setChapterSearch(event.target.value)} placeholder="Search chapter..." />
-        {chapters.length === 0 ? <div className="novel-empty">No chapters yet.</div> : <div className="chapter-ranges">{ranges.map((group, index) => <details className="chapter-range" key={group.label} open={index === 0}><summary>{group.label}<span>{group.chapters.length} chapters</span></summary><div className="chapter-list">{group.chapters.map((chapter) => <div key={chapter.id} className={readChapters.includes(chapter.id) ? "chapter-row chapter-row--read" : "chapter-row"}><button onClick={() => { markChapterRead(chapter.id); localStorage.setItem(`lastChapter_${id}`, chapter.id); navigate(`/reader/${chapter.id}`); }}><span><strong>Chapter {chapter.number}</strong><small>{chapter.title}</small></span></button><button className="chapter-read-toggle" onClick={() => markChapterRead(chapter.id)}>{readChapters.includes(chapter.id) ? "✓ Read" : "Mark read"}</button></div>)}</div></details>)}</div>}
+        {chapters.length === 0 ? <div className="novel-empty">No chapters yet.</div> : <div className="chapter-ranges">{ranges.map((group, index) => <details className="chapter-range" key={group.label} open={index === 0}><summary>{group.label}<span>{group.chapters.length} chapters</span></summary><div className="chapter-list">{group.chapters.map((chapter) => <div key={chapter.id} className={readChapters.includes(chapter.id) ? "chapter-row chapter-row--read" : "chapter-row"}><button type="button" onClick={() => openChapter(chapter.id)}><span><strong>Chapter {chapter.number}</strong><small>{chapter.title}</small></span></button><button className="chapter-read-toggle" onClick={() => markChapterRead(chapter.id)}>{readChapters.includes(chapter.id) ? "✓ Read" : "Mark read"}</button></div>)}</div></details>)}</div>}
       </section>
 
       <section className="novel-panel community-panel" ref={commentsRef}>
