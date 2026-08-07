@@ -116,6 +116,7 @@ test('health returns provider status and runtime details', async () => {
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.ok, true);
+  assert.equal(body.workerConnected, true);
   assert.equal(body.version, '1.0.0');
   assert.ok(body.providers.some((provider) => provider.id === 'mock' && provider.available));
   assert.ok(body.uptime >= 0);
@@ -271,6 +272,25 @@ test('health marks Piper available for relative paths resolved from voice-worker
   }
 });
 
+test('health auto-detects bundled Piper when environment paths are omitted', async () => {
+  const executable = path.join(workerRoot, 'piper', process.platform === 'win32' ? 'piper.exe' : 'piper');
+  const model = path.join(workerRoot, 'piper', 'voices', 'uk_UA-ukrainian_tts-medium.onnx');
+  const createdExecutable = process.platform !== 'win32';
+  if (createdExecutable) await writeFile(executable, '#!/bin/sh\nexit 0\n');
+  await withoutPiperEnv(async () => {
+    const ctx = await fixture();
+    try {
+      const health = await (await ctx.request('/health')).json();
+      const piper = health.providers.find((provider) => provider.id === 'piper');
+      assert.equal(piper.available, true);
+      assert.equal(health.providerAvailable, true);
+      assert.equal(health.status, 'ONLINE');
+    } finally { await cleanup(ctx); }
+  });
+  if (createdExecutable) await rm(executable, { force: true });
+  assert.equal((await stat(model)).isFile(), true);
+});
+
 test('CORS allows localhost development origin', async () => {
   const ctx = await fixture();
   const res = await ctx.request('/providers', { headers: { origin: 'http://localhost:5173' } });
@@ -423,10 +443,50 @@ test('configured but unreachable local HTTP provider remains OFFLINE', async () 
   await withoutPiperEnv(async () => {
     const ctx = await fixture();
     const health = await (await ctx.request('/health')).json();
-    assert.equal(health.status, 'OFFLINE');
-    assert.equal(health.online, false);
+    assert.equal(health.status, 'Worker connected, no voice provider available');
+    assert.equal(health.online, true);
+    assert.equal(health.providerAvailable, false);
     assert.equal(health.providers.find(({ id }) => id === 'fish-speech').available, false);
     await cleanup(ctx);
+  });
+  for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+});
+
+test('health verifies a configured generic HTTP Fish Speech endpoint', async () => {
+  const previous = { GENERIC_TTS_URL: process.env.GENERIC_TTS_URL, GENERIC_TTS_HEALTH_URL: process.env.GENERIC_TTS_HEALTH_URL, FISH_SPEECH_URL: process.env.FISH_SPEECH_URL, KOKORO_URL: process.env.KOKORO_URL };
+  const providerServer = createServer((req, res) => res.writeHead(req.url === '/health' ? 200 : 404).end());
+  providerServer.listen(0, '127.0.0.1');
+  await new Promise((resolve) => providerServer.once('listening', resolve));
+  const base = `http://127.0.0.1:${providerServer.address().port}`;
+  process.env.GENERIC_TTS_URL = `${base}/v1/tts`;
+  process.env.GENERIC_TTS_HEALTH_URL = `${base}/health`;
+  delete process.env.FISH_SPEECH_URL; delete process.env.KOKORO_URL;
+  await withoutPiperEnv(async () => {
+    const ctx = await fixture();
+    try {
+      const health = await (await ctx.request('/health')).json();
+      assert.equal(health.providers.find(({ id }) => id === 'generic-http').available, true);
+      assert.equal(health.providerAvailable, true);
+      assert.equal(health.status, 'ONLINE');
+    } finally { await cleanup(ctx); }
+  });
+  await new Promise((resolve) => providerServer.close(resolve));
+  for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+});
+
+test('health does not report an unreachable generic HTTP provider as available', async () => {
+  const previous = { GENERIC_TTS_URL: process.env.GENERIC_TTS_URL, GENERIC_TTS_HEALTH_URL: process.env.GENERIC_TTS_HEALTH_URL, FISH_SPEECH_URL: process.env.FISH_SPEECH_URL, KOKORO_URL: process.env.KOKORO_URL };
+  process.env.GENERIC_TTS_URL = 'http://127.0.0.1:1/v1/tts';
+  process.env.GENERIC_TTS_HEALTH_URL = 'http://127.0.0.1:1/health';
+  delete process.env.FISH_SPEECH_URL; delete process.env.KOKORO_URL;
+  await withoutPiperEnv(async () => {
+    const ctx = await fixture();
+    try {
+      const health = await (await ctx.request('/health')).json();
+      assert.equal(health.providers.find(({ id }) => id === 'generic-http').available, false);
+      assert.equal(health.providerAvailable, false);
+      assert.equal(health.status, 'Worker connected, no voice provider available');
+    } finally { await cleanup(ctx); }
   });
   for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
 });

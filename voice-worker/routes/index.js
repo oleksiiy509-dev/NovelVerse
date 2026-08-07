@@ -18,9 +18,10 @@ router.get('/health', async (req, res) => {
   let outputAvailable = true;
   try { await mkdir(req.app.locals.config.outputDir, { recursive: true }); await access(req.app.locals.config.outputDir, constants.W_OK); } catch { outputAvailable = false; }
   const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true });
-  const narrator = providers.find(({ id }) => id === 'narrator');
-  const status = queue.busy ? 'BUSY' : narrator?.available ? 'ONLINE' : 'OFFLINE';
-  res.json({ ok: true, online: Boolean(narrator?.available), status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available, status: providerStatus }) => ({ id, available, reason: providerStatus?.reason || null })), availableVoices: providers.filter((p) => p.available).flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
+  const realProviders = providers.filter(({ id }) => !['narrator', 'mock'].includes(id));
+  const providerAvailable = realProviders.some(({ available }) => available);
+  const status = queue.busy ? 'BUSY' : providerAvailable ? 'ONLINE' : 'Worker connected, no voice provider available';
+  res.json({ ok: true, online: true, workerConnected: true, providerAvailable, status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available, status: providerStatus }) => ({ id, available, reason: providerStatus?.reason || null })), availableVoices: realProviders.filter((p) => p.available).flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
 });
 router.get('/providers', async (req, res) => res.json({ ok: true, providers: (await getProviderStatuses(req.app.locals.config)).map(({ synthesize, transform, checkHealth, ...safe }) => safe) }));
 router.get('/voices', async (req, res) => res.json({ ok: true, providers: (await getProviderStatuses(req.app.locals.config)).map(({ synthesize, transform, checkHealth, ...safe }) => safe) }));

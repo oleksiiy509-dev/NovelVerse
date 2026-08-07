@@ -51,18 +51,23 @@ function prepareText(text, options) {
 }
 
 function getStatus() {
-  const binPath = resolveConfiguredPath(process.env.PIPER_BIN);
-  const modelPath = resolveConfiguredPath(process.env.PIPER_MODEL);
-  const binConfigured = Boolean(binPath);
-  const modelConfigured = Boolean(modelPath);
-  const binExists = binConfigured && existsSync(binPath);
-  const modelExists = modelConfigured && existsSync(modelPath);
+  const bundledBin = path.join(workerRoot, 'piper', process.platform === 'win32' ? 'piper.exe' : 'piper');
+  const bundledModels = [
+    process.env.PIPER_VOICE && path.join(workerRoot, 'piper', 'voices', `${process.env.PIPER_VOICE}.onnx`),
+    path.join(workerRoot, 'piper', 'voices', 'uk_UA-ukrainian_tts-medium.onnx'),
+  ].filter(Boolean);
+  const binPath = resolveConfiguredPath(process.env.PIPER_BIN) || (existsSync(bundledBin) ? bundledBin : '');
+  const modelPath = resolveConfiguredPath(process.env.PIPER_MODEL) || bundledModels.find((candidate) => existsSync(candidate)) || '';
+  const binConfigured = Boolean(cleanEnvPath(process.env.PIPER_BIN));
+  const modelConfigured = Boolean(cleanEnvPath(process.env.PIPER_MODEL));
+  const binExists = Boolean(binPath) && existsSync(binPath);
+  const modelExists = Boolean(modelPath) && existsSync(modelPath);
   const available = Boolean(binExists && modelExists);
   const reason = available ? null : [
-    !binConfigured && 'PIPER_BIN is not configured',
-    binConfigured && !binExists && `PIPER_BIN does not exist: ${binPath}`,
-    !modelConfigured && 'PIPER_MODEL is not configured',
-    modelConfigured && !modelExists && `PIPER_MODEL does not exist: ${modelPath}`,
+    !binPath && 'PIPER_BIN is not configured and no bundled Piper executable was found',
+    binPath && !binExists && `PIPER_BIN does not exist: ${binPath}`,
+    !modelPath && 'PIPER_MODEL is not configured and no bundled Piper model was found',
+    modelPath && !modelExists && `PIPER_MODEL does not exist: ${modelPath}`,
   ].filter(Boolean).join('; ');
   return { available, reason, binConfigured, binExists, binPath, modelConfigured, modelExists, modelPath };
 }
