@@ -44,7 +44,7 @@ async function requestJson(path, timeoutMs = voiceWorkerTimeoutMs) {
   const timeout = setTimeout(() => controller.abort(new Error("Voice Worker request timed out")), timeoutMs);
   let res;
   try {
-    res = await fetch(`${getVoiceWorkerUrl()}${path}`, { headers: voiceWorkerHeaders({ accept: "application/json" }), signal: controller.signal });
+    res = await fetch(`${getVoiceWorkerUrl()}${path}`, { headers: voiceWorkerHeaders({ accept: "application/json" }), cache: "no-store", signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
