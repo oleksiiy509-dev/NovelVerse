@@ -400,9 +400,17 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
   const previous = { FISH_SPEECH_URL: process.env.FISH_SPEECH_URL, FISH_SPEECH_HEALTH_URL: process.env.FISH_SPEECH_HEALTH_URL, KOKORO_URL: process.env.KOKORO_URL, PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL };
   const wav = Buffer.alloc(16044);
   wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(16000, 40);
+  const fishRequests = [];
   const providerServer = createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
-    if (req.method === 'POST' && req.url === '/v1/tts') return res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav);
+    if (req.method === 'POST' && req.url === '/v1/tts') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      return req.on('end', () => {
+        fishRequests.push(JSON.parse(body));
+        res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav);
+      });
+    }
     res.writeHead(404).end();
   }).listen(0, '127.0.0.1');
   await new Promise((resolve) => providerServer.once('listening', resolve));
@@ -420,6 +428,8 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
     const preview = await ctx.request('/preview', auth({ text: 'Provider preview.', provider: 'fish-speech', format: 'wav' }));
     assert.equal(preview.status, 200);
     assert.equal((await preview.arrayBuffer()).byteLength, wav.length);
+    assert.equal(fishRequests[0].reference_id, null);
+    assert.deepEqual(fishRequests[0].references, []);
     let job = await (await ctx.request('/chapter-jobs', auth({ bookId: 'book-http', chapterId: 'chapter-http', chapterNumber: 1, bookTitle: 'HTTP Provider', provider: 'fish-speech', segments: [{ text: 'Generate this chapter.' }] }))).json();
     for (let attempt = 0; attempt < 50 && job.status !== 'Finished'; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 20));

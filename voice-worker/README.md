@@ -29,6 +29,55 @@ curl http://127.0.0.1:8787/health
 
 Set `TOKEN` in `.env` to require `Authorization: Bearer <TOKEN>` for all endpoints except `/health`.
 
+## Fish Speech on Windows
+
+Fish Speech is **not embedded in the Node worker**. It is a separate, GPU-oriented
+Python service and must be downloaded once, then kept running on port 8080. The
+provided PowerShell scripts install it outside this repository in
+`%LOCALAPPDATA%\NovelVerse\fish-speech`, so model/source files are not accidentally
+committed.
+
+Prerequisites: Windows 10/11, Git, [uv](https://docs.astral.sh/uv/), and a supported
+NVIDIA driver. From PowerShell at the repository root:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\voice-worker\setup-fish-speech.ps1
+```
+
+The setup clones the upstream `fishaudio/fish-speech` repository, creates its
+Python 3.12 environment from the upstream lock file, and downloads the default
+`fishaudio/fish-speech-1.5` checkpoint. Fish Speech is downloaded separately
+rather than copied into NovelVerse or built into the voice-worker container.
+
+For every development session, use two PowerShell windows:
+
+```powershell
+# Window 1 (long-running Fish Speech API)
+.\voice-worker\start-fish-speech.ps1
+
+# Window 2 (long-running NovelVerse worker)
+Set-Location .\voice-worker
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+npm install
+npm start
+```
+
+Verify both processes from a third window:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8080/health -UseBasicParsing
+(Invoke-RestMethod http://127.0.0.1:8787/health).providers |
+  Where-Object id -eq 'fish-speech'
+```
+
+Fish Speech may return 404 for `/health` depending on its upstream version; this
+still proves that the process is listening, and the voice worker intentionally
+treats non-5xx responses as reachable. `FISH_SPEECH_REFERENCE_ID` should remain
+empty for ordinary synthesis. Set it only to a reference id already installed in
+Fish Speech. See [FISH_SPEECH_SETUP.md](./FISH_SPEECH_SETUP.md) for Docker and
+troubleshooting notes.
+
 
 ## Piper on Windows
 
