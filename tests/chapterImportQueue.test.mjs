@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createQueueFiles, DEFAULT_IMPORT_BATCH_SIZE, importPreview, MAX_IMPORT_BATCH_SIZE, normalizeBatchSize, prepareQueuedChapters, queueTotals } from "../src/lib/chapterImportQueue.js";
+import { createChapterBatches, createQueueFiles, currentBatchNumber, DEFAULT_IMPORT_BATCH_SIZE, importPreview, MAX_IMPORT_BATCH_SIZE, normalizeBatchSize, prepareQueuedChapters, queueTotals } from "../src/lib/chapterImportQueue.js";
 import { readFileSync } from "node:fs";
 
 test("queue batches default to and never exceed 100 chapters", () => {
@@ -10,6 +10,20 @@ test("queue batches default to and never exceed 100 chapters", () => {
   assert.equal(normalizeBatchSize(1000), 100);
   assert.equal(normalizeBatchSize(25), 25);
   assert.equal(normalizeBatchSize(0), 1);
+});
+
+test("one parsed TXT is split into sequential internal batches of at most 100", () => {
+  const chapters = Array.from({ length: 1001 }, (_, number) => ({ number: number + 1 }));
+  const batches = createChapterBatches(chapters);
+  assert.equal(batches.length, 11);
+  assert.deepEqual(batches.map((batch) => batch.length), [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 1]);
+  assert.deepEqual(batches.flat(), chapters);
+});
+
+test("batch progress points at the first unfinished batch for retry", () => {
+  assert.equal(currentBatchNumber(0, 10), 1);
+  assert.equal(currentBatchNumber(6, 10), 7);
+  assert.equal(currentBatchNumber(10, 10), 10);
 });
 
 test("queued chapter preparation skips existing and in-file duplicate numbers", () => {
