@@ -4,12 +4,13 @@ export const safeVoiceWorkerChunkChars = 2800;
 export const voiceWorkerTimeoutMs = 15000;
 export const voiceProviderPriority = ["fish-speech", "kokoro", "piper"];
 
-const providerAliases = { fish: "fish-speech", fishspeech: "fish-speech", "fish_speech": "fish-speech" };
+const providerAliases = { fish: "fish-speech", fishspeech: "fish-speech", "fish_speech": "fish-speech", "generic-http": "fish-speech" };
 
 export function normalizeVoiceProviders(health = {}) {
   const reported = Array.isArray(health.providers) ? health.providers : [];
   return voiceProviderPriority.map((id) => {
-    const provider = reported.find((item) => (providerAliases[String(item.id).toLowerCase()] || String(item.id).toLowerCase()) === id);
+    const matching = reported.filter((item) => (providerAliases[String(item.id).toLowerCase()] || String(item.id).toLowerCase()) === id);
+    const provider = matching.find((item) => item.available ?? item.online) || matching[0];
     const legacyAvailable = id === "piper" ? health.piperAvailable : id === "kokoro" ? health.kokoroAvailable : health.fishSpeechAvailable;
     return { id, label: id === "fish-speech" ? "Fish Speech" : id[0].toUpperCase() + id.slice(1), ...provider, available: Boolean(provider?.available ?? provider?.online ?? legacyAvailable) };
   });
