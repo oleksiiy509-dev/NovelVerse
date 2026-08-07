@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createApp } from '../api/app.js';
+import { createServer } from 'node:http';
+import { clearLocalProviderProbeCache } from '../providers/local-http.js';
 import { requireBearerToken } from '../middleware/auth.js';
 import { normalizeNarrationText, planNarration, prepareNarrationRequest } from '../processors/narration.js';
 
@@ -138,6 +140,39 @@ test('Narrator 2.0 forces one configured voice for every request', () => {
   assert.equal(request.voice, 'premium-local-narrator');
   assert.equal(request.options.consistentVoice, true);
   if (previous === undefined) delete process.env.NARRATOR_VOICE; else process.env.NARRATOR_VOICE = previous;
+});
+
+test('Narrator Core detects Fish Speech live and shares it across preview and synthesis', async () => {
+  const previous = process.env.FISH_SPEECH_URL;
+  const calls = [];
+  const wav = Buffer.alloc(48); wav.write('RIFF'); wav.write('WAVE', 8);
+  const fish = createServer((req, res) => {
+    if (req.method === 'GET') return res.writeHead(405).end();
+    let body = ''; req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => { calls.push(JSON.parse(body)); res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav); });
+  }).listen(0, '127.0.0.1');
+  await new Promise((resolve) => fish.once('listening', resolve));
+  process.env.FISH_SPEECH_URL = `http://127.0.0.1:${fish.address().port}/v1/tts`;
+  clearLocalProviderProbeCache();
+  const ctx = await fixture({ defaultProvider: 'narrator' });
+  try {
+    const health = await (await ctx.request('/health')).json();
+    assert.equal(health.providers.find(({ id }) => id === 'fish-speech').available, true);
+    for (const endpoint of ['/preview', '/synthesize']) {
+      const response = await ctx.request(endpoint, auth({ text: 'Offline production narration.', provider: 'narrator' }));
+      assert.equal(response.status, 200);
+      const metadata = JSON.parse(Buffer.from(response.headers.get('x-novelverse-metadata'), 'base64').toString());
+      assert.equal(metadata.selectedEngine, 'fish-speech');
+      assert.equal(metadata.pipeline, 'narrator-core');
+    }
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].streaming, false);
+    assert.deepEqual(calls[0].references, []);
+  } finally {
+    await cleanup(ctx); await new Promise((resolve) => fish.close(resolve));
+    if (previous === undefined) delete process.env.FISH_SPEECH_URL; else process.env.FISH_SPEECH_URL = previous;
+    clearLocalProviderProbeCache();
+  }
 });
 
 test('local Piper chapter generation keeps readable WAV and MP3 files and reuses an unchanged chapter', async () => {

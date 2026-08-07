@@ -3,7 +3,8 @@ import { access, mkdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { getProvider, getProviders } from '../providers/index.js';
+import { inspectProviders } from '../providers/index.js';
+import { synthesizeNarration } from '../processors/synthesis-pipeline.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
@@ -13,17 +14,17 @@ export const router = Router();
 const version = '1.0.0';
 
 router.get('/health', async (req, res) => {
-  const providers = getProviders(req.app.locals.config);
+  const providers = await inspectProviders(req.app.locals.config);
   const queue = getChapterQueueStatus();
   let outputAvailable = true;
   try { await mkdir(req.app.locals.config.outputDir, { recursive: true }); await access(req.app.locals.config.outputDir, constants.W_OK); } catch { outputAvailable = false; }
   const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true });
   const narrator = providers.find(({ id }) => id === 'narrator');
   const status = queue.busy ? 'Busy' : !narrator?.available ? 'Error' : 'Connected';
-  res.json({ ok: true, status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available }) => ({ id, available })), availableVoices: providers.flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
+  res.json({ ok: true, status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available, status: providerStatus }) => ({ id, available, status: providerStatus })), availableVoices: providers.filter((provider) => provider.available).flatMap((provider) => provider.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
 });
-router.get('/providers', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
-router.get('/voices', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
+router.get('/providers', async (req, res, next) => { try { res.json({ ok: true, providers: (await inspectProviders(req.app.locals.config)).map(({ synthesize, transform, inspect, ...safe }) => safe) }); } catch (error) { next(error); } });
+router.get('/voices', async (req, res, next) => { try { res.json({ ok: true, providers: (await inspectProviders(req.app.locals.config)).map(({ synthesize, transform, inspect, ...safe }) => safe) }); } catch (error) { next(error); } });
 router.get('/status', (req, res) => res.json({ ok: true, defaultProvider: req.app.locals.config.defaultProvider, uptime: process.uptime() }));
 router.post('/chapter-jobs', async (req, res, next) => {
   try { res.status(202).json(await createChapterJob(req.app.locals.config, req.body)); } catch (error) { next(error); }
@@ -57,12 +58,11 @@ router.post('/chapter-jobs/:id/open-folder', (req, res) => {
 async function render(req, res, mode) {
   const cfg = req.app.locals.config;
   const payload = validateRequest(req.body);
-  const provider = getProvider(payload.provider || cfg.defaultProvider, cfg);
   const text = mode === 'preview' ? (payload.text || 'NovelVerse voice preview sentence.').split(/[.!?]/)[0].slice(0, 240) : payload.text;
   if (mode !== 'transform' && !text) throw Object.assign(new Error('text is required'), { status: 400, code: 'bad_request' });
-  const normalized = { ...payload, text, language: payload.language || cfg.defaultLanguage };
-  const result = mode === 'transform' && provider.transform ? await provider.transform(normalized) : await provider.synthesize(normalized);
-  const cached = await putCachedAudio(cfg, { mode, provider: provider.id, ...normalized }, result.audio, normalized.format);
+  const normalized = { ...payload, provider: payload.provider || cfg.defaultProvider, text, language: payload.language || cfg.defaultLanguage };
+  const result = await synthesizeNarration(cfg, normalized);
+  const cached = await putCachedAudio(cfg, { mode, ...normalized, provider: result.metadata?.selectedEngine || result.metadata?.provider }, result.audio, normalized.format);
   res.setHeader('content-type', contentType(normalized.format));
   res.setHeader('x-novelverse-metadata', Buffer.from(JSON.stringify({ ...result.metadata, cacheKey: cached.key, cacheHit: cached.hit, file: cached.file })).toString('base64'));
   res.send(result.audio);
