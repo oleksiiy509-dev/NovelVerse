@@ -1,1 +1,4 @@
-export function kokoroProvider() { return { id: 'kokoro', label: 'Kokoro (future adapter)', available: false, languages: [], voices: [] }; }
+import { localHttpProvider } from './local-http.js';
+export function kokoroProvider() {
+  return localHttpProvider({ id: 'kokoro', label: 'Kokoro (local fallback)', envKey: 'KOKORO_URL', payload: (request) => ({ input: request.text, voice: request.voice, response_format: request.format || 'wav', speed: request.options?.rate || 1, narration: request.options }) });
+}

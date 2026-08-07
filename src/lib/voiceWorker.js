@@ -69,7 +69,7 @@ export async function getChapterAudio(id) {
   return res.blob();
 }
 
-export async function synthesizeVoiceWorkerAudio({ text, sourceText, provider = "piper", voice = defaultPiperVoiceId, language = "uk", format = "wav", preview = false, signal, options = {} } = {}) {
+export async function synthesizeVoiceWorkerAudio({ text, sourceText, provider = "narrator", voice = defaultPiperVoiceId, language = "uk", format = "wav", preview = false, signal, options = {} } = {}) {
   const normalizedText = String(sourceText || text || "").trim();
   if (!normalizedText) throw new TypeError("Voice Worker text is required");
   const body = { text: normalizedText, sourceText: normalizedText, provider, voice, language, format, options };

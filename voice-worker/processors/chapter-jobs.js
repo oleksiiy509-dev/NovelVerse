@@ -39,16 +39,16 @@ async function render(job) {
   const { cfg, request } = job;
   try {
     job.status = 'Preparing';
-    const provider = getProvider('piper', cfg);
-    if (!provider.available) throw new Error(provider.status?.reason || 'Piper is unavailable');
+    const provider = getProvider('narrator', cfg);
     const rendered = [];
     job.status = 'Rendering';
-    for (let index = 0; index < request.segments.length; index += 1) {
+    const synthesisSegments = request.chapterTitle ? [{ text: request.chapterTitle, type: 'chapter-title' }, ...request.segments] : request.segments;
+    for (let index = 0; index < synthesisSegments.length; index += 1) {
       if (job.cancelled) throw Object.assign(new Error('Generation cancelled'), { cancelled: true });
-      const segment = request.segments[index];
-      const result = await provider.synthesize({ text: segment.text, language: request.language, format: 'wav', options: { emotion: String(segment.emotion || 'normal').toLowerCase(), rate: segment.rate, pitch: segment.pitch } });
+      const segment = synthesisSegments[index];
+      const result = await provider.synthesize({ text: segment.text, language: request.language, format: 'wav', options: { emotion: String(segment.emotion || 'normal').toLowerCase(), rate: segment.rate, pitch: segment.pitch, delivery: segment.type || 'body' } });
       rendered.push(result.audio);
-      job.completed = index + 1;
+      job.completed = Math.min(request.segments.length, index + (request.chapterTitle ? 0 : 1));
     }
     job.status = 'Merging';
     const audio = mergeWav(rendered);
