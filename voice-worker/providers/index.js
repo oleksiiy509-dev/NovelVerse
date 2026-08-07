@@ -12,6 +12,20 @@ function narratorProvider(cfg) {
   return { id: 'narrator', label: 'NovelVerse Narrator 2.0', available: ready.length > 0, status: { available: ready.length > 0, primary: 'fish-speech', fallbackOrder: engineOrder, readyEngines: ready.map(({ id }) => id) }, languages: [...new Set(engines.flatMap(({ languages }) => languages || []))], voices: [{ id: narratorVoice(), name: 'NovelVerse Narrator', language: cfg.defaultLanguage }], async synthesize(request) { const failures = []; for (const engine of engines) { if (!engine.available) { failures.push(`${engine.id}: unavailable`); continue; } try { const result = await engine.synthesize(prepareNarrationRequest(request)); return { ...result, metadata: { ...result.metadata, narrator: '2.0', fallbackOrder: engineOrder, attempted: failures.map((item) => item.split(':')[0]) } }; } catch (error) { failures.push(`${engine.id}: ${error.message}`); } } throw Object.assign(new Error(`No local narrator engine succeeded (${failures.join('; ')})`), { code: 'narrator_unavailable', status: 503 }); } };
 }
 export function getProviders(cfg) { return [narratorProvider(cfg), fishSpeechProvider(cfg), kokoroProvider(cfg), piperProvider(cfg), genericHttpProvider(cfg), mockProvider(cfg)]; }
+export async function getProviderStatuses(cfg) {
+  const providers = getProviders(cfg);
+  const checked = await Promise.all(providers.map(async (provider) => {
+    if (!provider.checkHealth) return provider;
+    const health = await provider.checkHealth();
+    return { ...provider, available: health.available, status: { ...provider.status, ...health } };
+  }));
+  const readyEngines = engineOrder.filter((id) => checked.find((provider) => provider.id === id)?.available);
+  return checked.map((provider) => provider.id === 'narrator' ? {
+    ...provider,
+    available: readyEngines.length > 0,
+    status: { ...provider.status, available: readyEngines.length > 0, readyEngines },
+  } : provider);
+}
 export function getProvider(id, cfg) {
   const provider = getProviders(cfg).find((item) => item.id === id);
   if (!provider) {

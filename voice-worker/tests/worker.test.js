@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -158,7 +159,7 @@ const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length
   const ctx = await fixture({ outputDir });
   try {
     const health = await (await ctx.request('/health')).json();
-    assert.equal(health.status, 'Connected');
+    assert.equal(health.status, 'ONLINE');
     assert.deepEqual(health.capabilities, { ffmpeg: true, outputAvailable: true });
     const payload = { bookId: 'book-1', chapterId: 'chapter-1', chapterNumber: 1, bookTitle: 'A: Book?', language: 'uk', segments: [{ text: 'Offline narration.' }] };
     const created = await ctx.request('/chapter-jobs', auth(payload));
@@ -373,6 +374,61 @@ test('preview generates audio and metadata', async () => {
   assert.equal(metadata.provider, 'mock');
   assert.equal(metadata.cacheHit, false);
   await cleanup(ctx);
+});
+
+test('running local HTTP provider is ONLINE and supports preview and chapter generation', async () => {
+  const previous = { FISH_SPEECH_URL: process.env.FISH_SPEECH_URL, FISH_SPEECH_HEALTH_URL: process.env.FISH_SPEECH_HEALTH_URL, KOKORO_URL: process.env.KOKORO_URL, PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL };
+  const wav = Buffer.alloc(16044);
+  wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(16000, 40);
+  const providerServer = createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/health') return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+    if (req.method === 'POST' && req.url === '/v1/tts') return res.writeHead(200, { 'content-type': 'audio/wav' }).end(wav);
+    res.writeHead(404).end();
+  }).listen(0, '127.0.0.1');
+  await new Promise((resolve) => providerServer.once('listening', resolve));
+  const providerBase = `http://127.0.0.1:${providerServer.address().port}`;
+  process.env.FISH_SPEECH_URL = `${providerBase}/v1/tts`;
+  process.env.FISH_SPEECH_HEALTH_URL = `${providerBase}/health`;
+  delete process.env.KOKORO_URL; delete process.env.PIPER_BIN; delete process.env.PIPER_MODEL;
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), 'nv-http-chapter-'));
+  const ctx = await fixture({ outputDir });
+  try {
+    const health = await (await ctx.request('/health')).json();
+    assert.equal(health.status, 'ONLINE');
+    assert.equal(health.online, true);
+    assert.equal(health.providers.find(({ id }) => id === 'fish-speech').available, true);
+    const preview = await ctx.request('/preview', auth({ text: 'Provider preview.', provider: 'fish-speech', format: 'wav' }));
+    assert.equal(preview.status, 200);
+    assert.equal((await preview.arrayBuffer()).byteLength, wav.length);
+    let job = await (await ctx.request('/chapter-jobs', auth({ bookId: 'book-http', chapterId: 'chapter-http', chapterNumber: 1, bookTitle: 'HTTP Provider', provider: 'fish-speech', segments: [{ text: 'Generate this chapter.' }] }))).json();
+    for (let attempt = 0; attempt < 50 && job.status !== 'Finished'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      job = await (await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } })).json();
+    }
+    assert.equal(job.status, 'Finished', job.error);
+    assert.ok(job.size > 44);
+  } finally {
+    await cleanup(ctx);
+    await new Promise((resolve) => providerServer.close(resolve));
+    await rm(outputDir, { recursive: true, force: true });
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  }
+});
+
+test('configured but unreachable local HTTP provider remains OFFLINE', async () => {
+  const previous = { FISH_SPEECH_URL: process.env.FISH_SPEECH_URL, FISH_SPEECH_HEALTH_URL: process.env.FISH_SPEECH_HEALTH_URL, KOKORO_URL: process.env.KOKORO_URL };
+  process.env.FISH_SPEECH_URL = 'http://127.0.0.1:1/v1/tts';
+  process.env.FISH_SPEECH_HEALTH_URL = 'http://127.0.0.1:1/health';
+  delete process.env.KOKORO_URL;
+  await withoutPiperEnv(async () => {
+    const ctx = await fixture();
+    const health = await (await ctx.request('/health')).json();
+    assert.equal(health.status, 'OFFLINE');
+    assert.equal(health.online, false);
+    assert.equal(health.providers.find(({ id }) => id === 'fish-speech').available, false);
+    await cleanup(ctx);
+  });
+  for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
 });
 
 test('unavailable provider returns 503', async () => {

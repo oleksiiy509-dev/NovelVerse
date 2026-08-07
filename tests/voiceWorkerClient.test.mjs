@@ -22,8 +22,8 @@ test("frontend voice worker client uses local defaults and public endpoints only
   assert.doesNotMatch(workerClient, /SECRET/);
 });
 
-test("audio production treats a successful local worker health response as connected", () => {
-  assert.match(chapterGeneration, /result\.online && result\.ok !== false \? "Connected"/);
+test("audio production reports a reachable provider as ONLINE", () => {
+  assert.match(chapterGeneration, /result\.online \? "ONLINE"/);
   assert.match(chapterGeneration, /"Local worker connected"/);
   assert.doesNotMatch(chapterGeneration, /result\.piperAvailable && result\.capabilities\?\.outputAvailable \? "Connected"/);
 });

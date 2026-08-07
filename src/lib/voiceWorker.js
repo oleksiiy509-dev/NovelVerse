@@ -67,7 +67,7 @@ export async function getVoiceWorkerHealth() {
   const piper = providers.find((provider) => provider.id === "piper") || null;
   return {
     ...health,
-    online: health.ok !== false,
+    online: typeof health.online === "boolean" ? health.online : health.status === "ONLINE" || health.status === "Connected",
     piperAvailable: typeof health.piperAvailable === "boolean" ? health.piperAvailable : piper?.available,
     voices: Array.isArray(health.availableVoices) ? health.availableVoices : [],
     piper,

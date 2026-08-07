@@ -11,7 +11,7 @@ const pending = [];
 let active = false;
 let lastError = '';
 
-const fingerprint = ({ language, segments }) => createHash('sha256').update(JSON.stringify({ language, segments })).digest('hex');
+const fingerprint = ({ language, provider, segments }) => createHash('sha256').update(JSON.stringify({ language, provider, segments })).digest('hex');
 const safeName = (value) => String(value || 'Book').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().replace(/[. ]+$/g, '').slice(0, 80) || 'Book';
 const chapterName = (number, extension) => `Chapter ${String(Math.max(1, Number(number) || 1)).padStart(4, '0')}.${extension}`;
 
@@ -39,7 +39,7 @@ async function render(job) {
   const { cfg, request } = job;
   try {
     job.status = 'Preparing';
-    const provider = getProvider('narrator', cfg);
+    const provider = getProvider(request.provider === 'auto' ? 'narrator' : request.provider, cfg);
     const rendered = [];
     job.status = 'Rendering';
     const synthesisSegments = request.chapterTitle ? [{ text: request.chapterTitle, type: 'chapter-title' }, ...request.segments] : request.segments;
@@ -97,7 +97,7 @@ function runNext() {
 export async function createChapterJob(cfg, body = {}) {
   const segments = Array.isArray(body.segments) ? body.segments.filter((item) => String(item.text || '').trim()) : [];
   if (!segments.length) throw Object.assign(new Error('segments are required'), { status: 400 });
-  const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, segments: segments.map(({ text, voice, emotion, rate, pitch }) => ({ text: String(text).trim(), voice, emotion, rate, pitch })) };
+  const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, provider: body.provider || 'narrator', segments: segments.map(({ text, voice, emotion, rate, pitch }) => ({ text: String(text).trim(), voice, emotion, rate, pitch })) };
   const key = fingerprint(request);
   const folder = path.join(cfg.outputDir, safeName(request.bookTitle));
   try { await mkdir(folder, { recursive: true }); } catch { throw Object.assign(new Error('Output folder unavailable'), { status: 503 }); }

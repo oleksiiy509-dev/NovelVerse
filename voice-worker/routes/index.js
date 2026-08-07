@@ -3,7 +3,7 @@ import { access, mkdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { getProvider, getProviders } from '../providers/index.js';
+import { getProvider, getProviderStatuses } from '../providers/index.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
@@ -13,17 +13,17 @@ export const router = Router();
 const version = '1.0.0';
 
 router.get('/health', async (req, res) => {
-  const providers = getProviders(req.app.locals.config);
+  const providers = await getProviderStatuses(req.app.locals.config);
   const queue = getChapterQueueStatus();
   let outputAvailable = true;
   try { await mkdir(req.app.locals.config.outputDir, { recursive: true }); await access(req.app.locals.config.outputDir, constants.W_OK); } catch { outputAvailable = false; }
   const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true });
   const narrator = providers.find(({ id }) => id === 'narrator');
-  const status = queue.busy ? 'Busy' : !narrator?.available ? 'Error' : 'Connected';
-  res.json({ ok: true, status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available }) => ({ id, available })), availableVoices: providers.flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
+  const status = queue.busy ? 'BUSY' : narrator?.available ? 'ONLINE' : 'OFFLINE';
+  res.json({ ok: true, online: Boolean(narrator?.available), status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available, status: providerStatus }) => ({ id, available, reason: providerStatus?.reason || null })), availableVoices: providers.filter((p) => p.available).flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
 });
-router.get('/providers', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
-router.get('/voices', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
+router.get('/providers', async (req, res) => res.json({ ok: true, providers: (await getProviderStatuses(req.app.locals.config)).map(({ synthesize, transform, checkHealth, ...safe }) => safe) }));
+router.get('/voices', async (req, res) => res.json({ ok: true, providers: (await getProviderStatuses(req.app.locals.config)).map(({ synthesize, transform, checkHealth, ...safe }) => safe) }));
 router.get('/status', (req, res) => res.json({ ok: true, defaultProvider: req.app.locals.config.defaultProvider, uptime: process.uptime() }));
 router.post('/chapter-jobs', async (req, res, next) => {
   try { res.status(202).json(await createChapterJob(req.app.locals.config, req.body)); } catch (error) { next(error); }
