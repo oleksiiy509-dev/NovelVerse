@@ -2,6 +2,12 @@
 
 Production-ready local TTS worker with Express endpoints for health checks, voice discovery, previews, synthesis, and voice transformation experiments.
 
+## Expressive local narration
+
+Narration automatically detects **Neutral, Happy, Sad, Angry, Fear,** and **Surprise** directly from prose; authors do not add emotion tags. A single `NARRATOR_VOICE` is retained while delivery changes. Synthesis stays on the machine and tries Fish Speech first, then Kokoro, then Piper. Only loopback Fish Speech and Kokoro URLs are accepted.
+
+Run Fish Speech on `127.0.0.1:8080` (preferred), Kokoro on `127.0.0.1:8880`, and/or configure Piper as below. Override their local endpoints with `FISH_SPEECH_URL` and `KOKORO_URL`. Set either engine's `*_ENABLED=false` when it is not installed.
+
 ## Quick start
 
 ```bash
