@@ -3,7 +3,8 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
-import { getProvider } from '../providers/index.js';
+import { getNarrationProviders } from '../providers/index.js';
+import { prepareExpressiveRequest } from './expressive-narration.js';
 
 const jobs = new Map();
 const exec = promisify(execFile);
@@ -39,14 +40,19 @@ async function render(job) {
   const { cfg, request } = job;
   try {
     job.status = 'Preparing';
-    const provider = getProvider('piper', cfg);
-    if (!provider.available) throw new Error(provider.status?.reason || 'Piper is unavailable');
+    const providers = getNarrationProviders(cfg);
+    if (!providers.length) throw new Error('No local narration engine is available');
     const rendered = [];
     job.status = 'Rendering';
     for (let index = 0; index < request.segments.length; index += 1) {
       if (job.cancelled) throw Object.assign(new Error('Generation cancelled'), { cancelled: true });
       const segment = request.segments[index];
-      const result = await provider.synthesize({ text: segment.text, language: request.language, format: 'wav', options: { emotion: String(segment.emotion || 'normal').toLowerCase(), rate: segment.rate, pitch: segment.pitch } });
+      const expressive = prepareExpressiveRequest({ text: segment.text, language: request.language, format: 'wav', options: { rate: segment.rate, pitch: segment.pitch } });
+      let result; const failures = [];
+      for (const provider of providers) {
+        try { result = await provider.synthesize(expressive); break; } catch (error) { failures.push(`${provider.id}: ${error.message}`); }
+      }
+      if (!result) throw new Error(`Local narration failed (${failures.join('; ')})`);
       rendered.push(result.audio);
       job.completed = index + 1;
     }
@@ -97,7 +103,7 @@ function runNext() {
 export async function createChapterJob(cfg, body = {}) {
   const segments = Array.isArray(body.segments) ? body.segments.filter((item) => String(item.text || '').trim()) : [];
   if (!segments.length) throw Object.assign(new Error('segments are required'), { status: 400 });
-  const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, segments: segments.map(({ text, voice, emotion, rate, pitch }) => ({ text: String(text).trim(), voice, emotion, rate, pitch })) };
+  const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, segments: segments.map(({ text, rate, pitch }) => ({ text: String(text).trim(), rate, pitch })) };
   const key = fingerprint(request);
   const folder = path.join(cfg.outputDir, safeName(request.bookTitle));
   try { await mkdir(folder, { recursive: true }); } catch { throw Object.assign(new Error('Output folder unavailable'), { status: 503 }); }

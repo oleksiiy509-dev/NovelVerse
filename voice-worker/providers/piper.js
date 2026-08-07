@@ -17,6 +17,12 @@ function resolveConfiguredPath(value) {
 
 
 const emotionPresets = {
+  neutral: { rate: 1, pitch: 1, pauseLength: 1 },
+  happy: { rate: 1.07, pitch: 1.05, pauseLength: 0.9 },
+  sad: { rate: 0.86, pitch: 0.94, pauseLength: 1.25 },
+  angry: { rate: 1.08, pitch: 0.98, pauseLength: 0.8 },
+  fear: { rate: 1.04, pitch: 1.08, pauseLength: 1.1 },
+  surprise: { rate: 1.12, pitch: 1.1, pauseLength: 0.8 },
   calm: { rate: 0.8, pitch: 0.9, pauseLength: 1.2 },
   normal: { rate: 0.85, pitch: 1, pauseLength: 1 },
   dramatic: { rate: 0.75, pitch: 1.15, pauseLength: 1.35 },
@@ -75,7 +81,7 @@ export function piperProvider() {
     available: status.available,
     status,
     languages: ['en', 'uk', 'ru'],
-    voices: [{ id: process.env.PIPER_VOICE || 'uk_UA-lada-medium', name: 'Piper local voice', language: process.env.DEFAULT_LANGUAGE || 'uk' }],
+    voices: [{ id: process.env.NARRATOR_VOICE || process.env.PIPER_VOICE || 'uk_UA-lada-medium', name: 'NovelVerse narrator', language: process.env.DEFAULT_LANGUAGE || 'uk' }],
     synthesize,
   };
 }
@@ -92,5 +98,5 @@ async function synthesize(req) {
     child.on('error', reject); child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`piper exited ${code}`)));
   });
   const audio = await readFile(out); await rm(out, { force: true });
-  return { audio, metadata: { provider: 'piper', voice: process.env.PIPER_VOICE || 'uk_UA-lada-medium', options: getNarrationOptions(req.options), pitchNote: 'Piper does not expose native pitch shifting; pitch is applied by browser preview and persisted for compatible clients.' } };
+  return { audio, metadata: { provider: 'piper', voice: process.env.NARRATOR_VOICE || process.env.PIPER_VOICE || 'uk_UA-lada-medium', emotion: req.options?.emotion, local: true, options: getNarrationOptions(req.options), pitchNote: 'Piper does not expose native pitch shifting; pitch is applied by browser preview and persisted for compatible clients.' } };
 }

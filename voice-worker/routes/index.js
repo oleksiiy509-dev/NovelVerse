@@ -3,7 +3,8 @@ import { access, mkdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { getProvider, getProviders } from '../providers/index.js';
+import { getNarrationProviders, getProvider, getProviders } from '../providers/index.js';
+import { prepareExpressiveRequest } from '../processors/expressive-narration.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
@@ -57,11 +58,20 @@ router.post('/chapter-jobs/:id/open-folder', (req, res) => {
 async function render(req, res, mode) {
   const cfg = req.app.locals.config;
   const payload = validateRequest(req.body);
-  const provider = getProvider(payload.provider || cfg.defaultProvider, cfg);
   const text = mode === 'preview' ? (payload.text || 'NovelVerse voice preview sentence.').split(/[.!?]/)[0].slice(0, 240) : payload.text;
   if (mode !== 'transform' && !text) throw Object.assign(new Error('text is required'), { status: 400, code: 'bad_request' });
-  const normalized = { ...payload, text, language: payload.language || cfg.defaultLanguage };
-  const result = mode === 'transform' && provider.transform ? await provider.transform(normalized) : await provider.synthesize(normalized);
+  const normalized = prepareExpressiveRequest({ ...payload, text, language: payload.language || cfg.defaultLanguage });
+  const requestedProvider = payload.provider || cfg.defaultProvider;
+  const automatic = ['auto', 'default', 'fish-speech'].includes(requestedProvider);
+  const providers = automatic ? getNarrationProviders(cfg) : [getProvider(requestedProvider, cfg)];
+  if (!providers.length) throw Object.assign(new Error('No local narration engine is available'), { status: 503, code: 'provider_unavailable' });
+  let result; let provider; const failures = [];
+  for (const candidate of providers) {
+    try { provider = candidate; result = mode === 'transform' && candidate.transform ? await candidate.transform(normalized) : await candidate.synthesize(normalized); break; }
+    catch (error) { failures.push(`${candidate.id}: ${error.message}`); }
+  }
+  if (!result) throw Object.assign(new Error(`Local narration failed (${failures.join('; ')})`), { status: 503, code: 'synthesis_failed' });
+  result.metadata = { ...result.metadata, emotion: normalized.expression.emotion, intensity: normalized.expression.intensity, fallbackOrder: providers.map(({ id }) => id) };
   const cached = await putCachedAudio(cfg, { mode, provider: provider.id, ...normalized }, result.audio, normalized.format);
   res.setHeader('content-type', contentType(normalized.format));
   res.setHeader('x-novelverse-metadata', Buffer.from(JSON.stringify({ ...result.metadata, cacheKey: cached.key, cacheHit: cached.hit, file: cached.file })).toString('base64'));
