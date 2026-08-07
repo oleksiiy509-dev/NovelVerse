@@ -5,7 +5,7 @@ const terminal = new Set(["Finished", "Failed"]);
 const formatDuration = (seconds = 0) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 const formatSize = (bytes = 0) => bytes ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : "—";
 
-export default function ChapterGeneration({ book, chapter, segments }) {
+export default function ChapterGeneration({ book, chapter, segments, provider = "auto" }) {
   const [jobs, setJobs] = useState([]);
   const [audioUrls, setAudioUrls] = useState({});
   const [health, setHealth] = useState({ label: "Offline", detail: "Checking local Piper…" });
@@ -33,7 +33,7 @@ export default function ChapterGeneration({ book, chapter, segments }) {
         const result = await getVoiceWorkerHealth();
         const label = result.status === "Busy" ? "Busy" : result.online && result.ok !== false ? "Connected" : "Offline";
         const detail = result.piperAvailable === false ? "Piper offline" : result.capabilities?.outputAvailable === false ? "Output folder unavailable" : result.capabilities?.ffmpeg === false ? "FFmpeg missing · WAV output will be used" : result.piperAvailable ? "Piper and FFmpeg ready" : "Local worker connected";
-        setHealth({ label, detail });
+        setHealth({ label, detail, provider: result.selectedProvider });
       } catch { setHealth({ label: "Offline", detail: "Piper offline" }); }
       finally { setCheckingHealth(false); }
   }, []);
@@ -59,7 +59,7 @@ export default function ChapterGeneration({ book, chapter, segments }) {
   }, [jobs]);
 
   const generate = async () => {
-    const payload = { bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", segments: chapterSegments };
+    const payload = { bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", provider: provider === "auto" ? health.provider || "auto" : provider, segments: chapterSegments };
     try {
       const job = await createChapterGeneration(payload);
       setJobs((items) => [job, ...items.filter((item) => item.id !== job.id)]);
@@ -67,7 +67,7 @@ export default function ChapterGeneration({ book, chapter, segments }) {
     } catch (error) { setJobs((items) => [{ id: `failed-${Date.now()}`, status: "Failed", error: error.message, request: payload }, ...items]); }
   };
   const retry = async (failedJob) => {
-    const next = await createChapterGeneration({ bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", segments: chapterSegments });
+    const next = await createChapterGeneration({ bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", provider: provider === "auto" ? health.provider || "auto" : provider, segments: chapterSegments });
     const retried = { ...next, retryOf: failedJob.id };
     setJobs((items) => next.status === "Finished" ? [retried, ...items.filter((item) => item.id !== failedJob.id)] : [retried, ...items]);
     if (next.status === "Finished") { const url = URL.createObjectURL(await getChapterAudio(next.id)); createdUrls.current.push(url); setAudioUrls((urls) => ({ ...urls, [next.id]: url })); }

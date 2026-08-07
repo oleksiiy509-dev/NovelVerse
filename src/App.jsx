@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route, useLocation } from "react-router-dom";
 
 import BottomNav from "./components/BottomNav.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
@@ -75,6 +75,7 @@ function AppRoutes() {
           <Route path="/admin/characters" element={<AdminCharacters />} />
           <Route path="/admin/ai-brain" element={<AiBrainStudio />} />
           <Route path="/admin/voice-studio" element={<UniversalVoiceStudio />} />
+          <Route path="/admin/voice-director" element={<Navigate replace to="/admin/voice-studio" />} />
           <Route path="/admin/scene-studio" element={<AdminSceneStudio />} />
           <Route path="/admin/audio-studio" element={<AiAudioStudio />} />
           <Route path="/admin/narration-studio" element={<NarrationStudio />} />

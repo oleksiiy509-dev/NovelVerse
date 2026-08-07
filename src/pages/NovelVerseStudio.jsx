@@ -1,15 +1,14 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { Navigate, NavLink, useLocation } from "react-router-dom";
 import AudioProductionDashboard from "../components/AudioProductionDashboard.jsx";
 import StudioBooks from "../components/StudioBooks.jsx";
 import StudioBook from "../components/StudioBook.jsx";
-import VoiceDirector from "../components/VoiceDirector.jsx";
 import "../styles/NovelVerseStudio.css";
 
 const sections = [
   ["Dashboard", ""],
   ["Books", "books"],
   ["Audio Production", "audio-production"],
-  ["Voice Director", "voice-director"],
+  ["Voice Studio PRO", "voice-studio"],
   ["Uploads", "uploads"],
   ["Publishing", "publishing"],
   ["Settings", "settings"],
@@ -34,7 +33,7 @@ function NovelVerseStudio() {
         </nav>
       </aside>
       <section className="studio-content">
-        {slug === "audio-production" ? <AudioProductionDashboard /> : slug === "voice-director" ? <VoiceDirector /> : slug === "books" && parts[1] ? <StudioBook novelId={parts[1]} mode={parts[2] === "add-chapter" ? "add" : parts[2] === "import-chapters" ? "import" : "chapters"} /> : slug === "books" ? <StudioBooks /> : <><h2>{activeSection[0]}</h2><p>This section is coming soon.</p></>}
+        {slug === "voice-director" || slug === "voice-studio" ? <Navigate replace to="/admin/voice-studio" /> : slug === "audio-production" ? <AudioProductionDashboard /> : slug === "books" && parts[1] ? <StudioBook novelId={parts[1]} mode={parts[2] === "add-chapter" ? "add" : parts[2] === "import-chapters" ? "import" : "chapters"} /> : slug === "books" ? <StudioBooks /> : <><h2>{activeSection[0]}</h2><p>This section is coming soon.</p></>}
       </section>
     </main>
   );
