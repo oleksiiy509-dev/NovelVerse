@@ -31,7 +31,7 @@ export default function ChapterGeneration({ book, chapter, segments, provider = 
       setCheckingHealth(true);
       try {
         const result = await getVoiceWorkerHealth();
-        const label = result.status === "Busy" ? "Busy" : result.online && result.ok !== false ? "Connected" : "Offline";
+        const label = result.status === "BUSY" || result.status === "Busy" ? "Busy" : result.online ? "ONLINE" : "Offline";
         const detail = result.piperAvailable === false ? "Piper offline" : result.capabilities?.outputAvailable === false ? "Output folder unavailable" : result.capabilities?.ffmpeg === false ? "FFmpeg missing · WAV output will be used" : result.piperAvailable ? "Piper and FFmpeg ready" : "Local worker connected";
         setHealth({ label, detail, provider: result.selectedProvider });
       } catch { setHealth({ label: "Offline", detail: "Piper offline" }); }
