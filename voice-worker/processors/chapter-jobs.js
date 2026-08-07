@@ -3,7 +3,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
-import { getProvider } from '../providers/index.js';
+import { synthesizeNarration } from './synthesis-pipeline.js';
 
 const jobs = new Map();
 const exec = promisify(execFile);
@@ -39,14 +39,13 @@ async function render(job) {
   const { cfg, request } = job;
   try {
     job.status = 'Preparing';
-    const provider = getProvider('narrator', cfg);
     const rendered = [];
     job.status = 'Rendering';
     const synthesisSegments = request.chapterTitle ? [{ text: request.chapterTitle, type: 'chapter-title' }, ...request.segments] : request.segments;
     for (let index = 0; index < synthesisSegments.length; index += 1) {
       if (job.cancelled) throw Object.assign(new Error('Generation cancelled'), { cancelled: true });
       const segment = synthesisSegments[index];
-      const result = await provider.synthesize({ text: segment.text, language: request.language, format: 'wav', options: { emotion: String(segment.emotion || 'normal').toLowerCase(), rate: segment.rate, pitch: segment.pitch, delivery: segment.type || 'body' } });
+      const result = await synthesizeNarration(cfg, { provider: 'narrator', text: segment.text, language: request.language, format: 'wav', options: { emotion: String(segment.emotion || 'normal').toLowerCase(), rate: segment.rate, pitch: segment.pitch, delivery: segment.type || 'body' } });
       rendered.push(result.audio);
       job.completed = Math.min(request.segments.length, index + (request.chapterTitle ? 0 : 1));
     }
