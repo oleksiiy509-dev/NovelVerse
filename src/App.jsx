@@ -26,7 +26,7 @@ const EditChapter = lazy(() => import("./pages/EditChapter.jsx"));
 const AdminTaxonomy = lazy(() => import("./pages/AdminTaxonomy.jsx"));
 const AdminCharacters = lazy(() => import("./pages/AdminCharacters.jsx"));
 const AiBrainStudio = lazy(() => import("./pages/AiBrainStudio.jsx"));
-const UniversalVoiceStudio = lazy(() => import("./pages/UniversalVoiceStudio.jsx"));
+const VoiceStudioPro = lazy(() => import("./pages/VoiceStudioPro.jsx"));
 const AdminSceneStudio = lazy(() => import("./pages/AdminSceneStudio.jsx"));
 const AiAudioStudio = lazy(() => import("./pages/AiAudioStudio.jsx"));
 const NarrationStudio = lazy(() => import("./pages/NarrationStudio.jsx"));
@@ -74,7 +74,7 @@ function AppRoutes() {
           <Route path="/admin/taxonomy" element={<AdminTaxonomy />} />
           <Route path="/admin/characters" element={<AdminCharacters />} />
           <Route path="/admin/ai-brain" element={<AiBrainStudio />} />
-          <Route path="/admin/voice-studio" element={<UniversalVoiceStudio />} />
+          <Route path="/admin/voice-studio" element={<VoiceStudioPro />} />
           <Route path="/admin/scene-studio" element={<AdminSceneStudio />} />
           <Route path="/admin/audio-studio" element={<AiAudioStudio />} />
           <Route path="/admin/narration-studio" element={<NarrationStudio />} />
