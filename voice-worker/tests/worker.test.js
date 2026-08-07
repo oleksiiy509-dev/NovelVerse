@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createApp } from '../api/app.js';
 import { requireBearerToken } from '../middleware/auth.js';
+import { normalizeNarrationText, planNarration, prepareNarrationRequest } from '../processors/narration.js';
 
 async function fixture(overrides = {}) {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'nv-worker-'));
@@ -118,6 +119,25 @@ test('health returns provider status and runtime details', async () => {
   assert.ok(body.providers.some((provider) => provider.id === 'mock' && provider.available));
   assert.ok(body.uptime >= 0);
   await cleanup(ctx);
+});
+
+test('Narrator 2.0 normalizes prose and plans titles, dialogue, emphasis, and breathing pauses', () => {
+  assert.equal(normalizeNarrationText('Wait...  what ?\r\n\r\n“GO!”'), 'Wait… what?\n\n“GO!”');
+  const plan = planNarration('A quiet sentence.\n\n“Run!”', { chapterTitle: 'Chapter One' });
+  assert.equal(plan[0].type, 'chapter-title');
+  assert.equal(plan[0].pauseAfterMs, 1250);
+  assert.equal(plan.at(-1).type, 'dialogue');
+  assert.equal(plan.at(-1).emphasis, 'strong');
+  assert.ok(plan.at(-1).pauseAfterMs >= 800);
+});
+
+test('Narrator 2.0 forces one configured voice for every request', () => {
+  const previous = process.env.NARRATOR_VOICE;
+  process.env.NARRATOR_VOICE = 'premium-local-narrator';
+  const request = prepareNarrationRequest({ text: 'Hello.', voice: 'character-voice' });
+  assert.equal(request.voice, 'premium-local-narrator');
+  assert.equal(request.options.consistentVoice, true);
+  if (previous === undefined) delete process.env.NARRATOR_VOICE; else process.env.NARRATOR_VOICE = previous;
 });
 
 test('local Piper chapter generation keeps readable WAV and MP3 files and reuses an unchanged chapter', async () => {

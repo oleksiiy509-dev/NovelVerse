@@ -18,9 +18,9 @@ router.get('/health', async (req, res) => {
   let outputAvailable = true;
   try { await mkdir(req.app.locals.config.outputDir, { recursive: true }); await access(req.app.locals.config.outputDir, constants.W_OK); } catch { outputAvailable = false; }
   const ffmpeg = spawnSync(process.env.FFMPEG_BIN || 'ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true });
-  const piper = providers.find(({ id }) => id === 'piper');
-  const status = queue.busy ? 'Busy' : !piper?.available ? 'Error' : 'Connected';
-  res.json({ ok: true, status, version, providers: providers.map(({ id, available }) => ({ id, available })), availableVoices: providers.flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
+  const narrator = providers.find(({ id }) => id === 'narrator');
+  const status = queue.busy ? 'Busy' : !narrator?.available ? 'Error' : 'Connected';
+  res.json({ ok: true, status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available }) => ({ id, available })), availableVoices: providers.flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
 });
 router.get('/providers', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));
 router.get('/voices', (req, res) => res.json({ ok: true, providers: getProviders(req.app.locals.config).map(({ synthesize, transform, ...safe }) => safe) }));

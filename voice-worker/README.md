@@ -2,6 +2,21 @@
 
 Production-ready local TTS worker with Express endpoints for health checks, voice discovery, previews, synthesis, and voice transformation experiments.
 
+## NovelVerse Narrator 2.0
+
+The default `narrator` provider is a fully local cascade: **Fish Speech → Kokoro → Piper**. Point `FISH_SPEECH_URL` and `KOKORO_URL` at loopback endpoints; non-loopback URLs are rejected so narration cannot silently leave the machine. Piper remains the executable fallback. `NARRATOR_VOICE` is applied to every title, narration, and dialogue request for a consistent narrator.
+
+Narrator 2.0 normalizes punctuation, marks dialogue and sentence emphasis, plans sentence and paragraph breathing pauses, and renders a supplied chapter title as a separate synthesis segment before the body. Engine failures advance through the cascade without changing the Audio Production UI.
+
+```dotenv
+DEFAULT_PROVIDER=narrator
+NARRATOR_VOICE=novelverse-narrator
+FISH_SPEECH_URL=http://127.0.0.1:8080/v1/tts
+KOKORO_URL=http://127.0.0.1:8880/v1/audio/speech
+PIPER_BIN=./piper/piper.exe
+PIPER_MODEL=./piper/voices/en_US-lessac-medium.onnx
+```
+
 ## Quick start
 
 ```bash
