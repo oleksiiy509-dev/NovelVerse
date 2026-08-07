@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parseBook } from "../lib/bookImport.js";
 import { getImportPersistenceError } from "../lib/bookImportError.js";
 import { importChapterBatch } from "../lib/bookImportPersistence.js";
-import { compareImportFiles, createQueueFiles, DEFAULT_IMPORT_BATCH_SIZE, estimateRemaining, formatDuration, importPreview, prepareQueuedChapters, queueTotals } from "../lib/chapterImportQueue.js";
+import { compareImportFiles, createChapterBatches, createQueueFiles, currentBatchNumber, DEFAULT_IMPORT_BATCH_SIZE, estimateRemaining, formatDuration, importPreview, prepareQueuedChapters, queueTotals } from "../lib/chapterImportQueue.js";
 import { clearImportQueue, loadImportQueue, saveImportQueue } from "../lib/chapterImportQueueStore.js";
 
-const acceptedFormats = ".txt,.fb2,.epub";
+const acceptedFormats = ".txt";
 const batchSize = DEFAULT_IMPORT_BATCH_SIZE;
 
 function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
@@ -39,8 +39,9 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
         item = { ...item, status: "running", error: "" };
         queue[fileIndex] = item;
         await persist([...queue], queueStartedAt);
-        for (let batchIndex = item.completedBatches; batchIndex < item.totalBatches; batchIndex += 1) {
-          const batch = item.chapters.slice(batchIndex * batchSize, (batchIndex + 1) * batchSize);
+        const batches = createChapterBatches(item.chapters, batchSize);
+        for (let batchIndex = item.completedBatches; batchIndex < batches.length; batchIndex += 1) {
+          const batch = batches[batchIndex];
           const result = await importChapterBatch(novel.id, batch);
           const completedAt = Date.now();
           item = { ...item, added: item.added + Number(result.added || 0), skipped: item.skipped + Number(result.skipped || 0), totalChapters: Number(result.totalChapters), completedBatches: batchIndex + 1, durationMs: item.durationMs + completedAt - checkpointAt };
@@ -76,7 +77,9 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
   }, [novel?.id]);
 
   const addFiles = async (selected) => {
-    const supported = [...selected].filter((file) => /\.(txt|fb2|epub)$/i.test(file.name));
+    // A single source file becomes one durable internal queue. Extra dropped files
+    // are deliberately ignored so an import can never spill into another novel.
+    const supported = [...selected].filter((file) => /\.txt$/i.test(file.name)).slice(0, 1);
     if (!supported.length || analyzing || running) return;
     setAnalyzing(true);
     const queue = [...files.filter((file) => !["completed", "failed"].includes(file.status)), ...createQueueFiles(supported)].sort(compareImportFiles);
@@ -99,6 +102,10 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
     setStartedAt(0);
     setAnalyzing(false);
     if (inputRef.current) inputRef.current.value = "";
+    // Selection is the only user action required: parsing, batching and importing
+    // continue transparently. Passing the prepared queue avoids waiting for the
+    // asynchronous React state update before the first batch starts.
+    if (queue.some((file) => file.status === "queued" && file.chapters)) runQueue(queue, 0);
   };
 
   const retryFailed = () => {
@@ -123,14 +130,14 @@ function BookImport({ novel, currentChapters = [], onComplete, onCancel }) {
     <div className={`book-import__dropzone${dragging ? " is-dragging" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); addFiles(event.dataTransfer.files); }}>
       <strong>Drop chapter files here</strong><span>TXT, FB2 or EPUB · multiple files · naturally sorted</span>
       <button type="button" disabled={running || analyzing} onClick={() => inputRef.current?.click()}>{analyzing ? "Detecting chapters…" : "Choose files"}</button>
-      <input ref={inputRef} type="file" multiple accept={acceptedFormats} onChange={(event) => addFiles(event.target.files)} />
+      <input ref={inputRef} type="file" accept={acceptedFormats} onChange={(event) => addFiles(event.target.files)} />
       <small>Files and completed batch checkpoints remain on this device if the browser closes.</small>
     </div>
     {files.length > 0 && <>
       <section className="book-import__impact"><h3>Import preview</h3><dl><div><dt>Current chapters</dt><dd>{preview.current}</dd></div><div><dt>Detected chapters</dt><dd>{preview.detected}</dd></div><div><dt>Duplicates</dt><dd>{preview.duplicates}</dd></div><div><dt>Will be added</dt><dd>{preview.additions}</dd></div><div className="total"><dt>Final total</dt><dd>{preview.finalTotal}</dd></div></dl></section>
       <section className="book-import__queue-progress" aria-live="polite">
         <div className="book-import__progress"><div><span>Overall progress</span><b>{overall}%</b></div><progress max="100" value={overall}>{overall}%</progress></div>
-        <dl><div><dt>File</dt><dd>{Math.max(totals.completed + totals.failedFiles, currentIndex + 1)} / {files.length}</dd></div><div><dt>Current file</dt><dd>{current?.name || (finished ? "Finished" : "Ready")}</dd></div><div><dt>Batch</dt><dd>{current ? `${current.completedBatches} / ${current.totalBatches}` : "—"}</dd></div><div><dt>Imported</dt><dd>{totals.added.toLocaleString()} / {totals.detected.toLocaleString()} chapters</dd></div><div><dt>ETA</dt><dd>{eta ? formatDuration(eta) : "—"}</dd></div><div><dt>Estimated remaining time</dt><dd>{eta ? formatDuration(eta) : "—"}</dd></div></dl>
+        <dl><div><dt>File</dt><dd>{Math.max(totals.completed + totals.failedFiles, currentIndex + 1)} / {files.length}</dd></div><div><dt>Current file</dt><dd>{current?.name || (finished ? "Finished" : "Ready")}</dd></div><div><dt>Batch</dt><dd>{current ? `${currentBatchNumber(current.completedBatches, current.totalBatches)} / ${current.totalBatches}` : "—"}</dd></div><div><dt>Imported</dt><dd>{totals.added.toLocaleString()} / {totals.detected.toLocaleString()} chapters</dd></div><div><dt>ETA</dt><dd>{eta ? formatDuration(eta) : "—"}</dd></div><div><dt>Estimated remaining time</dt><dd>{eta ? formatDuration(eta) : "—"}</dd></div></dl>
       </section>
       {restored && running && <p className="book-import__resume">Recovered queue: continuing automatically from the last saved batch.</p>}
       <section className="book-import__file-list"><h3>Automatically sorted files</h3>{files.map((file, index) => <article key={file.id} className={`is-${file.status}`}><span>{index + 1}</span><div><strong>{file.name}</strong><small>{file.error || file.status}</small></div><dl><div><dt>Detected</dt><dd>{file.detected || "—"}</dd></div><div><dt>Imported</dt><dd>{file.added}</dd></div><div><dt>Skipped</dt><dd>{file.skipped}</dd></div><div><dt>Batches</dt><dd>{file.completedBatches} / {file.totalBatches || "—"}</dd></div></dl></article>)}</section>

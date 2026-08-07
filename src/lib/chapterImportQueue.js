@@ -2,6 +2,18 @@ import { chapterNumber } from "./bookImportMerge.js";
 export const DEFAULT_IMPORT_BATCH_SIZE = 100;
 export const MAX_IMPORT_BATCH_SIZE = 100;
 
+export function createChapterBatches(chapters = [], size = DEFAULT_IMPORT_BATCH_SIZE) {
+  const batchSize = normalizeBatchSize(size);
+  const batches = [];
+  for (let index = 0; index < chapters.length; index += batchSize) batches.push(chapters.slice(index, index + batchSize));
+  return batches;
+}
+
+export function currentBatchNumber(completedBatches = 0, totalBatches = 0) {
+  if (!totalBatches) return 0;
+  return Math.min(Number(completedBatches) + 1, Number(totalBatches));
+}
+
 export function normalizeBatchSize(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return DEFAULT_IMPORT_BATCH_SIZE;

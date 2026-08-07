@@ -29,8 +29,10 @@ test("optimized chapter import replacement is deployed as a migration", () => {
 test("contextual novel routes expose manual add and queued chapter import", () => {
   assert.match(studio, /add-chapter/);
   assert.match(studio, /import-chapters/);
-  assert.match(importView, /const acceptedFormats = "\.txt,\.fb2,\.epub"/);
-  assert.match(importView, /multiple accept=/);
+  assert.match(importView, /const acceptedFormats = "\.txt"/);
+  assert.doesNotMatch(importView, /type="file" multiple/);
+  assert.match(importView, /\.filter\(\(file\) => \/\\\.txt\$\/i\.test\(file\.name\)\)\.slice\(0, 1\)/);
+  assert.match(importView, /runQueue\(queue, 0\)/);
   assert.match(importView, /Overall progress/);
   assert.match(importView, /Estimated remaining/);
   assert.match(importView, /Retry failed files/);
