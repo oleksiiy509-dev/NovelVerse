@@ -2,6 +2,22 @@ export const defaultVoiceWorkerUrl = "http://127.0.0.1:8787";
 export const defaultPiperVoiceId = "uk_UA-ukrainian_tts-medium";
 export const safeVoiceWorkerChunkChars = 2800;
 export const voiceWorkerTimeoutMs = 15000;
+export const voiceProviderPriority = ["fish-speech", "kokoro", "piper"];
+
+const providerAliases = { fish: "fish-speech", fishspeech: "fish-speech", "fish_speech": "fish-speech" };
+
+export function normalizeVoiceProviders(health = {}) {
+  const reported = Array.isArray(health.providers) ? health.providers : [];
+  return voiceProviderPriority.map((id) => {
+    const provider = reported.find((item) => (providerAliases[String(item.id).toLowerCase()] || String(item.id).toLowerCase()) === id);
+    const legacyAvailable = id === "piper" ? health.piperAvailable : id === "kokoro" ? health.kokoroAvailable : health.fishSpeechAvailable;
+    return { id, label: id === "fish-speech" ? "Fish Speech" : id[0].toUpperCase() + id.slice(1), ...provider, available: Boolean(provider?.available ?? provider?.online ?? legacyAvailable) };
+  });
+}
+
+export function selectBestVoiceProvider(health = {}) {
+  return normalizeVoiceProviders(health).find((provider) => provider.available)?.id || null;
+}
 
 export function getVoiceWorkerToken() {
   return String(import.meta.env?.VITE_VOICE_WORKER_TOKEN || "").trim();
@@ -47,7 +63,7 @@ async function sendJson(path, body, signal) {
 
 export async function getVoiceWorkerHealth() {
   const health = await requestJson("/health");
-  const providers = Array.isArray(health.providers) ? health.providers : [];
+  const providers = normalizeVoiceProviders(health);
   const piper = providers.find((provider) => provider.id === "piper") || null;
   return {
     ...health,
@@ -55,6 +71,8 @@ export async function getVoiceWorkerHealth() {
     piperAvailable: typeof health.piperAvailable === "boolean" ? health.piperAvailable : piper?.available,
     voices: Array.isArray(health.availableVoices) ? health.availableVoices : [],
     piper,
+    providers,
+    selectedProvider: selectBestVoiceProvider(health),
   };
 }
 
