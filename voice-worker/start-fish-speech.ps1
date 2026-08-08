@@ -14,8 +14,12 @@ if (-not (Test-Path $server)) {
 if (-not (Test-Path $CheckpointDir)) {
   throw "Fish Speech checkpoint is missing at $CheckpointDir. Run setup-fish-speech.ps1 first."
 }
-if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-  throw "Missing 'uv'. Install uv and reopen PowerShell."
+if (-not (Get-Command py -ErrorAction SilentlyContinue)) {
+  throw "Missing Python's 'py' launcher. Install Python for Windows, then retry."
+}
+& py -m uv --version
+if ($LASTEXITCODE -ne 0) {
+  throw "Python can not run uv. Install it with 'py -m pip install uv', then retry."
 }
 
 Push-Location $InstallDir
@@ -29,7 +33,7 @@ try {
     $arguments += @('--decoder-checkpoint-path', $codec)
   }
   Write-Host "Starting Fish Speech at http://127.0.0.1:$Port (Ctrl+C to stop)"
-  & uv @arguments
+  & py -m uv @arguments
   if ($LASTEXITCODE -ne 0) { throw "Fish Speech exited with code $LASTEXITCODE" }
 } finally {
   Pop-Location
