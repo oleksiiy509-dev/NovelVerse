@@ -52,6 +52,15 @@ export async function loadManagedChapter(chapterId) {
   return fetchChapterContent(supabase, chapterId);
 }
 
+/** Load chapter bodies omitted by the lightweight managed-book listing. */
+export async function hydrateManagedChapters(chapters = [], loadChapter = loadManagedChapter) {
+  return Promise.all(chapters.map(async (chapter) => {
+    if (Object.hasOwn(chapter, "content") && typeof chapter.content === "string") return chapter;
+    const loaded = await loadChapter(chapter.id);
+    return loaded ? { ...chapter, ...loaded } : chapter;
+  }));
+}
+
 export async function saveManagedBook(book, allBooks) {
   if (!isSupabaseConfigured) return writeLocal(allBooks);
   const payload = { title: book.title, author: book.author, description: book.description, genres: book.genres, tags: book.tags, language: book.language, age_rating: book.ageRating, status: book.status, cover_url: book.coverUrl, banner_url: book.bannerUrl, scheduled_at: book.scheduledAt || null, updated_at: new Date().toISOString() };

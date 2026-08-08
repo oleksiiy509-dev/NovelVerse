@@ -18,6 +18,7 @@ export default function ChapterGeneration({ book, chapter, segments, provider = 
   const generationBlockers = [
     !chapter && "No chapter is selected.",
     chapter && !chapterSegments.length && "No narration segments are assigned to this chapter.",
+    chapterSegments.some((segment) => typeof segment.text !== "string" || !segment.text.length) && "Every narration segment must contain chapter text.",
     health.label === "Offline" && `Local voice worker is offline: ${health.detail}`,
     health.label === "Error" && `Local voice worker health check failed: ${health.detail}`,
   ].filter(Boolean);

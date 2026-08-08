@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadManagedBooks } from "../lib/bookManagement";
+import { hydrateManagedChapters, loadManagedBooks } from "../lib/bookManagement";
 import { directorStorageKey, EMOTIONS, estimateDuration, analyzeChapters, parseDirectorJson, validateSegments, VOICES } from "../lib/voiceDirectorLocal";
 import ChapterGeneration from "./ChapterGeneration";
 
@@ -36,10 +36,16 @@ export default function VoiceDirector() {
   }, []);
   useEffect(() => { if (bookId) setDirector(readDirector(bookId)); }, [bookId]);
 
-  const analyze = (chapters, label) => {
+  const analyze = async (chapters, label) => {
     if (!chapters.length) { setNotice("No chapter text is available to analyze."); return; }
-    setDirector(analyzeChapters(chapters));
-    setNotice(`${label} analyzed locally. Review the detected speakers before saving.`);
+    try {
+      const hydrated = await hydrateManagedChapters(chapters);
+      if (hydrated.some((item) => typeof item.content !== "string")) throw new Error("Chapter text could not be loaded.");
+      setDirector(analyzeChapters(hydrated));
+      setNotice(`${label} analyzed locally. Review the detected speakers before saving.`);
+    } catch (error) {
+      setNotice(error.message || "Chapter text could not be loaded.");
+    }
   };
   const patchCharacter = (id, patch) => setDirector((current) => {
     const existing = current.characters.find((item) => item.id === id);
