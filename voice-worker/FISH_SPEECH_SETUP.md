@@ -58,19 +58,19 @@ a prerequisite for NovelVerse.
    Startup also uses `py -m uv`; a standalone `uv.exe` in `PATH` is neither used
    nor required.
 7. In a second PowerShell window, wait for Fish Speech to finish loading and
-   verify its health endpoint:
+   verify its synthesis route is ready:
 
    ```powershell
    do {
      Start-Sleep -Seconds 2
-     try { $health = Invoke-WebRequest http://127.0.0.1:8080/health -UseBasicParsing }
-     catch { $health = $null }
-   } until ($health.StatusCode -eq 200)
-   $health.StatusCode
+     try { Invoke-WebRequest http://127.0.0.1:8080/v1/tts -UseBasicParsing; $status = 200 }
+     catch { $status = $_.Exception.Response.StatusCode.value__ }
+   } until ($status -eq 405)
+   $status
    ```
 
-   This prints `200`. Initial connection failures while the model is loading are
-   expected.
+   This prints `405`, the expected response for GET on the POST-only TTS route.
+   Initial connection failures while the model is loading are expected.
 8. In that second window, start the NovelVerse gateway:
 
    ```powershell
@@ -83,18 +83,19 @@ a prerequisite for NovelVerse.
 9. In a third window, run:
 
    ```powershell
-   Invoke-RestMethod http://127.0.0.1:8080/health
+   try { Invoke-WebRequest http://127.0.0.1:8080/v1/tts -UseBasicParsing } catch { $_.Exception.Response.StatusCode.value__ -eq 405 }
    Invoke-RestMethod http://127.0.0.1:8787/health |
      Select-Object status, providers
    ```
 
-The direct health request must succeed, and the `fish-speech` provider should have
+The direct probe must report `True`, and the `fish-speech` provider should have
 `available: true` in the gateway response.
 
 ## Configuration and troubleshooting
 
-- Keep `FISH_SPEECH_URL=http://127.0.0.1:8080/v1/tts` and
-  `FISH_SPEECH_HEALTH_URL=http://127.0.0.1:8080/health` in `voice-worker/.env`.
+- Keep both `FISH_SPEECH_URL` and `FISH_SPEECH_HEALTH_URL` set to
+  `http://127.0.0.1:8080/v1/tts` in `voice-worker/.env`. Fish Speech does not
+  expose `/health`; the worker treats GET 405 from the POST-only TTS route as ready.
 - Do not set `FISH_SPEECH_REFERENCE_ID` unless the same reference exists in Fish
   Speech. NovelVerse's narrator name is not automatically a cloning reference.
 - Port already occupied: run `Get-NetTCPConnection -LocalPort 8080` and stop the

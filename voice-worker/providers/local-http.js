@@ -6,19 +6,21 @@ export function localEndpoint(value) {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && localHosts.has(url.hostname) ? url.toString() : null; } catch { return null; }
 }
 
-export function localHttpProvider({ id, label, envKey, healthEnvKey, defaultLanguages = 'en,uk,ru', payload }) {
+export function localHttpProvider({ id, label, envKey, healthEnvKey, healthFromEndpoint = false, defaultLanguages = 'en,uk,ru', payload }) {
   const configured = process.env[envKey] || '';
   const endpoint = localEndpoint(configured);
   const available = Boolean(endpoint);
-  const healthEndpoint = localEndpoint(process.env[healthEnvKey] || endpoint);
+  const healthEndpoint = healthFromEndpoint ? endpoint : localEndpoint(process.env[healthEnvKey] || endpoint);
   return { id, label, available, status: { available, configured: Boolean(configured), endpoint, reason: available ? null : configured ? `${envKey} must use a loopback host for offline narration` : `${envKey} is not configured` }, languages: defaultLanguages.split(','), voices: available ? [{ id: narratorVoice(), name: 'NovelVerse Narrator', language: process.env.DEFAULT_LANGUAGE || 'en' }] : [], async checkHealth() {
     if (!healthEndpoint) return { available: false, reason: this.status.reason };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);
     try {
-      // A 4xx response still proves that the configured local TTS process is listening.
+      // Fish Speech has no dedicated health route. GET on its POST-only TTS
+      // route returns 405 when ready; a 404 merely identifies a missing route.
       const response = await fetch(healthEndpoint, { method: 'GET', signal: controller.signal });
-      return { available: response.status < 500, reason: response.status < 500 ? null : `${label} health check returned HTTP ${response.status}` };
+      const healthy = response.ok || response.status === 405;
+      return { available: healthy, reason: healthy ? null : `${label} health check returned HTTP ${response.status}` };
     } catch (error) {
       return { available: false, reason: error.name === 'AbortError' ? `${label} health check timed out` : `${label} is not reachable` };
     } finally { clearTimeout(timeout); }

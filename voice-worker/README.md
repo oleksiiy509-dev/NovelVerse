@@ -66,16 +66,16 @@ npm start
 Verify both processes from a third window:
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:8080/health -UseBasicParsing
+try { Invoke-WebRequest http://127.0.0.1:8080/v1/tts -UseBasicParsing } catch { $_.Exception.Response.StatusCode.value__ -eq 405 }
 (Invoke-RestMethod http://127.0.0.1:8787/health).providers |
   Where-Object id -eq 'fish-speech'
 ```
 
-Fish Speech may return 404 for `/health` depending on its upstream version; this
-still proves that the process is listening, and the voice worker intentionally
-treats non-5xx responses as reachable. `FISH_SPEECH_REFERENCE_ID` should remain
-empty for ordinary synthesis. Set it only to a reference id already installed in
-Fish Speech. See [FISH_SPEECH_SETUP.md](./FISH_SPEECH_SETUP.md) for Docker and
+Fish Speech does not expose `/health`. The worker probes `/v1/tts` with GET and
+recognizes the expected HTTP 405 from that POST-only route as ready; HTTP 404 is
+not considered healthy. `FISH_SPEECH_REFERENCE_ID` should remain empty for
+ordinary synthesis. Set it only to a reference id already installed in Fish
+Speech. See [FISH_SPEECH_SETUP.md](./FISH_SPEECH_SETUP.md) for Docker and
 troubleshooting notes.
 
 
