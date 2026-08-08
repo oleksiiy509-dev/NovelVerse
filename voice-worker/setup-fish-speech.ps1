@@ -3,7 +3,10 @@ param(
   [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'NovelVerse\fish-speech'),
   [string]$Repository = 'https://github.com/fishaudio/fish-speech.git',
   [string]$Revision = 'v1.5.1',
-  [string]$Model = 'fishaudio/fish-speech-1.5'
+  [string]$Model = 'fishaudio/fish-speech-1.5',
+  [string]$TorchVersion = '2.4.1',
+  [string]$TorchvisionVersion = '0.19.1',
+  [ValidatePattern('^cu[0-9]+$')][string]$CudaWheelTag = 'cu121'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,9 +46,29 @@ try {
   Invoke-NativeCommand -Command git -Arguments @('fetch', '--tags', 'origin')
   Invoke-NativeCommand -Command git -Arguments @('checkout', '--force', $Revision)
   Invoke-NativeCommand -Command py -Arguments @('-m', 'uv', 'sync', '--python', '3.12')
+
+  # uv's default Windows resolution can mix a CPU torchaudio wheel with a CUDA
+  # torch wheel. That combination leaves torchaudio's native DLL dependencies
+  # unresolved and its import fails with WinError 127. Install the matching
+  # official CUDA wheel set together after syncing the upstream lock file.
+  $venvPython = Join-Path $InstallDir '.venv\Scripts\python.exe'
+  if (-not (Test-Path $venvPython)) {
+    throw "Installation verification failed: virtual environment Python was not created at $venvPython."
+  }
+  $torchIndex = "https://download.pytorch.org/whl/$CudaWheelTag"
+  Invoke-NativeCommand -Command py -Arguments @(
+    '-m', 'uv', 'pip', 'install', '--python', $venvPython, '--reinstall', '--no-deps',
+    '--index-url', $torchIndex,
+    "torch==$TorchVersion", "torchvision==$TorchvisionVersion", "torchaudio==$TorchVersion"
+  )
+  Invoke-NativeCommand -Command $venvPython -Arguments @(
+    '-c',
+    "import torch, torchaudio; expected='$CudaWheelTag'; assert torch.__version__.split('+')[0] == '$TorchVersion', torch.__version__; assert torchaudio.__version__.split('+')[0] == '$TorchVersion', torchaudio.__version__; assert torch.version.cuda and torch.__version__.endswith('+' + expected), (torch.__version__, torch.version.cuda); assert torchaudio.__version__.endswith('+' + expected), torchaudio.__version__; assert torch.cuda.is_available(), 'CUDA is not available to PyTorch'; print(f'torch={torch.__version__} torchaudio={torchaudio.__version__} CUDA={torch.version.cuda} GPU={torch.cuda.get_device_name(0)}')"
+  )
+
   $checkpoint = Join-Path $InstallDir 'checkpoints\fish-speech-1.5'
   Invoke-NativeCommand -Command py -Arguments @(
-    '-m', 'uv', 'run', 'hf', 'download', $Model, '--local-dir', $checkpoint
+    '-m', 'uv', 'run', '--no-sync', 'hf', 'download', $Model, '--local-dir', $checkpoint
   )
 
   $server = Join-Path $InstallDir 'tools\api_server.py'
