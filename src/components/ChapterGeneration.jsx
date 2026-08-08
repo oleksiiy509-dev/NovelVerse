@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelChapterGeneration, createChapterGeneration, getChapterAudio, getChapterGeneration, getVoiceWorkerHealth, openChapterOutputFolder } from "../lib/voiceWorker";
+import { prepareNarratedChapterSegments } from "../lib/narrationRendering";
 
 const terminal = new Set(["Finished", "Failed"]);
 const formatDuration = (seconds = 0) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
@@ -59,7 +60,7 @@ export default function ChapterGeneration({ book, chapter, segments, provider = 
   }, [jobs]);
 
   const generate = async () => {
-    const payload = { bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", provider: provider === "auto" ? health.provider || "auto" : provider, segments: chapterSegments };
+    const payload = { bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", provider: provider === "auto" ? health.provider || "auto" : provider, segments: prepareNarratedChapterSegments(chapterSegments) };
     try {
       const job = await createChapterGeneration(payload);
       setJobs((items) => [job, ...items.filter((item) => item.id !== job.id)]);
@@ -67,7 +68,7 @@ export default function ChapterGeneration({ book, chapter, segments, provider = 
     } catch (error) { setJobs((items) => [{ id: `failed-${Date.now()}`, status: "Failed", error: error.message, request: payload }, ...items]); }
   };
   const retry = async (failedJob) => {
-    const next = await createChapterGeneration({ bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", provider: provider === "auto" ? health.provider || "auto" : provider, segments: chapterSegments });
+    const next = await createChapterGeneration({ bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", provider: provider === "auto" ? health.provider || "auto" : provider, segments: prepareNarratedChapterSegments(chapterSegments) });
     const retried = { ...next, retryOf: failedJob.id };
     setJobs((items) => next.status === "Finished" ? [retried, ...items.filter((item) => item.id !== failedJob.id)] : [retried, ...items]);
     if (next.status === "Finished") { const url = URL.createObjectURL(await getChapterAudio(next.id)); createdUrls.current.push(url); setAudioUrls((urls) => ({ ...urls, [next.id]: url })); }
