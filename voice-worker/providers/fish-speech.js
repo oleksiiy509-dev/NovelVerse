@@ -1,6 +1,6 @@
 import { localHttpProvider } from './local-http.js';
 export function fishSpeechProvider() {
-  return localHttpProvider({ id: 'fish-speech', label: 'Fish Speech (local)', envKey: 'FISH_SPEECH_URL', healthEnvKey: 'FISH_SPEECH_HEALTH_URL', payload: (request) => ({
+  return localHttpProvider({ id: 'fish-speech', label: 'Fish Speech (local)', envKey: 'FISH_SPEECH_URL', healthEnvKey: 'FISH_SPEECH_HEALTH_URL', healthFromEndpoint: true, payload: (request) => ({
     text: request.text,
     format: request.format || 'wav',
     // A NovelVerse voice name is not a Fish Speech server reference id. Sending it

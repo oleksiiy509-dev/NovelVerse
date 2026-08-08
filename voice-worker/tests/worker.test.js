@@ -402,7 +402,7 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
   wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(16000, 40);
   const fishRequests = [];
   const providerServer = createServer((req, res) => {
-    if (req.method === 'GET' && req.url === '/health') return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+    if (req.method === 'GET' && req.url === '/v1/tts') return res.writeHead(405, { allow: 'POST' }).end();
     if (req.method === 'POST' && req.url === '/v1/tts') {
       let body = '';
       req.on('data', (chunk) => { body += chunk; });
@@ -416,7 +416,7 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
   await new Promise((resolve) => providerServer.once('listening', resolve));
   const providerBase = `http://127.0.0.1:${providerServer.address().port}`;
   process.env.FISH_SPEECH_URL = `${providerBase}/v1/tts`;
-  process.env.FISH_SPEECH_HEALTH_URL = `${providerBase}/health`;
+  process.env.FISH_SPEECH_HEALTH_URL = `${providerBase}/v1/tts`;
   delete process.env.KOKORO_URL; delete process.env.PIPER_BIN; delete process.env.PIPER_MODEL;
   const outputDir = await mkdtemp(path.join(os.tmpdir(), 'nv-http-chapter-'));
   const ctx = await fixture({ outputDir });
@@ -443,6 +443,26 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
     await rm(outputDir, { recursive: true, force: true });
     for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
   }
+});
+
+test('Fish Speech ignores the legacy missing /health route and probes its TTS route', async () => {
+  const previous = { FISH_SPEECH_URL: process.env.FISH_SPEECH_URL, FISH_SPEECH_HEALTH_URL: process.env.FISH_SPEECH_HEALTH_URL, KOKORO_URL: process.env.KOKORO_URL };
+  const providerServer = createServer((req, res) => res.writeHead(req.url === '/v1/tts' ? 405 : 404).end());
+  providerServer.listen(0, '127.0.0.1');
+  await new Promise((resolve) => providerServer.once('listening', resolve));
+  const base = `http://127.0.0.1:${providerServer.address().port}`;
+  process.env.FISH_SPEECH_URL = `${base}/v1/tts`;
+  process.env.FISH_SPEECH_HEALTH_URL = `${base}/health`;
+  delete process.env.KOKORO_URL;
+  await withoutPiperEnv(async () => {
+    const ctx = await fixture();
+    try {
+      const health = await (await ctx.request('/health')).json();
+      assert.equal(health.providers.find(({ id }) => id === 'fish-speech').available, true);
+    } finally { await cleanup(ctx); }
+  });
+  await new Promise((resolve) => providerServer.close(resolve));
+  for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
 });
 
 test('configured but unreachable local HTTP provider remains OFFLINE', async () => {
