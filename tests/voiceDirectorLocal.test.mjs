@@ -1,6 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { analyzeChapters, detectSegments, estimateDuration, parseDirectorJson, plainText, validateSegments } from "../src/lib/voiceDirectorLocal.js";
+import { hydrateManagedChapters } from "../src/lib/bookManagement.js";
+import { prepareNarratedChapterSegments } from "../src/lib/narrationRendering.js";
+
+test("hydrates chapter metadata before analysis and preserves its real text", async () => {
+  const original = "The signal arrived — before dawn!";
+  const chapters = await hydrateManagedChapters(
+    [{ id: "chapter-1", title: "Signal" }],
+    async (id) => ({ id, content: original }),
+  );
+  const result = analyzeChapters(chapters);
+  assert.equal(result.segments[0].text, original);
+  assert.notEqual(result.segments[0].text, undefined);
+});
+
+test("chapter generation derives renderer input from segment.text", () => {
+  const text = "The actual narration text.";
+  const rendered = prepareNarratedChapterSegments([{ type: "Narration", text }]);
+  assert.equal(rendered.map((segment) => segment.text).join(" "), text);
+});
 
 test("analyzes imported chapter HTML into speakers and emotional segments", () => {
   const result = analyzeChapters([{ id: "one", title: "Arrival", content: "<p>Mara: I am so happy!</p><p>The door opened.</p>" }]);
