@@ -18,13 +18,56 @@ a prerequisite for NovelVerse.
 
 ## Exact Windows sequence
 
-1. Install an NVIDIA driver, Git for Windows, Node.js 20+, and uv.
+1. Install an NVIDIA driver, Git for Windows, Node.js 20+, and Python. Ensure the
+   Python installer enabled the Windows `py` launcher.
 2. Open PowerShell in the NovelVerse repository.
-3. Run `Set-ExecutionPolicy -Scope Process Bypass`.
-4. Run `.\voice-worker\setup-fish-speech.ps1` once. The default checkout is pinned
-   to `v1.5.1` so upstream command-line changes do not silently break startup.
-5. Run `.\voice-worker\start-fish-speech.ps1` and leave that window open.
-6. In another PowerShell window, run:
+3. Install uv into Python and confirm that it works (uv does **not** need to be in
+   `PATH`):
+
+   ```powershell
+   py -m pip install --upgrade uv
+   py -m uv --version
+   ```
+
+4. Allow the checked-in scripts for this PowerShell process:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope Process Bypass
+   ```
+
+5. Run the setup script once:
+
+   ```powershell
+   .\voice-worker\setup-fish-speech.ps1
+   ```
+
+   The script uses `py -m uv` internally, verifies both the server checkout and
+   model download, and stops immediately if a native command fails. The default
+   checkout is pinned to `v1.5.1` so upstream command-line changes do not silently
+   break startup.
+6. Run the service and leave that PowerShell window open:
+
+   ```powershell
+   .\voice-worker\start-fish-speech.ps1
+   ```
+
+   Startup also uses `py -m uv`; a standalone `uv.exe` in `PATH` is neither used
+   nor required.
+7. In a second PowerShell window, wait for Fish Speech to finish loading and
+   verify its health endpoint:
+
+   ```powershell
+   do {
+     Start-Sleep -Seconds 2
+     try { $health = Invoke-WebRequest http://127.0.0.1:8080/health -UseBasicParsing }
+     catch { $health = $null }
+   } until ($health.StatusCode -eq 200)
+   $health.StatusCode
+   ```
+
+   This prints `200`. Initial connection failures while the model is loading are
+   expected.
+8. In that second window, start the NovelVerse gateway:
 
    ```powershell
    Set-Location .\voice-worker
@@ -33,17 +76,16 @@ a prerequisite for NovelVerse.
    npm start
    ```
 
-7. In a third window, run:
+9. In a third window, run:
 
    ```powershell
-   Test-NetConnection 127.0.0.1 -Port 8080
+   Invoke-RestMethod http://127.0.0.1:8080/health
    Invoke-RestMethod http://127.0.0.1:8787/health |
      Select-Object status, providers
    ```
 
-The `fish-speech` provider should have `available: true`. A response such as 404
-from the direct port-8080 `/health` request is acceptable; no response/connection
-refusal is not.
+The direct health request must succeed, and the `fish-speech` provider should have
+`available: true` in the gateway response.
 
 ## Configuration and troubleshooting
 
@@ -53,7 +95,10 @@ refusal is not.
   Speech. NovelVerse's narrator name is not automatically a cloning reference.
 - Port already occupied: run `Get-NetTCPConnection -LocalPort 8080` and stop the
   conflicting process. Both the script and `.env` must use the same port.
-- GPU/CUDA error: update the NVIDIA driver and repeat `uv sync` in the Fish Speech
-  install directory. Do not replace the Node worker dependencies.
+- GPU/CUDA error: update the NVIDIA driver and run `py -m uv sync --python 3.12`
+  in the Fish Speech install directory. Do not replace the Node worker dependencies.
+- `%1 is not a valid Win32 application` / OS error 193: do not invoke `uv`
+  directly. Confirm `py -m uv --version` works and use the checked-in scripts,
+  which always invoke uv as a Python module.
 - To use a different checkout or checkpoint, pass `-InstallDir` and
   `-CheckpointDir` to `start-fish-speech.ps1`.
