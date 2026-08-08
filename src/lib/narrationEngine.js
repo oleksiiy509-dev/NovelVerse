@@ -1,4 +1,5 @@
-export const NARRATION_ENGINE_VERSION = 3;
+export const NARRATION_ENGINE_VERSION = 4;
+export const NARRATOR_IDENTITY = Object.freeze({ speakerId: "narrator", speakerName: "Narrator" });
 export const NARRATION_MODES = Object.freeze(["neutral", "audiobook", "cinematic", "dramatic", "horror", "emotional", "action", "whisper", "epic"]);
 export const NARRATION_LEVELS = Object.freeze(["sentence", "paragraph", "scene"]);
 
@@ -24,6 +25,13 @@ const RX = {
   thought: /(?:\*[^*]+\*|\b(?:thought|wondered|to myself|in my mind)\b)/iu,
   revelation: /\b(truth|secret|revealed|realized|actually|was really|all along)\b/iu,
   emotional: /\b(love|hate|fear|hope|grief|joy|heart|tears?|cried|wept|sorry)\b/giu,
+  action: /\b(ran|run|rushed|leaped|jumped|chased|grabbed|struck|crashed|exploded|fled)\b/iu,
+  sadness: /\b(sad|sorrow|grief|tears?|cried|wept|mourned|heartbroken|goodbye|loss|lonely)\b/iu,
+  happiness: /\b(happy|joy|delighted|smiled|laughed|celebrated|wonderful|glad)\b/iu,
+  romance: /\b(love|beloved|kissed|embraced|darling|romance|heart|tenderly)\b/iu,
+  tension: /\b(waited|silence|suddenly|careful|danger|threat|closer|footsteps|trapped|escape)\b/iu,
+  whisper: /\b(whispered|murmured|hushed|under (?:his|her|their) breath)\b/iu,
+  shouting: /\b(shouted|yelled|screamed|roared|bellowed)\b/iu,
   location: /\b(?:in|at|to|from|across|entered(?: into)?)\s+(?:the\s+)?([A-Z][\p{L}'-]*(?:\s+[A-Z][\p{L}'-]*)*)/gu,
   object: /\b(?:the|this|that)\s+(key|ring|sword|letter|book|crown|door|weapon|photograph|map)\b/giu,
 };
@@ -44,7 +52,7 @@ function classify(text) {
   const types = [];
   if (dialogue) types.push("dialogue"); else types.push("narration");
   if (RX.thought.test(text)) types.push("internal_thought");
-  for (const type of ["flashback", "announcement", "battle", "mystery", "horror", "comedy"]) if (RX[type].test(text)) types.push(type);
+  for (const type of ["flashback", "announcement", "action", "battle", "mystery", "horror", "sadness", "happiness", "romance", "tension", "comedy"]) if (RX[type].test(text)) types.push(type);
   if (RX.climax.test(text) && /[!?]|\b(?:cried|wept|screamed|died)\b/iu.test(text)) types.push("emotional_climax");
   return types;
 }
@@ -74,31 +82,43 @@ function breathingPlan(text, pause, rate) {
   if (/[!?]$/.test(text.trim()) || pause.afterMs >= 650) plan.push({ type: "exhale", position: "after", optional: rate > 1 });
   return plan;
 }
-function speakerFor(segment, options) {
-  const mapped = options.speakers?.find((speaker) => segment.start >= speaker.start && segment.start < speaker.end);
-  return { speakerId: mapped?.speakerId || mapped?.id || "narrator", speakerName: mapped?.speakerName || mapped?.name || "Narrator", voiceId: mapped?.voiceId || options.voiceId || "narrator-default" };
+function deliveryFor(text, types, base) {
+  let tone = "neutral", timbre = "natural", rate = base.rate, pitch = base.pitch, energy = base.energy, whisper = base.whisper, shout = 0;
+  if (types.includes("dialogue")) { tone = "conversational"; rate += .03; energy += .04; }
+  if (types.includes("action")) { tone = "urgent"; timbre = "focused"; rate += .11; energy += .24; }
+  if (types.includes("battle")) { tone = "fierce"; timbre = "resonant"; rate += .13; pitch += .04; energy += .32; }
+  if (types.includes("horror")) { tone = "ominous"; timbre = "dark"; rate -= .13; pitch -= .08; energy -= .08; whisper += .2; }
+  if (types.includes("sadness")) { tone = "sorrowful"; timbre = "soft"; rate -= .12; pitch -= .04; energy -= .14; }
+  if (types.includes("happiness")) { tone = "joyful"; timbre = "bright"; rate += .06; pitch += .04; energy += .14; }
+  if (types.includes("romance")) { tone = "tender"; timbre = "warm"; rate -= .08; pitch -= .01; energy -= .06; whisper += .08; }
+  if (types.includes("tension") || types.includes("mystery")) { tone = "tense"; timbre = "controlled"; rate -= .07; energy += .06; }
+  if (RX.whisper.test(text)) { tone = "hushed"; timbre = "breathy"; rate -= .16; energy -= .24; whisper = Math.max(whisper, .82); }
+  if (RX.shouting.test(text) || /!{2,}/u.test(text)) { tone = "forceful"; timbre = "open"; rate += .1; pitch += .06; energy += .28; shout = .9; }
+  return { tone, timbre, speechRate: round(clamp(rate, .6, 1.35)), pitchModifier: round(clamp(pitch, -.35, .35)), energy: round(clamp(energy)), whisperLevel: round(clamp(whisper)), shoutingLevel: round(clamp(shout)) };
 }
 
 export function createNarrationPlan(chapterText, options = {}) {
   const sourceText = String(chapterText ?? ""); const mode = NARRATION_MODES.includes(options.mode) ? options.mode : "audiobook"; const level = NARRATION_LEVELS.includes(options.level) ? options.level : "sentence"; const base = MODE[mode];
-  const previous = options.previousPlan; let cursorMs = 0;
+  const previous = options.previousPlan; const narratorVoiceId = options.narratorVoiceId || options.voiceId || previous?.narrator?.voiceId || "narrator-default"; let cursorMs = 0;
   const segments = spans(sourceText, level).map((span, index) => {
-    const id = `nar_${hash(`${span.start}:${span.end}:${span.text}`)}`; const old = previous?.segments?.find((item) => item.id === id); const speaker = speakerFor(span, options);
-    if (old?.manualOverride || old?.manuallyEdited) { const kept = structuredClone(old); kept.source = { text: span.text, start: span.start, end: span.end }; kept.timeline = { ...kept.timeline, startMs: cursorMs }; cursorMs += kept.timeline.durationMs; return kept; }
+    const id = `nar_${hash(`${span.start}:${span.end}:${span.text}`)}`; const old = previous?.segments?.find((item) => item.id === id); const speaker = { ...NARRATOR_IDENTITY, voiceId: narratorVoiceId };
+    if (old?.manualOverride || old?.manuallyEdited) { const kept = structuredClone(old); kept.source = { text: span.text, start: span.start, end: span.end }; kept.speaker = speaker; kept.voiceAssignment = narratorVoiceId; kept.timeline = { ...kept.timeline, startMs: cursorMs, endMs: cursorMs + kept.timeline.durationMs }; cursorMs += kept.timeline.durationMs; return kept; }
     const types = classify(span.text); const emphasis = findEmphasis(span.text); let intensity = base.intensity;
     if (types.includes("battle") || types.includes("emotional_climax")) intensity += .16;
     if (types.includes("horror") || types.includes("mystery")) intensity += .08;
-    const metadata = { speechRate: round(clamp(base.rate + (types.includes("battle") ? .08 : 0), .6, 1.35)), pause: null, emphasis, intensity: round(clamp(intensity)), breathing: [], pitchModifier: round(base.pitch), energy: round(clamp(base.energy + (types.includes("battle") ? .1 : 0))), whisperLevel: round(clamp(base.whisper + (types.includes("internal_thought") ? .18 : 0))), emotionalWeight: round(clamp((types.includes("emotional_climax") ? .9 : .22) + emphasis.filter((x) => x.type === "emotional_word").length * .08)) };
+    const delivery = deliveryFor(span.text, types, base);
+    const metadata = { speechRate: delivery.speechRate, pause: null, emphasis, intensity: round(clamp(intensity)), breathing: [], pitchModifier: delivery.pitchModifier, energy: delivery.energy, whisperLevel: round(clamp(delivery.whisperLevel + (types.includes("internal_thought") ? .18 : 0))), emotionalWeight: round(clamp((types.includes("emotional_climax") ? .9 : .22) + emphasis.filter((x) => x.type === "emotional_word").length * .08)) };
     metadata.pause = pausePlan(span.text, types, metadata.intensity); metadata.breathing = breathingPlan(span.text, metadata.pause, metadata.speechRate);
     const spokenMs = Math.round(words(span.text) / (155 * metadata.speechRate) * 60000); const durationMs = metadata.pause.beforeMs + spokenMs + metadata.pause.afterMs;
-    const result = { id, index, source: { text: span.text, start: span.start, end: span.end }, speaker, voiceAssignment: speaker.voiceId, classifications: types, metadata, timeline: { startMs: cursorMs, durationMs, endMs: cursorMs + durationMs }, manualOverride: false };
+    const result = { id, index, source: { text: span.text, start: span.start, end: span.end }, speaker, voiceAssignment: narratorVoiceId, classifications: types, performance: { tone: delivery.tone, timbre: delivery.timbre, shoutingLevel: delivery.shoutingLevel }, metadata, timeline: { startMs: cursorMs, durationMs, endMs: cursorMs + durationMs }, manualOverride: false };
     cursorMs += durationMs; return result;
   });
-  return { engine: "AI Narration Engine", version: NARRATION_ENGINE_VERSION, planId: options.planId || previous?.planId || `narration_${hash(sourceText)}`, chapterId: options.chapterId || null, source: { text: sourceText, fingerprint: hash(sourceText), length: sourceText.length }, mode, level, segments, timeline: { durationMs: cursorMs, segmentIds: segments.map((x) => x.id) }, preservation: { originalText: true, punctuation: true, speakerIdentity: true, voiceAssignment: true, manualOverrides: true } };
+  return { engine: "Dynamic Narrator Engine", version: NARRATION_ENGINE_VERSION, planId: options.planId || previous?.planId || `narration_${hash(sourceText)}`, chapterId: options.chapterId || null, narrator: { ...NARRATOR_IDENTITY, voiceId: narratorVoiceId, identityLocked: true }, source: { text: sourceText, fingerprint: hash(sourceText), length: sourceText.length }, mode, level, segments, timeline: { durationMs: cursorMs, segmentIds: segments.map((x) => x.id) }, preservation: { originalText: true, punctuation: true, speakerIdentity: true, voiceAssignment: true, manualOverrides: true }, constraints: { singleNarrator: true, voiceSwitching: false } };
 }
 
 export function applyNarrationOverride(plan, segmentId, patch) {
-  return { ...plan, segments: plan.segments.map((segment) => segment.id === segmentId ? { ...segment, ...patch, metadata: { ...segment.metadata, ...(patch.metadata || {}) }, speaker: { ...segment.speaker, ...(patch.speaker || {}) }, manualOverride: true } : segment) };
+  const voiceId = plan.narrator?.voiceId || "narrator-default";
+  return { ...plan, segments: plan.segments.map((segment) => segment.id === segmentId ? { ...segment, ...patch, voiceAssignment: voiceId, metadata: { ...segment.metadata, ...(patch.metadata || {}) }, performance: { ...segment.performance, ...(patch.performance || {}) }, speaker: { ...NARRATOR_IDENTITY, voiceId }, manualOverride: true } : segment) };
 }
 
 export function generateNarrationReport(plan) {
