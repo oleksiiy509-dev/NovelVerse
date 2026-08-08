@@ -1,19 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { loadManagedBooks } from "../lib/bookManagement";
-import { directorStorageKey, parseDirectorJson } from "../lib/voiceDirectorLocal";
+import { EMPTY_DIRECTOR, firstChapterWithSegments, loadVoiceDirector, subscribeToVoiceDirector } from "../lib/voiceDirectorStorage";
 import ChapterGeneration from "./ChapterGeneration";
-
-const EMPTY_DIRECTOR = { characters: [], segments: [] };
-
-function readDirector(bookId) {
-  try {
-    const saved = localStorage.getItem(directorStorageKey(bookId));
-    return saved ? parseDirectorJson(saved) : EMPTY_DIRECTOR;
-  } catch {
-    return EMPTY_DIRECTOR;
-  }
-}
 
 function AudioProductionDashboard() {
   const [searchParams] = useSearchParams();
@@ -29,15 +18,25 @@ function AudioProductionDashboard() {
     loadManagedBooks().then((items) => {
       const requestedBook = searchParams.get("book");
       const selectedBook = items.find((item) => String(item.id) === requestedBook) || items[0];
+      const selectedDirector = loadVoiceDirector(selectedBook?.id);
       setBooks(items);
       setBookId(String(selectedBook?.id || ""));
-      setChapterId(String(selectedBook?.chapters[0]?.id || ""));
+      setDirector(selectedDirector);
+      setChapterId(String(firstChapterWithSegments(selectedBook?.chapters, selectedDirector.segments)?.id || selectedBook?.chapters[0]?.id || ""));
     }).catch((loadError) => setError(loadError.message));
   }, [searchParams]);
 
   useEffect(() => {
-    setDirector(bookId ? readDirector(bookId) : EMPTY_DIRECTOR);
-  }, [bookId]);
+    if (!bookId) return undefined;
+    const applyDirector = (nextDirector) => {
+      setDirector(nextDirector);
+      setChapterId((currentId) => {
+        const currentHasSegments = nextDirector.segments.some((segment) => String(segment.chapterId) === String(currentId));
+        return currentHasSegments ? currentId : String(firstChapterWithSegments(book?.chapters, nextDirector.segments)?.id || currentId || "");
+      });
+    };
+    return subscribeToVoiceDirector(bookId, applyDirector);
+  }, [bookId, book]);
 
   return (
     <div className="audio-production">
@@ -53,8 +52,10 @@ function AudioProductionDashboard() {
       <div className="voice-director__selectors">
         <label>Book<select value={bookId} onChange={(event) => {
           const nextBook = books.find((item) => String(item.id) === event.target.value);
+          const nextDirector = loadVoiceDirector(nextBook?.id);
           setBookId(event.target.value);
-          setChapterId(String(nextBook?.chapters[0]?.id || ""));
+          setDirector(nextDirector);
+          setChapterId(String(firstChapterWithSegments(nextBook?.chapters, nextDirector.segments)?.id || nextBook?.chapters[0]?.id || ""));
         }}>{books.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
         <label>Chapter<select value={chapterId} onChange={(event) => setChapterId(event.target.value)}>{(book?.chapters || []).map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
       </div>

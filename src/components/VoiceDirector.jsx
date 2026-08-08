@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hydrateManagedChapters, loadManagedBooks } from "../lib/bookManagement";
-import { directorStorageKey, EMOTIONS, estimateDuration, analyzeChapters, parseDirectorJson, validateSegments, VOICES } from "../lib/voiceDirectorLocal";
+import { EMOTIONS, estimateDuration, analyzeChapters, parseDirectorJson, validateSegments, VOICES } from "../lib/voiceDirectorLocal";
+import { EMPTY_DIRECTOR, loadVoiceDirector, removeVoiceDirector, saveVoiceDirector } from "../lib/voiceDirectorStorage";
 import ChapterGeneration from "./ChapterGeneration";
 
-const EMPTY = { version: 1, characters: [], segments: [] };
+const EMPTY = EMPTY_DIRECTOR;
 const optionValues = {
   gender: ["Unspecified", "Female", "Male", "Non-binary"],
   age: ["Child", "Teen", "Young adult", "Adult", "Senior"],
@@ -11,11 +12,6 @@ const optionValues = {
 };
 const segmentTypes = ["Narration", "Dialogue", "Thought"];
 const newId = () => globalThis.crypto?.randomUUID?.() || `segment-${Date.now()}`;
-
-function readDirector(bookId) {
-  try { return parseDirectorJson(localStorage.getItem(directorStorageKey(bookId))); }
-  catch { return EMPTY; }
-}
 
 export default function VoiceDirector() {
   const [books, setBooks] = useState([]);
@@ -34,7 +30,7 @@ export default function VoiceDirector() {
       if (items[0]) { setBookId(String(items[0].id)); setChapterId(String(items[0].chapters[0]?.id || "")); }
     }).catch((error) => setNotice(error.message));
   }, []);
-  useEffect(() => { if (bookId) setDirector(readDirector(bookId)); }, [bookId]);
+  useEffect(() => { if (bookId) setDirector(loadVoiceDirector(bookId)); }, [bookId]);
 
   const analyze = async (chapters, label) => {
     if (!chapters.length) { setNotice("No chapter text is available to analyze."); return; }
@@ -92,11 +88,11 @@ export default function VoiceDirector() {
   });
   const save = () => {
     if (!bookId) return;
-    localStorage.setItem(directorStorageKey(bookId), JSON.stringify({ ...director, updatedAt: new Date().toISOString() }));
+    saveVoiceDirector(bookId, director);
     setNotice("Director saved in this browser.");
   };
   const reset = () => {
-    if (bookId) localStorage.removeItem(directorStorageKey(bookId));
+    if (bookId) removeVoiceDirector(bookId);
     setDirector(EMPTY); setNotice("Director reset.");
   };
   const exportJson = () => {
