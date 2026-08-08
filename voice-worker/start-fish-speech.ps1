@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) {
 Push-Location $InstallDir
 try {
   $arguments = @(
-    'run', 'python', $server,
+    'run', '--no-sync', 'python', $server,
     '--listen', "127.0.0.1:$Port",
     '--llama-checkpoint-path', $CheckpointDir
   )

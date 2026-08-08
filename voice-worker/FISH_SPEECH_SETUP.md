@@ -41,10 +41,14 @@ a prerequisite for NovelVerse.
    .\voice-worker\setup-fish-speech.ps1
    ```
 
-   The script uses `py -m uv` internally, verifies both the server checkout and
-   model download, and stops immediately if a native command fails. The default
-   checkout is pinned to `v1.5.1` so upstream command-line changes do not silently
-   break startup.
+   The script uses `py -m uv` internally, installs the mutually compatible
+   `torch 2.4.1`, `torchvision 0.19.1`, and `torchaudio 2.4.1` wheels from the
+   official PyTorch `cu121` index, and imports both Torch and TorchAudio before
+   continuing. CUDA 12.1 wheels are compatible with an NVIDIA driver supporting
+   CUDA 12.2. The setup prints the installed versions and detected GPU, verifies
+   both the server checkout and model download, and stops immediately if a native
+   command fails. The default checkout is pinned to `v1.5.1` so upstream
+   command-line changes do not silently break startup.
 6. Run the service and leave that PowerShell window open:
 
    ```powershell
@@ -95,8 +99,11 @@ The direct health request must succeed, and the `fish-speech` provider should ha
   Speech. NovelVerse's narrator name is not automatically a cloning reference.
 - Port already occupied: run `Get-NetTCPConnection -LocalPort 8080` and stop the
   conflicting process. Both the script and `.env` must use the same port.
-- GPU/CUDA error: update the NVIDIA driver and run `py -m uv sync --python 3.12`
-  in the Fish Speech install directory. Do not replace the Node worker dependencies.
+- GPU/CUDA or `torchaudio` WinError 127: rerun `setup-fish-speech.ps1`. It replaces
+  the whole PyTorch family with matching `cu121` wheels and verifies the native
+  imports and CUDA device. Do not run a plain `uv sync` afterward because it can
+  restore the incompatible upstream wheel selection; the start script uses
+  `uv run --no-sync` to preserve the verified wheels.
 - `%1 is not a valid Win32 application` / OS error 193: do not invoke `uv`
   directly. Confirm `py -m uv --version` works and use the checked-in scripts,
   which always invoke uv as a Python module.
