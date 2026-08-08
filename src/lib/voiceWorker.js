@@ -12,7 +12,7 @@ export function normalizeVoiceProviders(health = {}) {
     const matching = reported.filter((item) => (providerAliases[String(item.id).toLowerCase()] || String(item.id).toLowerCase()) === id);
     const provider = matching.find((item) => item.available ?? item.online) || matching[0];
     const legacyAvailable = id === "piper" ? health.piperAvailable : id === "kokoro" ? health.kokoroAvailable : health.fishSpeechAvailable;
-    return { id, label: id === "fish-speech" ? "Fish Speech" : id[0].toUpperCase() + id.slice(1), ...provider, available: Boolean(provider?.available ?? provider?.online ?? legacyAvailable) };
+    return { id, label: id === "fish-speech" ? "Fish Speech" : id[0].toUpperCase() + id.slice(1), ...provider, available: Boolean(provider?.available ?? provider?.ready ?? provider?.online ?? legacyAvailable) };
   });
 }
 
@@ -68,7 +68,7 @@ export async function getVoiceWorkerHealth() {
   const piper = providers.find((provider) => provider.id === "piper") || null;
   return {
     ...health,
-    online: typeof health.online === "boolean" ? health.online : health.status === "ONLINE" || health.status === "Connected",
+    online: typeof health.online === "boolean" ? health.online : health.ok === true || health.status === "ONLINE" || health.status === "Connected",
     piperAvailable: typeof health.piperAvailable === "boolean" ? health.piperAvailable : piper?.available,
     voices: Array.isArray(health.availableVoices) ? health.availableVoices : [],
     piper,

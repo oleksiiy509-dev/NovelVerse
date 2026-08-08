@@ -6,7 +6,7 @@ export function localEndpoint(value) {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && localHosts.has(url.hostname) ? url.toString() : null; } catch { return null; }
 }
 
-export function localHttpProvider({ id, label, envKey, healthEnvKey, healthFromEndpoint = false, defaultLanguages = 'en,uk,ru', payload }) {
+export function localHttpProvider({ id, label, envKey, healthEnvKey, healthFromEndpoint = false, healthyStatuses, defaultLanguages = 'en,uk,ru', payload }) {
   const configured = process.env[envKey] || '';
   const endpoint = localEndpoint(configured);
   const available = Boolean(endpoint);
@@ -16,10 +16,8 @@ export function localHttpProvider({ id, label, envKey, healthEnvKey, healthFromE
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);
     try {
-      // Fish Speech has no dedicated health route. GET on its POST-only TTS
-      // route returns 405 when ready; a 404 merely identifies a missing route.
       const response = await fetch(healthEndpoint, { method: 'GET', signal: controller.signal });
-      const healthy = response.ok || response.status === 405;
+      const healthy = response.ok || healthyStatuses?.includes(response.status) === true;
       return { available: healthy, reason: healthy ? null : `${label} health check returned HTTP ${response.status}` };
     } catch (error) {
       return { available: false, reason: error.name === 'AbortError' ? `${label} health check timed out` : `${label} is not reachable` };

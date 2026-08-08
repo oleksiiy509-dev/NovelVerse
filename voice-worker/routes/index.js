@@ -21,7 +21,7 @@ router.get('/health', async (req, res) => {
   const realProviders = providers.filter(({ id }) => !['narrator', 'mock'].includes(id));
   const providerAvailable = realProviders.some(({ available }) => available);
   const status = queue.busy ? 'BUSY' : providerAvailable ? 'ONLINE' : 'Worker connected, no voice provider available';
-  res.json({ ok: true, online: true, workerConnected: true, providerAvailable, status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available, status: providerStatus }) => ({ id, available, reason: providerStatus?.reason || null })), availableVoices: realProviders.filter((p) => p.available).flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
+  res.json({ ok: true, online: true, workerConnected: true, providerAvailable, status, version, narratorVersion: '2.0.0', providers: providers.map(({ id, available, status: providerStatus }) => ({ id, provider: id, available, ready: available, reason: providerStatus?.reason || null })), availableVoices: realProviders.filter((p) => p.available).flatMap((p) => p.voices || []), queue, capabilities: { ffmpeg: ffmpeg.status === 0, outputAvailable }, uptime: process.uptime(), memoryUsage: process.memoryUsage() });
 });
 router.get('/providers', async (req, res) => res.json({ ok: true, providers: (await getProviderStatuses(req.app.locals.config)).map(({ synthesize, transform, checkHealth, ...safe }) => safe) }));
 router.get('/voices', async (req, res) => res.json({ ok: true, providers: (await getProviderStatuses(req.app.locals.config)).map(({ synthesize, transform, checkHealth, ...safe }) => safe) }));
