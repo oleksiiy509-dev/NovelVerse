@@ -29,6 +29,20 @@ test("health checks always make a fresh worker request and normalize every provi
   }
 });
 
+test("Fish Speech readiness responses are normalized as online", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ ok: true, providers: [{ provider: "fish-speech", id: "fish-speech", ready: true }] }) });
+  try {
+    const { getVoiceWorkerHealth } = await import(`../src/lib/voiceWorker.js?fish-ready-test=${Date.now()}`);
+    const health = await getVoiceWorkerHealth();
+    assert.equal(health.online, true);
+    assert.equal(health.providers.find(provider => provider.id === "fish-speech").available, true);
+    assert.equal(health.selectedProvider, "fish-speech");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("frontend voice worker client uses local defaults and public endpoints only", () => {
   assert.match(workerClient, /defaultVoiceWorkerUrl = "http:\/\/127\.0\.0\.1:8787"/);
   assert.match(workerClient, /VITE_VOICE_WORKER_URL/);
@@ -73,7 +87,7 @@ test("universal voice studio displays worker and Piper status with voice list pr
   assert.match(studio, /Worker \{workerStatus\.loading/);
   assert.match(studio, /Piper \{workerStatus\.piperAvailable/);
   assert.match(studio, /Available voices/);
-  assert.match(studio, /Preview Piper/);
+  assert.match(studio, /Preview active voice provider/);
   assert.match(studio, /synthesizeVoiceWorkerAudio/);
 });
 
@@ -82,6 +96,7 @@ test("voice studio health check refreshes state and exposes loading and failure 
   assert.match(studio, /setWorkerStatus\(status => \(\{ \.\.\.status, loading: true \}\)\)/);
   assert.match(studio, /setWorkerStatus\(\{ \.\.\.status, loading: false \}\)/);
   assert.match(studio, /Health check failed:/);
+  assert.match(studio, /Fish Speech is online and ready/);
   assert.match(studio, /onClick=\{checkWorkerHealth\}/);
   assert.match(studio, /workerStatus\.loading\?"Checking…":"Health Check"/);
 });

@@ -424,7 +424,7 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
     const health = await (await ctx.request('/health')).json();
     assert.equal(health.status, 'ONLINE');
     assert.equal(health.online, true);
-    assert.equal(health.providers.find(({ id }) => id === 'fish-speech').available, true);
+    assert.deepEqual(health.providers.find(({ id }) => id === 'fish-speech'), { id: 'fish-speech', provider: 'fish-speech', available: true, ready: true, reason: null });
     const preview = await ctx.request('/preview', auth({ text: 'Provider preview.', provider: 'fish-speech', format: 'wav' }));
     assert.equal(preview.status, 200);
     assert.equal((await preview.arrayBuffer()).byteLength, wav.length);
