@@ -4,6 +4,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { getProvider } from '../providers/index.js';
+import { prepareNarratedChapterSegments, prepareNarratedSentences } from '../../src/lib/narrationRendering.js';
+import { narratorVoice } from './narration.js';
 
 const jobs = new Map();
 const exec = promisify(execFile);
@@ -42,11 +44,11 @@ async function render(job) {
     const provider = getProvider(request.provider === 'auto' ? 'narrator' : request.provider, cfg);
     const rendered = [];
     job.status = 'Rendering';
-    const synthesisSegments = request.chapterTitle ? [{ text: request.chapterTitle, type: 'chapter-title' }, ...request.segments] : request.segments;
+    const synthesisSegments = request.chapterTitle ? [...prepareNarratedSentences(request.chapterTitle, { voice: request.voice }), ...request.segments] : request.segments;
     for (let index = 0; index < synthesisSegments.length; index += 1) {
       if (job.cancelled) throw Object.assign(new Error('Generation cancelled'), { cancelled: true });
       const segment = synthesisSegments[index];
-      const result = await provider.synthesize({ text: segment.text, language: request.language, format: 'wav', options: { emotion: String(segment.emotion || 'normal').toLowerCase(), rate: segment.rate, pitch: segment.pitch, delivery: segment.type || 'body' } });
+      const result = await provider.synthesize({ text: segment.text, voice: request.voice, language: request.language, format: 'wav', options: { ...segment, voice: request.voice, consistentVoice: true, emotion: String(segment.emotion || 'normal').toLowerCase(), delivery: segment.type || 'narration' } });
       rendered.push(result.audio);
       job.completed = Math.min(request.segments.length, index + (request.chapterTitle ? 0 : 1));
     }
@@ -97,7 +99,8 @@ function runNext() {
 export async function createChapterJob(cfg, body = {}) {
   const segments = Array.isArray(body.segments) ? body.segments.filter((item) => String(item.text || '').trim()) : [];
   if (!segments.length) throw Object.assign(new Error('segments are required'), { status: 400 });
-  const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, provider: body.provider || 'narrator', segments: segments.map(({ text, voice, emotion, rate, pitch }) => ({ text: String(text).trim(), voice, emotion, rate, pitch })) };
+  const voice = narratorVoice();
+  const request = { bookId: body.bookId, chapterId: body.chapterId, chapterNumber: Number(body.chapterNumber) || 1, bookTitle: body.bookTitle, chapterTitle: body.chapterTitle, language: body.language || cfg.defaultLanguage, provider: body.provider || 'narrator', voice, segments: prepareNarratedChapterSegments(segments, { voice, mode: body.narrationMode }) };
   const key = fingerprint(request);
   const folder = path.join(cfg.outputDir, safeName(request.bookTitle));
   try { await mkdir(folder, { recursive: true }); } catch { throw Object.assign(new Error('Output folder unavailable'), { status: 503 }); }

@@ -32,6 +32,13 @@ const round = (n) => Number(n.toFixed(2));
 const hash = (s) => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0).toString(36); };
 const words = (s) => (s.match(/[\p{L}\p{N}'-]+/gu) || []).length;
 
+function timbrePlan(types, base) {
+  if (types.includes("horror")) return { warmth: .25, brightness: .22, roughness: .34 };
+  if (types.includes("battle")) return { warmth: .42, brightness: .68, roughness: .2 };
+  if (types.includes("emotional_climax")) return { warmth: .72, brightness: .44, roughness: .12 };
+  return { warmth: round(clamp(.5 + base.pitch)), brightness: round(clamp(.5 + base.energy * .2)), roughness: .08 };
+}
+
 function spans(text, level) {
   if (!text) return [];
   if (level === "scene") return [{ text, start: 0, end: text.length }];
@@ -88,7 +95,7 @@ export function createNarrationPlan(chapterText, options = {}) {
     const types = classify(span.text); const emphasis = findEmphasis(span.text); let intensity = base.intensity;
     if (types.includes("battle") || types.includes("emotional_climax")) intensity += .16;
     if (types.includes("horror") || types.includes("mystery")) intensity += .08;
-    const metadata = { speechRate: round(clamp(base.rate + (types.includes("battle") ? .08 : 0), .6, 1.35)), pause: null, emphasis, intensity: round(clamp(intensity)), breathing: [], pitchModifier: round(base.pitch), energy: round(clamp(base.energy + (types.includes("battle") ? .1 : 0))), whisperLevel: round(clamp(base.whisper + (types.includes("internal_thought") ? .18 : 0))), emotionalWeight: round(clamp((types.includes("emotional_climax") ? .9 : .22) + emphasis.filter((x) => x.type === "emotional_word").length * .08)) };
+    const metadata = { speechRate: round(clamp(base.rate + (types.includes("battle") ? .08 : 0), .6, 1.35)), pause: null, emphasis, intensity: round(clamp(intensity)), breathing: [], pitchModifier: round(base.pitch), timbre: timbrePlan(types, base), energy: round(clamp(base.energy + (types.includes("battle") ? .1 : 0))), whisperLevel: round(clamp(base.whisper + (types.includes("internal_thought") ? .18 : 0))), emotionalWeight: round(clamp((types.includes("emotional_climax") ? .9 : .22) + emphasis.filter((x) => x.type === "emotional_word").length * .08)) };
     metadata.pause = pausePlan(span.text, types, metadata.intensity); metadata.breathing = breathingPlan(span.text, metadata.pause, metadata.speechRate);
     const spokenMs = Math.round(words(span.text) / (155 * metadata.speechRate) * 60000); const durationMs = metadata.pause.beforeMs + spokenMs + metadata.pause.afterMs;
     const result = { id, index, source: { text: span.text, start: span.start, end: span.end }, speaker, voiceAssignment: speaker.voiceId, classifications: types, metadata, timeline: { startMs: cursorMs, durationMs, endMs: cursorMs + durationMs }, manualOverride: false };
