@@ -76,9 +76,12 @@ test('automatically configures the standard local Fish Speech endpoint', async (
   });
 });
 
-test('preserves an explicitly configured Fish Speech endpoint', async () => {
+test('loads Fish Speech configuration from voice-worker/.env over inherited values', async () => {
   await withTemporaryWorkerEnv('FISH_SPEECH_URL=http://localhost:9000/v1/tts\n', async () => {
-    const env = runEnvProbe(workerRoot, { FISH_SPEECH_HEALTH_URL: '' });
+    const env = runEnvProbe(workerRoot, {
+      FISH_SPEECH_URL: 'http://127.0.0.1:1/v1/tts',
+      FISH_SPEECH_HEALTH_URL: '',
+    });
     assert.equal(env.FISH_SPEECH_URL, 'http://localhost:9000/v1/tts');
     assert.equal(env.FISH_SPEECH_HEALTH_URL, env.FISH_SPEECH_URL);
   });
@@ -93,10 +96,10 @@ test('loads Piper paths from voice-worker/.env when started in voice-worker dire
   });
 });
 
-test('loads Piper paths from voice-worker/.env when started from repository root and preserves existing env', async () => {
+test('loads Piper paths from voice-worker/.env when started from repository root', async () => {
   await withTemporaryWorkerEnv('PIPER_BIN=/tmp/repo-root-piper\nPIPER_MODEL=/tmp/repo-root-model.onnx\nPIPER_VOICE=test_voice\n', async () => {
     const env = runEnvProbe(repoRoot, { PIPER_BIN: '/tmp/existing-piper' });
-    assert.equal(env.PIPER_BIN, '/tmp/existing-piper');
+    assert.equal(env.PIPER_BIN, '/tmp/repo-root-piper');
     assert.equal(env.PIPER_MODEL, '/tmp/repo-root-model.onnx');
   });
 });

@@ -4,5 +4,6 @@ import { config } from '../utils/config.js';
 
 const app = createApp();
 app.listen(config.port, config.host, () => {
+  console.log(`Loaded FISH_SPEECH_URL=${process.env.FISH_SPEECH_URL}`);
   console.log(`NovelVerse local voice worker listening on http://${config.host}:${config.port}`);
 });
