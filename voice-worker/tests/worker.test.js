@@ -53,10 +53,10 @@ async function withoutPiperEnv(callback) {
 function runEnvProbe(cwd, extraEnv = {}) {
   const script = [
     `await import('${appUrl}');`,
-    'console.log(JSON.stringify({ PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL }));',
+    'console.log(JSON.stringify({ PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL, FISH_SPEECH_URL: process.env.FISH_SPEECH_URL, FISH_SPEECH_HEALTH_URL: process.env.FISH_SPEECH_HEALTH_URL }));',
   ].join(' ');
   const env = { ...process.env, ...extraEnv };
-  for (const key of ['PIPER_BIN', 'PIPER_MODEL', 'PIPER_VOICE']) {
+  for (const key of ['PIPER_BIN', 'PIPER_MODEL', 'PIPER_VOICE', 'FISH_SPEECH_URL', 'FISH_SPEECH_HEALTH_URL']) {
     if (!(key in extraEnv)) delete env[key];
   }
   const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
@@ -67,6 +67,22 @@ function runEnvProbe(cwd, extraEnv = {}) {
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
 }
+
+test('automatically configures the standard local Fish Speech endpoint', async () => {
+  await withTemporaryWorkerEnv('', async () => {
+    const env = runEnvProbe(repoRoot, { FISH_SPEECH_URL: '', FISH_SPEECH_HEALTH_URL: '' });
+    assert.equal(env.FISH_SPEECH_URL, 'http://127.0.0.1:8080/v1/tts');
+    assert.equal(env.FISH_SPEECH_HEALTH_URL, env.FISH_SPEECH_URL);
+  });
+});
+
+test('preserves an explicitly configured Fish Speech endpoint', async () => {
+  await withTemporaryWorkerEnv('FISH_SPEECH_URL=http://localhost:9000/v1/tts\n', async () => {
+    const env = runEnvProbe(workerRoot, { FISH_SPEECH_HEALTH_URL: '' });
+    assert.equal(env.FISH_SPEECH_URL, 'http://localhost:9000/v1/tts');
+    assert.equal(env.FISH_SPEECH_HEALTH_URL, env.FISH_SPEECH_URL);
+  });
+});
 
 
 test('loads Piper paths from voice-worker/.env when started in voice-worker directory', async () => {
