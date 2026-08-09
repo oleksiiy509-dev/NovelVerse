@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelChapterGeneration, createChapterGeneration, getChapterAudio, getChapterGeneration, getVoiceWorkerHealth, openChapterOutputFolder } from "../lib/voiceWorker";
 import { prepareNarratedChapterSegments } from "../lib/narrationRendering";
+import { startChapterRender } from "../lib/audioProduction";
 
 const terminal = new Set(["Finished", "Failed"]);
 const formatDuration = (seconds = 0) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 const formatSize = (bytes = 0) => bytes ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : "—";
 
-export default function ChapterGeneration({ book, chapter, segments, provider = "auto" }) {
+export default function ChapterGeneration({ book, chapter, segments, provider = "auto", directorExists = true }) {
   const [jobs, setJobs] = useState([]);
   const [audioUrls, setAudioUrls] = useState({});
   const [health, setHealth] = useState({ label: "Offline", detail: "Checking local Piper…" });
@@ -15,13 +16,13 @@ export default function ChapterGeneration({ book, chapter, segments, provider = 
   const audio = useRef(new Map());
   const createdUrls = useRef([]);
   const chapterSegments = segments.filter((segment) => String(segment.chapterId) === String(chapter?.id));
-  const generationBlockers = [
+  const generationBlockers = directorExists ? [
     !chapter && "No chapter is selected.",
     chapter && !chapterSegments.length && "No narration segments are assigned to this chapter.",
     chapterSegments.some((segment) => typeof segment.text !== "string" || !segment.text.length) && "Every narration segment must contain chapter text.",
     health.label === "Offline" && `Local voice worker is offline: ${health.detail}`,
     health.label === "Error" && `Local voice worker health check failed: ${health.detail}`,
-  ].filter(Boolean);
+  ].filter(Boolean) : ["Analyze Chapter first"];
   const generationDisabled = generationBlockers.length > 0;
   const generationDisabledReason = generationBlockers.join(" ");
 
@@ -63,7 +64,7 @@ export default function ChapterGeneration({ book, chapter, segments, provider = 
   const generate = async () => {
     const payload = { bookId: book.id, chapterId: chapter.id, chapterNumber: chapter.number, bookTitle: book.title, chapterTitle: chapter.title, language: book.language || "uk", provider: provider === "auto" ? health.provider || "auto" : provider, segments: prepareNarratedChapterSegments(chapterSegments) };
     try {
-      const job = await createChapterGeneration(payload);
+      const job = await startChapterRender(createChapterGeneration, payload);
       setJobs((items) => [job, ...items.filter((item) => item.id !== job.id)]);
       if (job.status === "Finished") { const url = URL.createObjectURL(await getChapterAudio(job.id)); createdUrls.current.push(url); setAudioUrls((urls) => ({ ...urls, [job.id]: url })); }
     } catch (error) { setJobs((items) => [{ id: `failed-${Date.now()}`, status: "Failed", error: error.message, request: payload }, ...items]); }
