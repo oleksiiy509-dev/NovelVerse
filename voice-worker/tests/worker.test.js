@@ -564,3 +564,44 @@ test('cache reuses generated preview audio', async () => {
   assert.equal(metadata.cacheHit, true);
   await cleanup(ctx);
 });
+
+test('audio API deduplicates concurrent chapter requests, uploads artifacts, and supports range streaming', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'nv-online-audio-'));
+  const outputDir = path.join(root, 'renders');
+  const storageDir = path.join(root, 'storage');
+  const ctx = await fixture({ outputDir, storageDir });
+  const payload = { bookId: 'online-book', chapterId: 'online-chapter', chapterNumber: 7, bookTitle: 'Online Novel', provider: 'mock', segments: [{ text: 'One render serves every listener.' }] };
+  try {
+    const [firstResponse, secondResponse] = await Promise.all([
+      ctx.request('/chapter-jobs', auth(payload)),
+      ctx.request('/chapter-jobs', auth(payload)),
+    ]);
+    const [first, second] = await Promise.all([firstResponse.json(), secondResponse.json()]);
+    assert.equal(first.id, second.id);
+
+    let audio = await (await ctx.request('/audio/online-chapter', { headers: { authorization: 'Bearer secret' } })).json();
+    for (let attempt = 0; attempt < 100 && audio.status !== 'finished'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const response = await ctx.request('/audio/online-chapter', { headers: { authorization: 'Bearer secret' } });
+      audio = await response.json();
+    }
+    assert.equal(audio.status, 'finished', audio.error);
+    assert.equal(audio.id, first.id);
+    assert.equal(audio.streamUrl, '/audio/online-chapter/stream');
+
+    const streamed = await ctx.request(audio.streamUrl, { headers: { authorization: 'Bearer secret', range: 'bytes=0-31' } });
+    assert.equal(streamed.status, 206);
+    assert.equal(streamed.headers.get('accept-ranges'), 'bytes');
+    assert.match(streamed.headers.get('content-range'), /^bytes 0-31\//);
+    assert.equal((await streamed.arrayBuffer()).byteLength, 32);
+
+    const metadata = JSON.parse(await readFile(path.join(outputDir, '.audio-metadata.json'), 'utf8'));
+    assert.equal(metadata.records.length, 1);
+    assert.equal(metadata.records[0].request.chapterId, 'online-chapter');
+    assert.ok(!JSON.stringify(metadata).includes('One render serves every listener'.repeat(10)));
+    assert.equal((await stat(path.join(storageDir, 'online-book', 'online-chapter', 'audio.wav'))).isFile(), true);
+  } finally {
+    await cleanup(ctx);
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -13,6 +13,10 @@ export const config = {
   defaultLanguage: process.env.DEFAULT_LANGUAGE || 'en',
   cacheDir: path.resolve(process.env.VOICE_CACHE_DIR || '.cache/audio'),
   outputDir: path.resolve(process.env.VOICE_OUTPUT_DIR || path.join(repoRoot, 'voice-output')),
+  storageDir: path.resolve(process.env.AUDIO_STORAGE_DIR || path.join(repoRoot, 'voice-storage')),
+  publicAudioBaseUrl: process.env.PUBLIC_AUDIO_BASE_URL || '',
+  chapterSourceUrl: process.env.CHAPTER_SOURCE_URL || '',
+  chapterSourceToken: process.env.CHAPTER_SOURCE_TOKEN || '',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 120),
 };
