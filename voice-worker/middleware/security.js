@@ -46,9 +46,18 @@ export function rateLimiter(cfg) {
     next();
   };
 }
+import { randomUUID } from 'node:crypto';
+import { log } from '../utils/logger.js';
+
 export function requestLogger(cfg) {
-  return (req, _res, next) => {
-    if (cfg.logLevel !== 'silent') console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  return (req, res, next) => {
+    const started = performance.now();
+    const requestId = req.headers['x-request-id'] || randomUUID();
+    res.setHeader('x-request-id', requestId);
+    res.on('finish', () => log(cfg, res.statusCode >= 500 ? 'error' : 'info', 'request_completed', {
+      requestId, method: req.method, path: req.url.split('?')[0], status: res.statusCode,
+      durationMs: Math.round(performance.now() - started),
+    }));
     next();
   };
 }
