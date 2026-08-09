@@ -3,14 +3,19 @@ import { directorStorageKey, parseDirectorJson } from "./voiceDirectorLocal.js";
 export const EMPTY_DIRECTOR = Object.freeze({ version: 1, characters: [], segments: [] });
 export const DIRECTOR_SAVED_EVENT = "novelverse:voice-director-saved";
 
-export function loadVoiceDirector(bookId, storage = globalThis.localStorage) {
-  if (!bookId || !storage) return EMPTY_DIRECTOR;
+/** Returns the persisted director, or null when Voice Direction has never saved one. */
+export function loadSavedVoiceDirector(bookId, storage = globalThis.localStorage) {
+  if (!bookId || !storage) return null;
   try {
     const saved = storage.getItem(directorStorageKey(bookId));
-    return saved ? parseDirectorJson(saved) : EMPTY_DIRECTOR;
+    return saved ? parseDirectorJson(saved) : null;
   } catch {
-    return EMPTY_DIRECTOR;
+    return null;
   }
+}
+
+export function loadVoiceDirector(bookId, storage = globalThis.localStorage) {
+  return loadSavedVoiceDirector(bookId, storage) || EMPTY_DIRECTOR;
 }
 
 export function saveVoiceDirector(bookId, director, storage = globalThis.localStorage, eventTarget = globalThis) {
@@ -29,7 +34,7 @@ export function removeVoiceDirector(bookId, storage = globalThis.localStorage, e
 
 export function subscribeToVoiceDirector(bookId, listener, eventTarget = globalThis) {
   if (!eventTarget?.addEventListener) return () => {};
-  const refresh = () => listener(loadVoiceDirector(bookId));
+  const refresh = () => listener(loadSavedVoiceDirector(bookId));
   const refreshFromStorage = (event) => {
     if (!event.key || event.key === directorStorageKey(bookId)) refresh();
   };
