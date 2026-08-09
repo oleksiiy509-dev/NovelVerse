@@ -104,7 +104,7 @@ async function uploadAudio(cfg, job) {
     const contentType = job.mp3File ? 'audio/mpeg' : 'audio/wav';
     const objectKey = `${String(job.request.bookId || 'unknown')}/${String(job.request.chapterId)}/audio.${job.mp3File ? 'mp3' : 'wav'}`;
     const uploaded = await objects.put(objectKey, await readFile(source), contentType);
-    Object.assign(job, { objectKey: uploaded.key, contentType: uploaded.contentType });
+    Object.assign(job, { objectKey: uploaded.key, contentType: uploaded.contentType, checksum: uploaded.checksum, size: uploaded.size });
     return { r2: true, objectKey: uploaded.key };
   }
   const destination = path.join(cfg.storageDir, prefix);
@@ -169,10 +169,12 @@ async function render(job) {
     job.storage = await uploadAudio(cfg, job);
     job.status = 'Finished';
   } catch (error) {
-    job.status = error.cancelled ? 'Cancelled' : 'Failed';
+    const retry = !error.cancelled && job.attempts < cfg.uploadJobAttempts;
+    job.status = error.cancelled ? 'Cancelled' : retry ? 'Retry' : 'Failed';
     job.error = error.cancelled ? 'Generation cancelled' : error.message;
     job.generationTime = Date.now() - started;
     lastError = job.error;
+    if (retry) pending.push(job);
   } finally {
     for (const subscriber of job.subscribers || []) subscriber.end();
     job.subscribers?.clear();
@@ -236,7 +238,7 @@ async function loadCloudChapter(cfg, chapterId) {
     id: record.job_id, key: fingerprint(record.request), cfg, request: record.request,
     status: 'Finished', completed: record.total_segments, total: record.total_segments,
     attempts: record.attempts || 0, createdAt: record.created_at, generationTime: 0,
-    cached: true, objectKey: record.object_key, contentType: record.content_type,
+    cached: true, objectKey: record.object_key, contentType: record.content_type, checksum: record.checksum_sha256,
     size: record.byte_size, duration: record.duration_seconds,
   };
   jobs.set(job.id, job); chapters.set(chapterKey(cfg, chapterId), job); return job;
@@ -250,6 +252,15 @@ export async function getChapterAudioStream(cfg, job, range) {
   const objects = cloud(cfg).objects;
   if (!job?.objectKey || !objects.enabled) return null;
   return objects.get(job.objectKey, range);
+}
+export function getChapterDownloadUrl(cfg, job, expiresIn) {
+  if (!job?.objectKey) return null;
+  const objects = cloud(cfg).objects;
+  return objects.publicUrl(job.objectKey) || objects.signedUrl(job.objectKey, expiresIn);
+}
+export async function downloadChapterAudioVerified(cfg, job) {
+  if (!job?.objectKey || !job.checksum) return null;
+  return cloud(cfg).objects.downloadVerified(job.objectKey, job.checksum);
 }
 function streamingWav(buffer) {
   const audio = Buffer.from(buffer);
@@ -307,6 +318,6 @@ export function publicJob(job) {
     status: publicStatus,
     progress: publicStatus === 'completed' ? 100 : progress,
     ...(publicStatus === 'failed' ? { error } : {}),
-    audioUrl: publicStatus === 'completed' ? `/chapter-jobs/${job.id}/download` : null,
+    audioUrl: publicStatus === 'completed' ? (getChapterDownloadUrl(job.cfg, job, 900) || `/chapter-jobs/${job.id}/download`) : null,
   };
 }

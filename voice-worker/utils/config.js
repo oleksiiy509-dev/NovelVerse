@@ -24,6 +24,12 @@ export const config = {
   r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
   r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
   r2KeyPrefix: (process.env.R2_KEY_PREFIX || 'production').replace(/^\/+|\/+$/g, ''),
+  r2PublicBaseUrl: process.env.R2_PUBLIC_BASE_URL || '',
+  r2MultipartThreshold: Number(process.env.R2_MULTIPART_THRESHOLD_BYTES || 50 * 1024 * 1024),
+  r2MultipartPartSize: Number(process.env.R2_MULTIPART_PART_SIZE_BYTES || 10 * 1024 * 1024),
+  r2RetryAttempts: Number(process.env.R2_RETRY_ATTEMPTS || 4),
+  r2RetryBaseMs: Number(process.env.R2_RETRY_BASE_MS || 100),
+  uploadJobAttempts: Number(process.env.UPLOAD_JOB_ATTEMPTS || 3),
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 120),
 };
