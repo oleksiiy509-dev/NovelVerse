@@ -11,12 +11,24 @@ import { requireBearerToken } from '../middleware/auth.js';
 import { normalizeNarrationText, planNarration, prepareNarrationRequest } from '../processors/narration.js';
 import { shutdownChapterQueue } from '../processors/chapter-jobs.js';
 
+test.after(async () => {
+  // This is intentionally printed by the production suite. In particular it
+  // makes Windows-only PIPE/TCP leaks visible instead of leaving `npm test`
+  // apparently stuck with no indication of what is keeping the event loop up.
+  await new Promise((resolve) => setImmediate(resolve));
+  const handles = process._getActiveHandles()
+    .filter((handle) => handle !== process.stdout && handle !== process.stderr && handle !== process.stdin)
+    .map((handle) => handle.constructor?.name || typeof handle);
+  console.log(`# active handles before exit: ${handles.length ? handles.join(', ') : 'none'}`);
+});
+
 async function fixture(overrides = {}) {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'nv-worker-'));
   const app = createApp({ token: 'secret', defaultProvider: 'mock', cacheDir, logLevel: 'silent', rateLimitMax: 1000, ...overrides });
   const config = app.locals.config;
   const server = app.listen(0, '127.0.0.1');
   const sockets = new Set();
+  const openResponses = new Set();
   const requests = new AbortController();
   const onConnection = (socket) => {
     sockets.add(socket);
@@ -27,8 +39,20 @@ async function fixture(overrides = {}) {
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
     cacheDir,
-    request: (url, options = {}) => fetch(`${base}${url}`, { ...options, signal: requests.signal }),
+    async request(url, options = {}) {
+      const response = await fetch(`${base}${url}`, { ...options, signal: requests.signal });
+      openResponses.add(response);
+      return response;
+    },
     async close() {
+      // An AbortSignal only owns requests which have not produced a Response.
+      // Once headers arrive, an unread web ReadableStream owns Undici's
+      // keep-alive socket. Explicitly cancel those streams; on Windows their
+      // TCP handles otherwise remain referenced after the server is closed.
+      await Promise.allSettled([...openResponses].map(async (response) => {
+        if (!response.bodyUsed && response.body) await response.body.cancel();
+        openResponses.delete(response);
+      }));
       requests.abort();
       await shutdownChapterQueue(config);
       server.closeIdleConnections?.();
