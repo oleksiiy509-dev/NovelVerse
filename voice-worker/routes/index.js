@@ -8,7 +8,7 @@ import { getProvider, getProviderStatuses } from '../providers/index.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
-import { cancelChapterJob, createChapterJob, getChapterAudio, getChapterJob, getChapterQueueStatus, publicJob } from '../processors/chapter-jobs.js';
+import { cancelChapterJob, createChapterJob, getChapterAudio, getChapterAudioStream, getChapterJob, getChapterQueueStatus, publicJob } from '../processors/chapter-jobs.js';
 
 export const router = Router();
 const version = '1.0.0';
@@ -67,6 +67,21 @@ router.get('/audio/:chapterId', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.post('/audio/:chapterId/render', async (req, res, next) => {
+  try {
+    const job = await createChapterJob(req.app.locals.config, { ...req.body, chapterId: req.params.chapterId });
+    res.status(job.status === 'finished' ? 200 : 202).json({ ...job, joined: job.status === 'running' });
+  } catch (error) { next(error); }
+});
+
+router.get('/audio/:chapterId/status', async (req, res, next) => {
+  try {
+    const job = await getChapterAudio(req.app.locals.config, req.params.chapterId);
+    if (!job) return res.status(404).json({ ok: false, error: 'audio_not_found' });
+    res.json(publicJob(job));
+  } catch (error) { next(error); }
+});
+
 router.get('/audio/:chapterId/stream', async (req, res, next) => {
   try {
     const job = await getChapterAudio(req.app.locals.config, req.params.chapterId);
@@ -74,6 +89,14 @@ router.get('/audio/:chapterId/stream', async (req, res, next) => {
     if (job.status !== 'Finished') {
       res.setHeader('retry-after', '2');
       return res.status(425).json({ ok: false, error: job.status === 'Failed' ? 'render_failed' : 'render_in_progress', job: publicJob(job) });
+    }
+    const remote = await getChapterAudioStream(req.app.locals.config, job, req.headers.range);
+    if (remote) {
+      res.status(remote.status);
+      for (const name of ['accept-ranges', 'cache-control', 'content-length', 'content-range', 'content-type', 'etag']) {
+        const value = remote.headers.get(name); if (value) res.setHeader(name, value);
+      }
+      return remote.body ? (await import('node:stream')).Readable.fromWeb(remote.body).pipe(res) : res.end();
     }
     const file = job.storage?.mp3 || job.storage?.wav || job.mp3File || job.file;
     const info = await stat(file);

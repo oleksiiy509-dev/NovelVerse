@@ -573,11 +573,17 @@ test('audio API deduplicates concurrent chapter requests, uploads artifacts, and
   const payload = { bookId: 'online-book', chapterId: 'online-chapter', chapterNumber: 7, bookTitle: 'Online Novel', provider: 'mock', segments: [{ text: 'One render serves every listener.' }] };
   try {
     const [firstResponse, secondResponse] = await Promise.all([
-      ctx.request('/chapter-jobs', auth(payload)),
-      ctx.request('/chapter-jobs', auth(payload)),
+      ctx.request('/audio/online-chapter/render', auth(payload)),
+      ctx.request('/audio/online-chapter/render', auth(payload)),
     ]);
     const [first, second] = await Promise.all([firstResponse.json(), secondResponse.json()]);
     assert.equal(first.id, second.id);
+    assert.equal(first.joined, true);
+    assert.equal(second.joined, true);
+
+    const initialStatus = await ctx.request('/audio/online-chapter/status', { headers: { authorization: 'Bearer secret' } });
+    assert.equal(initialStatus.status, 200);
+    assert.equal((await initialStatus.json()).id, first.id);
 
     let audio = await (await ctx.request('/audio/online-chapter', { headers: { authorization: 'Bearer secret' } })).json();
     for (let attempt = 0; attempt < 100 && audio.status !== 'finished'; attempt += 1) {
