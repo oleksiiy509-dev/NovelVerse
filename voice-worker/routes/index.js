@@ -13,6 +13,25 @@ import { cancelChapterJob, createChapterJob, deleteChapterAudio, getChapterAudio
 export const router = Router();
 const version = '1.0.0';
 
+router.get('/live', (_req, res) => res.json({ ok: true, status: 'alive', uptime: process.uptime() }));
+router.get('/ready', async (req, res) => {
+  const providers = await getProviderStatuses(req.app.locals.config);
+  const configured = providers.filter(({ id }) => !['narrator', 'mock'].includes(id));
+  const ready = configured.some(({ available }) => available);
+  res.status(ready ? 200 : 503).json({ ok: ready, status: ready ? 'ready' : 'not_ready', providers: configured.map(({ id, available }) => ({ id, available })) });
+});
+router.get('/metrics', (_req, res) => {
+  const memory = process.memoryUsage();
+  res.type('text/plain').send([
+    '# HELP novelverse_worker_uptime_seconds Worker process uptime.',
+    '# TYPE novelverse_worker_uptime_seconds gauge',
+    `novelverse_worker_uptime_seconds ${process.uptime()}`,
+    '# HELP novelverse_worker_resident_memory_bytes Worker resident memory.',
+    '# TYPE novelverse_worker_resident_memory_bytes gauge',
+    `novelverse_worker_resident_memory_bytes ${memory.rss}`,
+  ].join('\n') + '\n');
+});
+
 router.get('/health', async (req, res) => {
   const providers = await getProviderStatuses(req.app.locals.config);
   const queue = getChapterQueueStatus();

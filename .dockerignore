@@ -1,0 +1,9 @@
+.git
+node_modules
+voice-worker/node_modules
+dist
+.env*
+!.env.example
+voice-output
+voice-storage
+*.log

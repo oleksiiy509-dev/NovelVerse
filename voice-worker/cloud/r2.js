@@ -36,8 +36,9 @@ export class R2AudioStore {
   }
 
   async put(key, bytes, contentType) {
-    await this.request('PUT', key, { body: bytes, contentType });
-    return { key, contentType, size: bytes.length };
+    const objectKey = this.config.r2KeyPrefix ? `${this.config.r2KeyPrefix}/${key}` : key;
+    await this.request('PUT', objectKey, { body: bytes, contentType });
+    return { key: objectKey, contentType, size: bytes.length };
   }
 
   get(key, range) { return this.request('GET', key, { range }); }

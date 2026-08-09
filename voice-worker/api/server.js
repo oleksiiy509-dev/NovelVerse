@@ -1,9 +1,9 @@
 import '../utils/load-env.js';
 import { createApp } from './app.js';
 import { config } from '../utils/config.js';
+import { log } from '../utils/logger.js';
 
 const app = createApp();
 app.listen(config.port, config.host, () => {
-  console.log(`Loaded FISH_SPEECH_URL=${process.env.FISH_SPEECH_URL}`);
-  console.log(`NovelVerse local voice worker listening on http://${config.host}:${config.port}`);
+  log(config, 'info', 'server_started', { host: config.host, port: config.port, provider: config.defaultProvider });
 });

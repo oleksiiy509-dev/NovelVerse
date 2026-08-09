@@ -1,0 +1,9 @@
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+ARG FISH_SPEECH_REF=main
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git python3 python3-pip && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/fish-speech
+RUN git clone --depth 1 --branch "$FISH_SPEECH_REF" https://github.com/fishaudio/fish-speech.git . && pip3 install --no-cache-dir -e .
+ENV HOST=0.0.0.0 PORT=8080
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=5 CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/health', timeout=3)" || exit 1
+CMD ["python3", "tools/api_server.py", "--listen", "0.0.0.0:8080"]

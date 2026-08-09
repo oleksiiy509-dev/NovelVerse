@@ -1,4 +1,4 @@
-const openPaths = new Set(['/health', '/providers']);
+const openPaths = new Set(['/health', '/live', '/ready', '/providers']);
 const localHosts = new Set(['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 function normalizeToken(token) {

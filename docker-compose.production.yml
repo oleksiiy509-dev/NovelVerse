@@ -1,0 +1,58 @@
+name: novelverse-production
+
+x-common: &common
+  restart: unless-stopped
+  env_file: .env.production
+  networks: [novelverse]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  api:
+    <<: *common
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?required}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?required}
+    ports: ["${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8080}:8080"]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8080/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  voice-worker:
+    <<: *common
+    build: { context: voice-worker, dockerfile: Dockerfile }
+    ports: ["${VOICE_BIND_ADDRESS:-127.0.0.1}:${VOICE_PORT:-8787}:8787"]
+    volumes:
+      - voice-cache:/app/.cache/audio
+    depends_on:
+      fish-speech: { condition: service_healthy }
+    security_opt: [no-new-privileges:true]
+
+  fish-speech:
+    <<: *common
+    build:
+      context: voice-worker
+      dockerfile: Dockerfile.fish-speech
+      args: { FISH_SPEECH_REF: "${FISH_SPEECH_REF:-main}" }
+    expose: ["8080"]
+    volumes: [fish-models:/opt/fish-speech/checkpoints]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - { driver: nvidia, count: 1, capabilities: [gpu] }
+
+networks:
+  novelverse: { driver: bridge }
+volumes:
+  voice-cache:
+  fish-models:

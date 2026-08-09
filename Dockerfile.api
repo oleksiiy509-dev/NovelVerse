@@ -1,0 +1,22 @@
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY index.html vite.config.js ./
+COPY public ./public
+COPY src ./src
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+RUN npm run build
+
+FROM node:22-alpine
+ENV NODE_ENV=production PORT=8080 HOST=0.0.0.0
+WORKDIR /app
+COPY --from=build /app/dist ./dist
+COPY deploy/api-server.mjs ./deploy/api-server.mjs
+RUN addgroup -S novelverse && adduser -S novelverse -G novelverse && chown -R novelverse:novelverse /app
+USER novelverse
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD wget -qO- http://127.0.0.1:8080/health || exit 1
+CMD ["node", "deploy/api-server.mjs"]
