@@ -41,4 +41,9 @@ export class R2AudioStore {
   }
 
   get(key, range) { return this.request('GET', key, { range }); }
+
+  async delete(key) {
+    await this.request('DELETE', key);
+    return true;
+  }
 }

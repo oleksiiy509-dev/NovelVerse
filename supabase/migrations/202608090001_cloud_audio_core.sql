@@ -4,7 +4,7 @@ create table if not exists public.chapter_audio_renders (
   id uuid primary key default gen_random_uuid(),
   chapter_id text not null unique,
   job_id uuid not null unique,
-  status text not null default 'queued' check (status in ('queued', 'rendering', 'uploading', 'ready', 'failed')),
+  status text not null default 'queued' check (status in ('queued', 'rendering', 'uploading', 'completed', 'failed', 'cancelled', 'retry')),
   provider text not null default 'fish-speech',
   object_key text,
   content_type text,
@@ -18,7 +18,7 @@ create table if not exists public.chapter_audio_renders (
   heartbeat_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint ready_render_has_object check (status <> 'ready' or object_key is not null)
+  constraint completed_render_has_object check (status <> 'completed' or object_key is not null)
 );
 
 create index if not exists chapter_audio_renders_queue_idx
@@ -30,7 +30,7 @@ alter table public.chapter_audio_renders enable row level security;
 drop policy if exists "Published chapter audio metadata is readable" on public.chapter_audio_renders;
 create policy "Published chapter audio metadata is readable"
   on public.chapter_audio_renders for select to authenticated
-  using (status = 'ready');
+  using (status = 'completed');
 
 comment on table public.chapter_audio_renders is
   'Render coordination and R2 object metadata; contains no audio payloads.';

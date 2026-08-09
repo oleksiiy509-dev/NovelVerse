@@ -8,7 +8,7 @@ import { getProvider, getProviderStatuses } from '../providers/index.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
-import { cancelChapterJob, createChapterJob, getChapterAudio, getChapterAudioStream, getChapterJob, getChapterQueueStatus, publicJob } from '../processors/chapter-jobs.js';
+import { cancelChapterJob, createChapterJob, deleteChapterAudio, getChapterAudio, getChapterAudioStream, getChapterJob, getChapterQueueStatus, publicJob, retryChapterJob, subscribeChapterAudio } from '../processors/chapter-jobs.js';
 
 export const router = Router();
 const version = '1.0.0';
@@ -59,36 +59,51 @@ router.get('/audio/:chapterId', async (req, res, next) => {
       job = await getChapterAudio(cfg, req.params.chapterId);
     }
     const result = publicJob(job);
-    res.status(result.status === 'finished' ? 200 : result.status === 'failed' ? 500 : 202).json({
+    res.status(result.status === 'completed' ? 200 : result.status === 'failed' ? 500 : 202).json({
       ...result,
       streamUrl: `/audio/${encodeURIComponent(req.params.chapterId)}/stream`,
-      waitingForExistingRender: result.status === 'running',
+      waitingForExistingRender: ['queued', 'rendering', 'uploading', 'retry'].includes(result.status),
     });
   } catch (error) { next(error); }
 });
 
-router.post('/audio/:chapterId/render', async (req, res, next) => {
+async function requestRender(req, res, next) {
   try {
     const job = await createChapterJob(req.app.locals.config, { ...req.body, chapterId: req.params.chapterId });
-    res.status(job.status === 'finished' ? 200 : 202).json({ ...job, joined: job.status === 'running' });
+    res.status(job.status === 'completed' ? 200 : 202).json(job);
   } catch (error) { next(error); }
-});
+}
+router.post('/audio/:chapterId/render', requestRender);
+router.post('/audio/render/:chapterId', requestRender);
 
-router.get('/audio/:chapterId/status', async (req, res, next) => {
+async function audioStatus(req, res, next) {
   try {
     const job = await getChapterAudio(req.app.locals.config, req.params.chapterId);
     if (!job) return res.status(404).json({ ok: false, error: 'audio_not_found' });
     res.json(publicJob(job));
   } catch (error) { next(error); }
-});
+}
+router.get('/audio/:chapterId/status', audioStatus);
+router.get('/audio/status/:chapterId', audioStatus);
 
-router.get('/audio/:chapterId/stream', async (req, res, next) => {
+async function audioStream(req, res, next) {
   try {
     const job = await getChapterAudio(req.app.locals.config, req.params.chapterId);
     if (!job) return res.status(404).json({ ok: false, error: 'audio_not_found' });
+    if (!['Finished', 'Failed', 'Cancelled'].includes(job.status)) {
+      if (req.headers.range) {
+        res.setHeader('retry-after', '1');
+        return res.status(425).json({ ok: false, error: 'range_unavailable_during_render', job: publicJob(job) });
+      }
+      const live = subscribeChapterAudio(job);
+      res.status(200);
+      res.setHeader('content-type', 'audio/wav');
+      res.setHeader('cache-control', 'no-store');
+      res.setHeader('x-audio-live', 'true');
+      return live.pipe(res);
+    }
     if (job.status !== 'Finished') {
-      res.setHeader('retry-after', '2');
-      return res.status(425).json({ ok: false, error: job.status === 'Failed' ? 'render_failed' : 'render_in_progress', job: publicJob(job) });
+      return res.status(job.status === 'Cancelled' ? 409 : 500).json({ ok: false, error: job.status === 'Cancelled' ? 'render_cancelled' : 'render_failed', job: publicJob(job) });
     }
     const remote = await getChapterAudioStream(req.app.locals.config, job, req.headers.range);
     if (remote) {
@@ -117,6 +132,24 @@ router.get('/audio/:chapterId/stream', async (req, res, next) => {
     res.setHeader('content-range', `bytes ${start}-${end}/${info.size}`);
     res.setHeader('content-length', end - start + 1);
     return createReadStream(file, { start, end }).pipe(res);
+  } catch (error) { next(error); }
+}
+router.get('/audio/:chapterId/stream', audioStream);
+router.get('/audio/stream/:chapterId', audioStream);
+
+router.delete('/audio/cache/:chapterId', async (req, res, next) => {
+  try {
+    const deleted = await deleteChapterAudio(req.app.locals.config, req.params.chapterId);
+    if (!deleted) return res.status(404).json({ ok: false, error: 'audio_not_found' });
+    return res.json({ ok: true, chapterId: req.params.chapterId });
+  } catch (error) { next(error); }
+});
+
+router.post('/audio/retry/:chapterId', async (req, res, next) => {
+  try {
+    const job = await retryChapterJob(req.app.locals.config, req.params.chapterId);
+    if (!job) return res.status(404).json({ ok: false, error: 'audio_not_found' });
+    return res.status(202).json(publicJob(job));
   } catch (error) { next(error); }
 });
 router.get('/chapter-jobs/:id/status', (req, res) => {

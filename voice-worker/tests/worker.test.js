@@ -187,15 +187,15 @@ const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length
     assert.equal(created.status, 202, createdText);
     let job = JSON.parse(createdText);
     const polls = [];
-    for (let attempt = 0; attempt < 5 && job.status !== 'finished'; attempt += 1) {
+    for (let attempt = 0; attempt < 5 && job.status !== 'completed'; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       const statusResponse = await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } });
       assert.equal(statusResponse.status, 200);
       job = await statusResponse.json();
       polls.push(job);
     }
-    assert.ok(polls.some((poll) => poll.status === 'running' && typeof poll.progress === 'number'));
-    assert.equal(job.status, 'finished', job.error);
+    assert.ok(polls.some((poll) => ['queued', 'rendering', 'uploading', 'retry'].includes(poll.status) && typeof poll.progress === 'number'));
+    assert.equal(job.status, 'completed', job.error);
     assert.equal(job.progress, 100);
     assert.equal(job.fileName, 'Chapter 0001.wav');
     assert.equal(job.mp3FileName, 'Chapter 0001.mp3');
@@ -454,11 +454,11 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
     assert.equal(fishRequests[0].reference_id, null);
     assert.deepEqual(fishRequests[0].references, []);
     let job = await (await ctx.request('/chapter-jobs', auth({ bookId: 'book-http', chapterId: 'chapter-http', chapterNumber: 1, bookTitle: 'HTTP Provider', provider: 'fish-speech', segments: [{ text: 'Generate this chapter.' }] }))).json();
-    for (let attempt = 0; attempt < 50 && job.status !== 'finished'; attempt += 1) {
+    for (let attempt = 0; attempt < 50 && job.status !== 'completed'; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       job = await (await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } })).json();
     }
-    assert.equal(job.status, 'finished', job.error);
+    assert.equal(job.status, 'completed', job.error);
     assert.ok(job.size > 44);
   } finally {
     await cleanup(ctx);
@@ -573,25 +573,25 @@ test('audio API deduplicates concurrent chapter requests, uploads artifacts, and
   const payload = { bookId: 'online-book', chapterId: 'online-chapter', chapterNumber: 7, bookTitle: 'Online Novel', provider: 'mock', segments: [{ text: 'One render serves every listener.' }] };
   try {
     const [firstResponse, secondResponse] = await Promise.all([
-      ctx.request('/audio/online-chapter/render', auth(payload)),
-      ctx.request('/audio/online-chapter/render', auth(payload)),
+      ctx.request('/audio/render/online-chapter', auth(payload)),
+      ctx.request('/audio/render/online-chapter', auth(payload)),
     ]);
     const [first, second] = await Promise.all([firstResponse.json(), secondResponse.json()]);
     assert.equal(first.id, second.id);
-    assert.equal(first.joined, true);
+    assert.equal(first.joined, false);
     assert.equal(second.joined, true);
 
-    const initialStatus = await ctx.request('/audio/online-chapter/status', { headers: { authorization: 'Bearer secret' } });
+    const initialStatus = await ctx.request('/audio/status/online-chapter', { headers: { authorization: 'Bearer secret' } });
     assert.equal(initialStatus.status, 200);
     assert.equal((await initialStatus.json()).id, first.id);
 
     let audio = await (await ctx.request('/audio/online-chapter', { headers: { authorization: 'Bearer secret' } })).json();
-    for (let attempt = 0; attempt < 100 && audio.status !== 'finished'; attempt += 1) {
+    for (let attempt = 0; attempt < 100 && audio.status !== 'completed'; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       const response = await ctx.request('/audio/online-chapter', { headers: { authorization: 'Bearer secret' } });
       audio = await response.json();
     }
-    assert.equal(audio.status, 'finished', audio.error);
+    assert.equal(audio.status, 'completed', audio.error);
     assert.equal(audio.id, first.id);
     assert.equal(audio.streamUrl, '/audio/online-chapter/stream');
 
@@ -606,6 +606,15 @@ test('audio API deduplicates concurrent chapter requests, uploads artifacts, and
     assert.equal(metadata.records[0].request.chapterId, 'online-chapter');
     assert.ok(!JSON.stringify(metadata).includes('One render serves every listener'.repeat(10)));
     assert.equal((await stat(path.join(storageDir, 'online-book', 'online-chapter', 'audio.wav'))).isFile(), true);
+
+    const canonicalStream = await ctx.request('/audio/stream/online-chapter', { headers: { authorization: 'Bearer secret', range: 'bytes=0-15' } });
+    assert.equal(canonicalStream.status, 206);
+    assert.equal((await canonicalStream.arrayBuffer()).byteLength, 16);
+
+    const removed = await ctx.request('/audio/cache/online-chapter', { method: 'DELETE', headers: { authorization: 'Bearer secret' } });
+    assert.equal(removed.status, 200);
+    assert.equal((await removed.json()).ok, true);
+    assert.equal((await ctx.request('/audio/status/online-chapter', { headers: { authorization: 'Bearer secret' } })).status, 404);
   } finally {
     await cleanup(ctx);
     await rm(root, { recursive: true, force: true });
