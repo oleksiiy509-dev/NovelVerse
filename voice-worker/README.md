@@ -93,3 +93,12 @@ The script creates `piper/` and `piper/voices/`, downloads the Windows Piper bin
 ## Provider status
 
 `GET /providers` returns public provider availability and configuration status. `GET /voices` returns the same provider metadata but still requires the bearer token when `TOKEN` is set.
+
+## Server v1 audiobook pipeline
+
+The worker now supplies the queue/cache portion of the Telegram pipeline. Configure
+`CHAPTER_SOURCE_URL` for chapter lookup and mount durable object storage at
+`AUDIO_STORAGE_DIR`. `GET /audio/:chapterId` atomically joins or creates one render,
+while `GET /audio/:chapterId/stream` serves the uploaded artifact with seekable byte
+ranges. Queue metadata and per-segment checkpoints survive restarts. Rendering still
+uses Dynamic Narrator and the existing Fish Speech-first narrator cascade.

@@ -1,13 +1,14 @@
 import { Router } from 'express';
-import { access, mkdir } from 'node:fs/promises';
+import { access, mkdir, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import { createReadStream } from 'node:fs';
 import { getProvider, getProviderStatuses } from '../providers/index.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
-import { cancelChapterJob, createChapterJob, getChapterJob, getChapterQueueStatus, publicJob } from '../processors/chapter-jobs.js';
+import { cancelChapterJob, createChapterJob, getChapterAudio, getChapterJob, getChapterQueueStatus, publicJob } from '../processors/chapter-jobs.js';
 
 export const router = Router();
 const version = '1.0.0';
@@ -28,6 +29,72 @@ router.get('/voices', async (req, res) => res.json({ ok: true, providers: (await
 router.get('/status', (req, res) => res.json({ ok: true, defaultProvider: req.app.locals.config.defaultProvider, uptime: process.uptime() }));
 router.post('/chapter-jobs', async (req, res, next) => {
   try { res.status(202).json(await createChapterJob(req.app.locals.config, req.body)); } catch (error) { next(error); }
+});
+
+async function resolveChapter(cfg, chapterId) {
+  if (!cfg.chapterSourceUrl) return null;
+  const response = await fetch(`${cfg.chapterSourceUrl.replace(/\/$/, '')}/${encodeURIComponent(chapterId)}`, {
+    headers: cfg.chapterSourceToken ? { authorization: `Bearer ${cfg.chapterSourceToken}` } : {},
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw Object.assign(new Error('Chapter source is unavailable'), { status: 502, code: 'chapter_source_unavailable' });
+  const chapter = await response.json();
+  const text = String(chapter.content || chapter.text || '').trim();
+  if (!text) throw Object.assign(new Error('Chapter has no narratable content'), { status: 422, code: 'empty_chapter' });
+  return {
+    chapterId, bookId: chapter.bookId || chapter.novelId || chapter.novel_id, bookTitle: chapter.bookTitle || chapter.novelTitle || 'NovelVerse',
+    chapterNumber: chapter.chapterNumber || chapter.number, chapterTitle: chapter.chapterTitle || chapter.title,
+    language: chapter.language, provider: chapter.provider || 'narrator', segments: chapter.segments || [{ text }],
+  };
+}
+
+router.get('/audio/:chapterId', async (req, res, next) => {
+  try {
+    const cfg = req.app.locals.config;
+    let job = await getChapterAudio(cfg, req.params.chapterId);
+    if (!job) {
+      const chapter = await resolveChapter(cfg, req.params.chapterId);
+      if (!chapter) return res.status(404).json({ ok: false, error: 'chapter_not_found' });
+      await createChapterJob(cfg, chapter);
+      job = await getChapterAudio(cfg, req.params.chapterId);
+    }
+    const result = publicJob(job);
+    res.status(result.status === 'finished' ? 200 : result.status === 'failed' ? 500 : 202).json({
+      ...result,
+      streamUrl: `/audio/${encodeURIComponent(req.params.chapterId)}/stream`,
+      waitingForExistingRender: result.status === 'running',
+    });
+  } catch (error) { next(error); }
+});
+
+router.get('/audio/:chapterId/stream', async (req, res, next) => {
+  try {
+    const job = await getChapterAudio(req.app.locals.config, req.params.chapterId);
+    if (!job) return res.status(404).json({ ok: false, error: 'audio_not_found' });
+    if (job.status !== 'Finished') {
+      res.setHeader('retry-after', '2');
+      return res.status(425).json({ ok: false, error: job.status === 'Failed' ? 'render_failed' : 'render_in_progress', job: publicJob(job) });
+    }
+    const file = job.storage?.mp3 || job.storage?.wav || job.mp3File || job.file;
+    const info = await stat(file);
+    const range = req.headers.range;
+    res.setHeader('accept-ranges', 'bytes');
+    res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+    res.setHeader('content-type', file.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav');
+    if (!range) {
+      res.setHeader('content-length', info.size);
+      return createReadStream(file).pipe(res);
+    }
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match) { res.setHeader('content-range', `bytes */${info.size}`); return res.status(416).end(); }
+    const start = match[1] ? Number(match[1]) : 0;
+    const end = match[2] ? Math.min(Number(match[2]), info.size - 1) : info.size - 1;
+    if (start > end || start >= info.size) { res.setHeader('content-range', `bytes */${info.size}`); return res.status(416).end(); }
+    res.status(206);
+    res.setHeader('content-range', `bytes ${start}-${end}/${info.size}`);
+    res.setHeader('content-length', end - start + 1);
+    return createReadStream(file, { start, end }).pipe(res);
+  } catch (error) { next(error); }
 });
 router.get('/chapter-jobs/:id/status', (req, res) => {
   const job = getChapterJob(req.params.id);
