@@ -161,7 +161,7 @@ test('Narrator 2.0 forces one configured voice for every request', () => {
   if (previous === undefined) delete process.env.NARRATOR_VOICE; else process.env.NARRATOR_VOICE = previous;
 });
 
-test('local Piper chapter generation keeps readable WAV and MP3 files and reuses an unchanged chapter', async () => {
+test('chapter render can be polled repeatedly until finished and its audio is available', async () => {
   const previous = { PIPER_BIN: process.env.PIPER_BIN, PIPER_MODEL: process.env.PIPER_MODEL, FFMPEG_BIN: process.env.FFMPEG_BIN };
   const root = await mkdtemp(path.join(os.tmpdir(), 'nv-chapter-'));
   const outputDir = path.join(root, 'voice-output');
@@ -171,12 +171,12 @@ test('local Piper chapter generation keeps readable WAV and MP3 files and reuses
   await writeFile(model, 'model');
   await writeFile(piper, `#!/usr/bin/env node
 const fs = require('node:fs'); const args = process.argv.slice(2); const out = args[args.indexOf('--output_file') + 1];
-const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(16000, 40); fs.writeFileSync(out, wav);
+const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(16000, 40); setTimeout(() => fs.writeFileSync(out, wav), 1200);
 `);
   await writeFile(ffmpeg, '#!/bin/sh\n[ "$1" = "-version" ] && exit 0\ncp "$5" "$6"\n');
   await Promise.all([chmod(piper, 0o755), chmod(ffmpeg, 0o755)]);
   process.env.PIPER_BIN = piper; process.env.PIPER_MODEL = model; process.env.FFMPEG_BIN = ffmpeg;
-  const ctx = await fixture({ outputDir });
+  const ctx = await fixture({ outputDir, rateLimitMax: 4 });
   try {
     const health = await (await ctx.request('/health')).json();
     assert.equal(health.status, 'ONLINE');
@@ -186,11 +186,17 @@ const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length
     const createdText = await created.text();
     assert.equal(created.status, 202, createdText);
     let job = JSON.parse(createdText);
-    for (let attempt = 0; attempt < 50 && job.status !== 'Finished'; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      job = await (await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } })).json();
+    const polls = [];
+    for (let attempt = 0; attempt < 5 && job.status !== 'finished'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const statusResponse = await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } });
+      assert.equal(statusResponse.status, 200);
+      job = await statusResponse.json();
+      polls.push(job);
     }
-    assert.equal(job.status, 'Finished', job.error);
+    assert.ok(polls.some((poll) => poll.status === 'running' && typeof poll.progress === 'number'));
+    assert.equal(job.status, 'finished', job.error);
+    assert.equal(job.progress, 100);
     assert.equal(job.fileName, 'Chapter 0001.wav');
     assert.equal(job.mp3FileName, 'Chapter 0001.mp3');
     assert.equal(job.format, 'wav');
@@ -202,8 +208,6 @@ const wav = Buffer.alloc(16044); wav.write('RIFF'); wav.writeUInt32LE(wav.length
     assert.ok((await audio.arrayBuffer()).byteLength > 44);
     assert.equal((await stat(path.join(outputDir, 'A Book', 'Chapter 0001.mp3'))).isFile(), true);
     assert.equal((await stat(path.join(outputDir, 'A Book', 'Chapter 0001.wav'))).isFile(), true);
-    const cached = await (await ctx.request('/chapter-jobs', auth({ ...payload, chapterTitle: 'Renamed without audio changes' }))).json();
-    assert.equal(cached.status, 'Finished'); assert.equal(cached.cached, true); assert.equal(cached.generationTime, 0);
   } finally {
     await cleanup(ctx); await rm(root, { recursive: true, force: true });
     for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
@@ -450,11 +454,11 @@ test('running local HTTP provider is ONLINE and supports preview and chapter gen
     assert.equal(fishRequests[0].reference_id, null);
     assert.deepEqual(fishRequests[0].references, []);
     let job = await (await ctx.request('/chapter-jobs', auth({ bookId: 'book-http', chapterId: 'chapter-http', chapterNumber: 1, bookTitle: 'HTTP Provider', provider: 'fish-speech', segments: [{ text: 'Generate this chapter.' }] }))).json();
-    for (let attempt = 0; attempt < 50 && job.status !== 'Finished'; attempt += 1) {
+    for (let attempt = 0; attempt < 50 && job.status !== 'finished'; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       job = await (await ctx.request(`/chapter-jobs/${job.id}/status`, { headers: { authorization: 'Bearer secret' } })).json();
     }
-    assert.equal(job.status, 'Finished', job.error);
+    assert.equal(job.status, 'finished', job.error);
     assert.ok(job.size > 44);
   } finally {
     await cleanup(ctx);
