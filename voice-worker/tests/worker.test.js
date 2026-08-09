@@ -9,13 +9,33 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createApp } from '../api/app.js';
 import { requireBearerToken } from '../middleware/auth.js';
 import { normalizeNarrationText, planNarration, prepareNarrationRequest } from '../processors/narration.js';
+import { shutdownChapterQueue } from '../processors/chapter-jobs.js';
 
 async function fixture(overrides = {}) {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'nv-worker-'));
-  const server = createApp({ token: 'secret', defaultProvider: 'mock', cacheDir, logLevel: 'silent', rateLimitMax: 1000, ...overrides }).listen(0, '127.0.0.1');
+  const app = createApp({ token: 'secret', defaultProvider: 'mock', cacheDir, logLevel: 'silent', rateLimitMax: 1000, ...overrides });
+  const config = app.locals.config;
+  const server = app.listen(0, '127.0.0.1');
+  const sockets = new Set();
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+  });
   await new Promise((resolve) => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { cacheDir, close: () => new Promise((resolve) => server.close(resolve)), request: (url, options) => fetch(`${base}${url}`, options) };
+  return {
+    cacheDir,
+    request: (url, options) => fetch(`${base}${url}`, options),
+    async close() {
+      await shutdownChapterQueue(config);
+      server.closeIdleConnections?.();
+      for (const socket of sockets) socket.destroy();
+      server.closeAllConnections?.();
+      await new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    },
+  };
 }
 async function cleanup(ctx) { await ctx.close(); await rm(ctx.cacheDir, { recursive: true, force: true }); }
 function auth(body) { return { method: 'POST', headers: { authorization: 'Bearer secret', 'content-type': 'application/json' }, body: JSON.stringify(body) }; }

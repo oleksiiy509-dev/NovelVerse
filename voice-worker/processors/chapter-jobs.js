@@ -15,6 +15,8 @@ const exec = promisify(execFile);
 const pending = [];
 const chapters = new Map();
 let active = false;
+let activeJob = null;
+let activeRender = null;
 let lastError = '';
 const stateFiles = new Map();
 const cloudServices = new Map();
@@ -117,6 +119,7 @@ async function uploadAudio(cfg, job) {
 }
 
 async function render(job) {
+  activeJob = job;
   const started = Date.now();
   const { cfg, request } = job;
   try {
@@ -181,6 +184,7 @@ async function render(job) {
     job.liveChunks = null;
     await persistMetadata(cfg).catch(() => {});
     active = false;
+    activeJob = null;
     runNext();
   }
 }
@@ -194,7 +198,36 @@ function runNext() {
   const job = pending.shift();
   if (!job) return;
   active = true;
-  render(job);
+  // Retain the promise so lifecycle owners can wait for all filesystem,
+  // provider, upload, metadata, and stream cleanup before shutting down.
+  activeRender = render(job).finally(() => {
+    if (!active) activeRender = null;
+  });
+}
+
+export async function shutdownChapterQueue(cfg) {
+  const matches = (job) => !cfg || job.cfg === cfg;
+  for (let index = pending.length - 1; index >= 0; index -= 1) {
+    const job = pending[index];
+    if (!matches(job)) continue;
+    pending.splice(index, 1);
+    job.cancelled = true;
+    job.status = 'Cancelled';
+    for (const subscriber of job.subscribers || []) subscriber.destroy();
+    job.subscribers?.clear();
+  }
+  if (activeJob && matches(activeJob)) activeJob.cancelled = true;
+  while (activeJob && matches(activeJob) && activeRender) await activeRender;
+
+  for (const [id, job] of jobs) if (matches(job)) jobs.delete(id);
+  for (const [key, job] of chapters) if (matches(job)) chapters.delete(key);
+  if (cfg) {
+    stateFiles.delete(metadataFile(cfg));
+    cloudServices.delete(cfg);
+  } else {
+    stateFiles.clear();
+    cloudServices.clear();
+  }
 }
 
 export async function createChapterJob(cfg, body = {}) {
