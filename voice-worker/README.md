@@ -29,6 +29,18 @@ curl http://127.0.0.1:8787/health
 
 Set `TOKEN` in `.env` to require `Authorization: Bearer <TOKEN>` for all endpoints except `/health`.
 
+## Cloud audiobook core
+
+Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the `R2_*` variables
+from `.env.example` to enable durable cloud rendering. The worker keeps a single
+job per chapter, resumes queued or interrupted jobs from Supabase, uploads the
+completed chapter object to R2, and proxies byte-range requests from R2.
+
+The Telegram/API layer can use `POST /audio/:chapterId/render` to create or join
+a render, `GET /audio/:chapterId/status` to poll it, and `GET
+/audio/:chapterId/stream` for seekable playback. `GET /audio/:chapterId` returns
+the existing render and can enqueue an unseen chapter through `CHAPTER_SOURCE_URL`.
+
 ## Fish Speech on Windows
 
 Fish Speech is **not embedded in the Node worker**. It is a separate, GPU-oriented

@@ -6,6 +6,8 @@ import path from 'node:path';
 import { getProvider } from '../providers/index.js';
 import { prepareNarratedChapterSegments, prepareNarratedSentences } from '../../src/lib/narrationRendering.js';
 import { narratorVoice } from './narration.js';
+import { R2AudioStore } from '../cloud/r2.js';
+import { SupabaseRenderMetadata } from '../cloud/render-metadata.js';
 
 const jobs = new Map();
 const exec = promisify(execFile);
@@ -14,6 +16,14 @@ const chapters = new Map();
 let active = false;
 let lastError = '';
 const stateFiles = new Map();
+const cloudServices = new Map();
+
+function cloud(cfg) {
+  if (!cloudServices.has(cfg)) cloudServices.set(cfg, { objects: new R2AudioStore(cfg), metadata: new SupabaseRenderMetadata(cfg) });
+  return cloudServices.get(cfg);
+}
+
+const databaseStatus = (status) => ({ Preparing: 'queued', Rendering: 'rendering', Merging: 'rendering', Uploading: 'uploading', Finished: 'ready', Failed: 'failed' }[status] || 'queued');
 
 const fingerprint = ({ language, provider, segments }) => createHash('sha256').update(JSON.stringify({ language, provider, segments })).digest('hex');
 const safeName = (value) => String(value || 'Book').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().replace(/[. ]+$/g, '').slice(0, 80) || 'Book';
@@ -52,6 +62,8 @@ async function persistMetadata(cfg) {
   const temporary = `${file}.${process.pid}.tmp`;
   await writeFile(temporary, JSON.stringify({ version: 1, records }, null, 2));
   await rename(temporary, file);
+  const metadata = cloud(cfg).metadata;
+  if (metadata.enabled) await Promise.all([...chapters.values()].filter((job) => job.cfg === cfg).map((job) => metadata.save({ ...job, status: databaseStatus(job.status) })));
 }
 
 async function loadMetadata(cfg) {
@@ -67,6 +79,15 @@ async function loadMetadata(cfg) {
         jobs.set(job.id, job);
         if (job.resumed) { job.status = 'Preparing'; pending.push(job); }
       }
+      const metadata = cloud(cfg).metadata;
+      if (metadata.enabled) {
+        for (const record of await metadata.resumable()) {
+          const key = chapterKey(cfg, record.chapter_id);
+          if (chapters.has(key) || !record.request?.segments?.length) continue;
+          const job = { id: record.job_id, key: fingerprint(record.request), cfg, request: record.request, status: 'Preparing', completed: record.completed_segments || 0, total: record.total_segments || record.request.segments.length, attempts: record.attempts || 0, createdAt: record.created_at, resumed: true, cached: false, cancelled: false };
+          chapters.set(key, job); jobs.set(job.id, job); pending.push(job);
+        }
+      }
       runNext();
     } catch { /* the registry is created after the first request */ }
   })();
@@ -75,7 +96,16 @@ async function loadMetadata(cfg) {
 }
 
 async function uploadAudio(cfg, job) {
+  const objects = cloud(cfg).objects;
   const prefix = path.join(String(job.request.bookId || 'unknown'), String(job.request.chapterId));
+  if (objects.enabled) {
+    const source = job.mp3File || job.file;
+    const contentType = job.mp3File ? 'audio/mpeg' : 'audio/wav';
+    const objectKey = `${String(job.request.bookId || 'unknown')}/${String(job.request.chapterId)}/audio.${job.mp3File ? 'mp3' : 'wav'}`;
+    const uploaded = await objects.put(objectKey, await readFile(source), contentType);
+    Object.assign(job, { objectKey: uploaded.key, contentType: uploaded.contentType });
+    return { r2: true, objectKey: uploaded.key };
+  }
   const destination = path.join(cfg.storageDir, prefix);
   await mkdir(destination, { recursive: true });
   const wav = path.join(destination, 'audio.wav');
@@ -89,6 +119,7 @@ async function render(job) {
   const started = Date.now();
   const { cfg, request } = job;
   try {
+    job.attempts = (job.attempts || 0) + 1;
     job.status = 'Preparing';
     const provider = getProvider(request.provider === 'auto' ? 'narrator' : request.provider, cfg);
     const rendered = [];
@@ -190,6 +221,11 @@ export async function createChapterJob(cfg, body = {}) {
 
 export function getChapterJob(id) { return jobs.get(id); }
 export async function getChapterAudio(cfg, chapterId) { await loadMetadata(cfg); return chapters.get(chapterKey(cfg, chapterId)); }
+export async function getChapterAudioStream(cfg, job, range) {
+  const objects = cloud(cfg).objects;
+  if (!job?.objectKey || !objects.enabled) return null;
+  return objects.get(job.objectKey, range);
+}
 export function cancelChapterJob(id) { const job = jobs.get(id); if (job && !['Finished', 'Failed'].includes(job.status)) job.cancelled = true; return job; }
 export function publicJob(job) {
   if (!job) return null;

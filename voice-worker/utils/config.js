@@ -17,6 +17,12 @@ export const config = {
   publicAudioBaseUrl: process.env.PUBLIC_AUDIO_BASE_URL || '',
   chapterSourceUrl: process.env.CHAPTER_SOURCE_URL || '',
   chapterSourceToken: process.env.CHAPTER_SOURCE_TOKEN || '',
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  r2Endpoint: process.env.R2_ENDPOINT || '',
+  r2Bucket: process.env.R2_BUCKET || '',
+  r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+  r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 120),
 };
