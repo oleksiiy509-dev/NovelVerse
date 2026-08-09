@@ -19,6 +19,7 @@ export class SupabaseRenderMetadata {
     if (!this.enabled) return record;
     const payload = { chapter_id: record.request.chapterId, job_id: record.id, status: record.status, provider: record.request.provider,
       object_key: record.objectKey || null, content_type: record.contentType || null, byte_size: record.size || null,
+      checksum_sha256: record.checksum || null,
       duration_seconds: record.duration || null, completed_segments: record.completed, total_segments: record.total,
       request: record.request, error_message: record.error || null, attempts: record.attempts || 0,
       heartbeat_at: new Date().toISOString(), updated_at: new Date().toISOString() };

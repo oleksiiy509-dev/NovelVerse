@@ -8,7 +8,7 @@ import { getProvider, getProviderStatuses } from '../providers/index.js';
 import { validateRequest } from '../utils/validation.js';
 import { putCachedAudio } from '../utils/cache.js';
 import { contentType } from '../processors/audio.js';
-import { cancelChapterJob, createChapterJob, deleteChapterAudio, getChapterAudio, getChapterAudioStream, getChapterJob, getChapterQueueStatus, publicJob, retryChapterJob, subscribeChapterAudio } from '../processors/chapter-jobs.js';
+import { cancelChapterJob, createChapterJob, deleteChapterAudio, downloadChapterAudioVerified, getChapterAudio, getChapterAudioStream, getChapterDownloadUrl, getChapterJob, getChapterQueueStatus, publicJob, retryChapterJob, subscribeChapterAudio } from '../processors/chapter-jobs.js';
 
 export const router = Router();
 const version = '1.0.0';
@@ -183,8 +183,16 @@ router.post('/chapter-jobs/:id/cancel', (req, res) => {
 });
 router.get('/chapter-jobs/:id/download', async (req, res, next) => {
   const job = getChapterJob(req.params.id);
-  if (!job?.file || job.status !== 'Finished') return res.status(404).json({ ok: false, error: 'audio_not_found' });
-  try { res.setHeader('content-type', 'audio/wav'); res.setHeader('content-disposition', `attachment; filename="${job.fileName}"`); res.send(await import('node:fs/promises').then(({ readFile }) => readFile(job.file))); } catch (error) { next(error); }
+  if (!job || job.status !== 'Finished') return res.status(404).json({ ok: false, error: 'audio_not_found' });
+  try {
+    if (job.objectKey) {
+      if (req.query.redirect === '1') return res.redirect(302, getChapterDownloadUrl(req.app.locals.config, job, Number(req.query.expires) || 900));
+      const audio = await downloadChapterAudioVerified(req.app.locals.config, job);
+      if (audio) { res.setHeader('content-type', job.contentType); res.setHeader('content-disposition', `attachment; filename="audio.${job.contentType === 'audio/mpeg' ? 'mp3' : 'wav'}"`); return res.send(audio); }
+    }
+    if (!job.file) return res.status(404).json({ ok: false, error: 'audio_not_found' });
+    res.setHeader('content-type', 'audio/wav'); res.setHeader('content-disposition', `attachment; filename="${job.fileName}"`); return res.send(await import('node:fs/promises').then(({ readFile }) => readFile(job.file)));
+  } catch (error) { next(error); }
 });
 router.post('/chapter-jobs/:id/open-folder', (req, res) => {
   const job = getChapterJob(req.params.id);
