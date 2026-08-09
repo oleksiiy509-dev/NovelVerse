@@ -34,6 +34,9 @@ export function securityHeaders(req, res, next) {
 }
 export function rateLimiter(cfg) {
   return (req, res, next) => {
+    // Status polling is part of a normal render lifecycle. It must remain
+    // observable even when synthesis requests have consumed the request bucket.
+    if (req.method === 'GET' && /^\/chapter-jobs\/[^/]+\/status(?:\?|$)/.test(req.url)) return next();
     const key = req.socket.remoteAddress || 'local';
     const now = Date.now();
     const bucket = buckets.get(key) || { reset: now + cfg.rateLimitWindowMs, count: 0 };

@@ -120,4 +120,16 @@ export async function createChapterJob(cfg, body = {}) {
 
 export function getChapterJob(id) { return jobs.get(id); }
 export function cancelChapterJob(id) { const job = jobs.get(id); if (job && !['Finished', 'Failed'].includes(job.status)) job.cancelled = true; return job; }
-export function publicJob(job) { if (!job) return null; const { cfg, request, cancelled, file, mp3File, ...safe } = job; return { ...safe, audioUrl: job.status === 'Finished' ? `/chapter-jobs/${job.id}/download` : null }; }
+export function publicJob(job) {
+  if (!job) return null;
+  const { cfg, request, cancelled, file, mp3File, status, error, ...safe } = job;
+  const publicStatus = status === 'Finished' ? 'finished' : status === 'Failed' ? 'failed' : 'running';
+  const progress = job.total ? Math.min(100, Math.round((job.completed / job.total) * 100)) : 0;
+  return {
+    ...safe,
+    status: publicStatus,
+    progress: publicStatus === 'finished' ? 100 : progress,
+    ...(publicStatus === 'failed' ? { error } : {}),
+    audioUrl: publicStatus === 'finished' ? `/chapter-jobs/${job.id}/download` : null,
+  };
+}
