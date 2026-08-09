@@ -17,16 +17,19 @@ async function fixture(overrides = {}) {
   const config = app.locals.config;
   const server = app.listen(0, '127.0.0.1');
   const sockets = new Set();
-  server.on('connection', (socket) => {
+  const requests = new AbortController();
+  const onConnection = (socket) => {
     sockets.add(socket);
     socket.once('close', () => sockets.delete(socket));
-  });
+  };
+  server.on('connection', onConnection);
   await new Promise((resolve) => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
     cacheDir,
-    request: (url, options) => fetch(`${base}${url}`, options),
+    request: (url, options = {}) => fetch(`${base}${url}`, { ...options, signal: requests.signal }),
     async close() {
+      requests.abort();
       await shutdownChapterQueue(config);
       server.closeIdleConnections?.();
       for (const socket of sockets) socket.destroy();
@@ -34,6 +37,9 @@ async function fixture(overrides = {}) {
       await new Promise((resolve, reject) => {
         server.close((error) => error ? reject(error) : resolve());
       });
+      server.off('connection', onConnection);
+      for (const socket of sockets) socket.removeAllListeners();
+      sockets.clear();
     },
   };
 }
