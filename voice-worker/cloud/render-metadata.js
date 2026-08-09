@@ -28,6 +28,12 @@ export class SupabaseRenderMetadata {
 
   async resumable() {
     if (!this.enabled) return [];
-    return this.parse(await this.fetch(this.endpoint('?status=in.(queued,rendering,uploading)&select=*'), { headers: this.headers() }));
+    return this.parse(await this.fetch(this.endpoint('?status=in.(queued,rendering,uploading,retry)&select=*'), { headers: this.headers() }));
+  }
+
+
+  async delete(chapterId) {
+    if (!this.enabled) return;
+    await this.parse(await this.fetch(this.endpoint(`?chapter_id=eq.${encodeURIComponent(chapterId)}`), { method: 'DELETE', headers: this.headers() }));
   }
 }
