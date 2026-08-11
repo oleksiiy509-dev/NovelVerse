@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { getProvider } from '../providers/index.js';
-import { prepareNarratedChapterSegments, prepareNarratedSentences } from '../../src/lib/narrationRendering.js';
+import { prepareNarratedChapterSegments, prepareNarratedSentences } from '../lib/narrationRendering.js';
 import { narratorVoice } from './narration.js';
 import { R2AudioStore } from '../cloud/r2.js';
 import { SupabaseRenderMetadata } from '../cloud/render-metadata.js';
